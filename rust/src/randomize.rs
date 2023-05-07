@@ -1,3 +1,4 @@
+use pyo3::prelude::*;
 pub mod escape_timer;
 
 use crate::{
@@ -96,6 +97,7 @@ pub struct ItemPriorityGroup {
     pub items: Vec<String>,
 }
 
+#[pyclass]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct DifficultyConfig {
     pub tech: Vec<String>,
@@ -152,12 +154,17 @@ pub struct DifficultyConfig {
 }
 
 // Includes preprocessing specific to the map:
-pub struct Randomizer<'a> {
-    pub map: &'a Map,
-    pub locked_doors: &'a [LockedDoor], // Locked doors (not including gray doors)
-    pub game_data: &'a GameData,
-    pub difficulty_tiers: &'a [DifficultyConfig],
+#[pyclass]
+#[derive(Clone)]
+pub struct Randomizer {
+    #[pyo3(get)]
+    pub map: Box<Map>,
+    pub locked_doors: Box<Vec<LockedDoor>>, // Locked doors (not including gray doors)
+    #[pyo3(get)]
+    pub game_data: Box<GameData>,
+    pub difficulty_tiers: Box<Vec<DifficultyConfig>>,
     pub links: Vec<Link>,
+    #[pyo3(get)]
     pub initial_items_remaining: Vec<usize>, // Corresponds to GameData.items_isv (one count per distinct item name)
 }
 
@@ -1161,13 +1168,13 @@ pub fn randomize_doors(
     }
 }
 
-impl<'r> Randomizer<'r> {
+impl Randomizer {
     pub fn new(
-        map: &'r Map,
-        locked_doors: &'r [LockedDoor],
-        difficulty_tiers: &'r [DifficultyConfig],
-        game_data: &'r GameData,
-    ) -> Randomizer<'r> {
+        map: Box<Map>,
+        locked_doors: Box<Vec<LockedDoor>>,
+        difficulty_tiers: Box<Vec<DifficultyConfig>>,
+        game_data: Box<GameData>,
+    ) -> Randomizer {
         let mut locked_door_map: HashMap<DoorPtrPair, usize> = HashMap::new();
         for (i, door) in locked_doors.iter().enumerate() {
             locked_door_map.insert(door.src_ptr_pair, i);
@@ -1209,7 +1216,7 @@ impl<'r> Randomizer<'r> {
                 dst_room_id,
                 dst_node_id,
                 src_locked_door_idx,
-                game_data,
+                game_data.as_ref(),
                 &mut links,
                 locked_doors,
             );
@@ -1220,7 +1227,7 @@ impl<'r> Randomizer<'r> {
                     src_room_id,
                     src_node_id,
                     dst_locked_door_idx,
-                    game_data,
+                    game_data.as_ref(),
                     &mut links,
                     locked_doors,
                 );
@@ -1235,6 +1242,7 @@ impl<'r> Randomizer<'r> {
         initial_items_remaining[Item::ReserveTank as usize] = 4;
         assert!(initial_items_remaining.iter().sum::<usize>() == game_data.item_locations.len());
 
+        let map = Box::new(*map);
         Randomizer {
             map,
             locked_doors,
@@ -1303,7 +1311,7 @@ impl<'r> Randomizer<'r> {
             start_vertex_id,
             false,
             &self.difficulty_tiers[0],
-            self.game_data,
+            self.game_data.as_ref(),
         );
         let reverse = traverse(
             &self.links,
@@ -1314,7 +1322,7 @@ impl<'r> Randomizer<'r> {
             start_vertex_id,
             true,
             &self.difficulty_tiers[0],
-            self.game_data,
+            self.game_data.as_ref(),
         );
         for (i, vertex_ids) in self.game_data.item_vertex_ids.iter().enumerate() {
             // Clear out any previous bireachable markers (because in rare cases a previously bireachable
@@ -1596,7 +1604,7 @@ impl<'r> Randomizer<'r> {
                 start_vertex_id,
                 false,
                 difficulty,
-                self.game_data,
+                self.game_data.as_ref(),
             );
 
             for (i, &item_location_id) in bireachable_locations.iter().enumerate() {
@@ -2087,7 +2095,7 @@ impl<'r> Randomizer<'r> {
             })
             .collect();
         let spoiler_escape =
-            escape_timer::compute_escape_data(self.game_data, self.map, &self.difficulty_tiers[0])?;
+            escape_timer::compute_escape_data(self.game_data.as_ref(), self.map.as_ref(), &self.difficulty_tiers[0])?;
         let spoiler_log = SpoilerLog {
             summary: spoiler_summaries,
             escape: spoiler_escape,
@@ -2103,7 +2111,7 @@ impl<'r> Randomizer<'r> {
 
         Ok(Randomization {
             difficulty: self.difficulty_tiers[0].clone(),
-            map: self.map.clone(),
+            map: self.map.as_ref().clone(),
             locked_doors: self.locked_doors.to_vec(),
             item_placement,
             spoiler_log,
@@ -2503,7 +2511,7 @@ pub struct SpoilerLog {
     pub all_rooms: Vec<SpoilerRoomLoc>,
 }
 
-impl<'a> Randomizer<'a> {
+impl Randomizer {
     fn get_vertex_info(&self, vertex_id: usize) -> VertexInfo {
         let (room_id, node_id, _obstacle_bitmask) = self.game_data.vertex_isv.keys[vertex_id];
         self.get_vertex_info_by_id(room_id, node_id)
@@ -2921,4 +2929,49 @@ impl<'a> Randomizer<'a> {
             flags: spoiler_flag_summaries,
         }
     }
+}
+
+pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
+    let difficulty = DifficultyConfig {
+        tech: game_data.tech_isv.keys.clone(),
+        notable_strats: vec![],
+        // tech,
+        shine_charge_tiles: 16.0,
+        // shine_charge_tiles: 32,
+        progression_rate: ProgressionRate::Slow,
+        filler_items: vec![Item::Missile],
+        item_placement_style: ItemPlacementStyle::Neutral,
+        item_priorities: vec![
+            ItemPriorityGroup {
+                name: "Default".to_string(),
+                items: game_data.item_isv.keys.iter().filter(|x| x != &"Varia" && x != &"Gravity").cloned().collect(),
+            },
+            ItemPriorityGroup {
+                name: "Late".to_string(),
+                items: vec!["Varia".to_string(), "Gravity".to_string()],
+            }
+        ],
+        resource_multiplier: 1.0,
+        escape_timer_multiplier: 1.0,
+        save_animals: false,
+        phantoon_proficiency: 1.0,
+        draygon_proficiency: 1.0,
+        ridley_proficiency: 1.0,
+        botwoon_proficiency: 1.0,
+        supers_double: true,
+        mother_brain_short: true,
+        escape_enemies_cleared: true,
+        escape_movement_items: true,
+        mark_map_stations: true,
+        item_markers: ItemMarkers::ThreeTiered,
+        all_items_spawn: true,
+        fast_elevators: true,
+        fast_doors: true,
+        objectives: Objectives::Bosses,
+        debug_options: Some(DebugOptions {
+            new_game_extra: true,
+            extended_spoiler: true,
+        })
+    };
+    return difficulty;
 }

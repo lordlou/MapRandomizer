@@ -5,6 +5,10 @@ use anyhow::{bail, ensure, Context, Result};
 // use log::info;
 use crate::customize::room_palettes::decode_palette;
 use hashbrown::{HashMap, HashSet};
+use pyo3::prelude::*;
+use anyhow::{bail, ensure, Context, Result};
+use hashbrown::{HashSet};
+use std::collections::HashMap;
 use json::{self, JsonValue};
 use num_enum::TryFromPrimitive;
 use serde::Serialize;
@@ -18,15 +22,19 @@ use strum_macros::{EnumString, EnumVariantNames};
 
 use self::themed_retiling::RetiledThemeData;
 
+#[pyclass]
 #[derive(Deserialize, Clone)]
 pub struct Map {
+    #[pyo3(get)]
     pub rooms: Vec<(usize, usize)>, // (x, y) of upper-left corner of room on map
     pub doors: Vec<(
         (Option<usize>, Option<usize>), // Source (exit_ptr, entrance_ptr)
         (Option<usize>, Option<usize>), // Destination (exit_ptr, entrance_ptr)
         bool,                           // bidirectional
     )>,
+    #[pyo3(get)]
     pub area: Vec<usize>,    // Area number: 0, 1, 2, 3, 4, or 5
+    #[pyo3(get)]
     pub subarea: Vec<usize>, // Subarea number: 0 or 1
 }
 
@@ -452,13 +460,20 @@ pub struct ThemedPaletteTileset {
 // more structured; combine maps with the same keys; also maybe unify the room geometry data
 // with sm-json-data and cut back on the amount of different
 // keys/IDs/indexes for rooms, nodes, and doors.
-#[derive(Default)]
+#[pyclass]
+#[derive(Default, Clone)]
 pub struct GameData {
+    #[pyo3(get)]
     sm_json_data_path: PathBuf,
+    #[pyo3(get)]
     pub tech_isv: IndexedVec<String>,
+    #[pyo3(get)]
     pub notable_strat_isv: IndexedVec<String>,
+    #[pyo3(get)]
     pub flag_isv: IndexedVec<String>,
+    #[pyo3(get)]
     pub item_isv: IndexedVec<String>,
+    #[pyo3(get)]
     weapon_isv: IndexedVec<String>,
     enemy_attack_damage: HashMap<(String, String), Capacity>,
     enemy_vulnerabilities: HashMap<String, EnemyVulnerabilities>,
@@ -503,12 +518,19 @@ pub struct GameData {
     pub node_tile_coords: HashMap<(RoomId, NodeId), Vec<(usize, usize)>>,
     pub room_shape: HashMap<RoomId, (usize, usize)>,
     pub area_names: Vec<String>,
+    #[pyo3(get)]
     pub area_map_ptrs: Vec<isize>,
+    #[pyo3(get, set)]
     pub tech_description: HashMap<String, String>,
+    #[pyo3(get, set)]
     pub tech_dependencies: HashMap<String, Vec<String>>,
+    #[pyo3(get, set)]
     pub strat_dependencies: HashMap<String, Vec<String>>,
+    #[pyo3(get, set)]
     pub strat_area: HashMap<String, String>,
+    #[pyo3(get, set)]
     pub strat_room: HashMap<String, String>,
+    #[pyo3(get, set)]
     pub strat_description: HashMap<String, String>,
     pub tileset_palette_themes: Vec<HashMap<TilesetIdx, ThemedPaletteTileset>>,
     pub retiled_theme_data: Option<RetiledThemeData>,
@@ -530,7 +552,7 @@ impl<T: Hash + Eq> IndexedVec<T> {
     }
 }
 
-fn read_json(path: &Path) -> Result<JsonValue> {
+pub fn read_json(path: &Path) -> Result<JsonValue> {
     let file = File::open(path).with_context(|| format!("unable to open {}", path.display()))?;
     let json_str = std::io::read_to_string(file)
         .with_context(|| format!("unable to read {}", path.display()))?;

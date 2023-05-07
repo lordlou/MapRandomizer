@@ -1,3 +1,6 @@
+use pyo3::prelude::*;
+
+use std::path::{Path, PathBuf};
 use std::path::Path;
 use std::thread;
 use std::time::SystemTime;
@@ -287,8 +290,8 @@ struct SeedData {
 
 fn get_seed_name(seed_data: &SeedData) -> String {
     let seed_data_str = serde_json::to_string(&seed_data).unwrap();
-    let h128 = fasthash::spooky::hash128(seed_data_str);
-    let base64_str = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(h128.to_le_bytes());
+    // let h128 = fasthash::spooky::hash128(seed_data_str);
+    let base64_str = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(seed_data_str);
     base64_str
 }
 
