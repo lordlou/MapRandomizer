@@ -198,10 +198,12 @@ struct SelectItemsOutput {
     new_items_remaining: Vec<usize>,
 }
 
-struct VertexInfo {
+#[pyclass]
+pub struct VertexInfo {
     area_name: String,
     room_name: String,
     room_coords: (usize, usize),
+    #[pyo3(get)]
     node_name: String,
 }
 
@@ -876,7 +878,7 @@ impl Randomizer {
         }
     }
 
-    fn get_tech_vec(&self, tier: usize) -> Vec<bool> {
+    pub fn get_tech_vec(&self, tier: usize) -> Vec<bool> {
         let tech_set: HashSet<String> = self.difficulty_tiers[tier]
             .tech
             .iter()
@@ -890,7 +892,7 @@ impl Randomizer {
             .collect()
     }
 
-    fn get_strat_vec(&self, tier: usize) -> Vec<bool> {
+    pub fn get_strat_vec(&self, tier: usize) -> Vec<bool> {
         let strat_set: HashSet<String> = self.difficulty_tiers[tier]
             .notable_strats
             .iter()
@@ -904,7 +906,7 @@ impl Randomizer {
             .collect()
     }
 
-    fn get_initial_flag_vec(&self) -> Vec<bool> {
+    pub fn get_initial_flag_vec(&self) -> Vec<bool> {
         let mut flag_vec = vec![false; self.game_data.flag_isv.keys.len()];
         let tourian_open_idx = self.game_data.flag_isv.index_by_key["f_TourianOpen"];
         flag_vec[tourian_open_idx] = true;
@@ -2008,7 +2010,7 @@ impl Randomizer {
         let (room_id, node_id, _obstacle_bitmask) = self.game_data.vertex_isv.keys[vertex_id];
         self.get_vertex_info_by_id(room_id, node_id)
     }
-    fn get_vertex_info_by_id(&self, room_id: RoomId, node_id: NodeId) -> VertexInfo {
+    pub fn get_vertex_info_by_id(&self, room_id: RoomId, node_id: NodeId) -> VertexInfo {
         let room_ptr = self.game_data.room_ptr_by_id[&room_id];
         let room_idx = self.game_data.room_idx_by_ptr[&room_ptr];
         let area = self.map.area[room_idx];

@@ -1,3 +1,5 @@
+use pyo3::prelude::*;
+
 use std::{
     cmp::{max, min},
     mem::swap,
@@ -10,6 +12,7 @@ use crate::{
     randomize::DifficultyConfig,
 };
 
+#[pyclass]
 // TODO: move tech and notable_strats out of this struct, since these do not change from step to step.
 #[derive(Clone, Debug)]
 pub struct GlobalState {
@@ -36,6 +39,7 @@ impl GlobalState {
     }
 }
 
+#[pyclass]
 #[derive(Copy, Clone, Debug)]
 pub struct LocalState {
     pub energy_used: Capacity,
@@ -503,7 +507,7 @@ fn apply_botwoon_requirement(
     validate_energy(local, global)
 }
 
-fn compute_cost(local: LocalState, global: &GlobalState) -> f32 {
+pub fn compute_cost(local: LocalState, global: &GlobalState) -> f32 {
     let eps = 1e-15;
     let energy_cost = (local.energy_used as f32) / (global.max_energy as f32 + eps);
     let reserve_cost = (local.reserves_used as f32) / (global.max_reserves as f32 + eps);
