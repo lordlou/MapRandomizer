@@ -63,6 +63,7 @@ pub struct IndexedVec<T: Hash + Eq> {
     pub index_by_key: HashMap<T, usize>,
 }
 
+#[pyclass]
 #[derive(
     Copy,
     Clone,
@@ -304,9 +305,12 @@ pub struct GModeImmobile {
     pub requirement: Requirement,
 }
 
+#[pyclass]
 #[derive(Clone, Debug)]
 pub struct Link {
+    #[pyo3(get)]
     pub from_vertex_id: VertexId,
+    #[pyo3(get)]
     pub to_vertex_id: VertexId,
     pub requirement: Requirement,
     pub notable_strat_name: Option<String>,
@@ -500,12 +504,15 @@ pub struct GameData {
     pub door_ptr_pair_map: HashMap<DoorPtrPair, (RoomId, NodeId)>,
     pub unlocked_door_ptr_pair_map: HashMap<DoorPtrPair, (RoomId, NodeId)>,
     pub reverse_door_ptr_pair_map: HashMap<(RoomId, NodeId), DoorPtrPair>,
+    #[pyo3(get)]
     pub vertex_isv: IndexedVec<(RoomId, NodeId, ObstacleMask)>,
+    #[pyo3(get)]
     pub item_locations: Vec<(RoomId, NodeId)>,
     pub item_vertex_ids: Vec<Vec<VertexId>>,
     pub flag_locations: Vec<(RoomId, NodeId, FlagId)>,
     pub flag_vertex_ids: Vec<Vec<VertexId>>,
     pub save_locations: Vec<(RoomId, NodeId)>,
+    #[pyo3(get)]
     pub links: Vec<Link>,
     pub room_geometry: Vec<RoomGeometry>,
     pub room_and_door_idxs_by_door_ptr_pair:
@@ -2159,7 +2166,7 @@ impl GameData {
                             &obstacles_idx_map,
                             &mut requires_json,
                         )?;
-                        let ctx = RequirementContext {
+                        let ctx: RequirementContext = RequirementContext {
                             room_id,
                             _from_node_id: from_node_id,
                             from_obstacles_bitmask,
