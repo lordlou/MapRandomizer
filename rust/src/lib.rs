@@ -13,7 +13,7 @@ use crate::{
     randomize::{Randomizer, get_difficulty_config, DifficultyConfig, VertexInfo},
     traverse::{GlobalState, LocalState, apply_requirement, compute_cost}
 };
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}, mem::transmute};
 use std::fs;
 use reqwest::blocking::{get};
 use anyhow::{Context, Result};
@@ -64,13 +64,13 @@ impl From<&PyRandomizeRequest> for RandomizeRequest {
             shinespark_tiles: py_req.shinespark_tiles.to_string().parse().unwrap(),
             resource_multiplier: py_req
 */
-
+/* 
 fn make_box<T>(src: &pyo3::PyAny) -> pyo3::PyResult<Box<T>>
 where
     T: for<'a> pyo3::FromPyObject<'a>
 {
     src.extract().map(Box::new)
-}
+}*/
 
 fn make_optional_box<T>(src: &pyo3::PyAny) -> pyo3::PyResult<Option<Box<T>>>
 where
@@ -79,11 +79,49 @@ where
     src.extract().map(|val| Some(Box::new(val))).or(Ok(None))
 }
 
+impl GlobalState {
+    pub fn remove(&mut self, item: Item, game_data: &GameData) {
+        self.items[item as usize] = false;
+        match item {
+            Item::Missile => {
+                if self.max_missiles > 0 {
+                    self.max_missiles -= 5;
+                }
+            }
+            Item::Super => {
+                if self.max_supers > 0 {
+                    self.max_supers -= 5;
+                }
+            }
+            Item::PowerBomb => {
+                if self.max_power_bombs > 0 {
+                    self.max_power_bombs -= 5;
+                }
+            }
+            Item::ETank => {
+                if self.max_energy > 99 {
+                    self.max_energy -= 100;
+                }
+            }
+            Item::ReserveTank => {
+                if self.max_reserves > 0 {
+                 self.max_reserves -= 100;
+                }
+            }
+            _ => {}
+        }
+        self.weapon_mask = game_data.get_weapon_mask(&self.items);
+    }
+}
+
+
 #[pyclass]
 #[derive(Clone)]
 pub struct APCollectionState {
+    #[pyo3(get)]
     global_state: GlobalState,
     local_states: Vec<Option<LocalState>>,
+    #[pyo3(get)]
     cost: Vec<f32>,
     ap_randomizer: Option<Box<APRandomizer>>,
 }
@@ -150,9 +188,10 @@ impl APCollectionState{
         let mut result = false;
         for link_vec_id in strats_links.values() {
             for link_id in link_vec_id {
-                let link = &self.ap_randomizer.as_ref().unwrap().randomizer.game_data.links[*link_id];
+                let link = &self.ap_randomizer.as_ref().unwrap().randomizer.links[*link_id];
                 let dst_id = link.to_vertex_id;
                 let dst_old_cost = self.cost[dst_id];
+                //println!("link.requirement: {:?}", link.requirement);
                 if let Some(dst_new_local_state) = apply_requirement(
                     &link.requirement,
                     &self.global_state,
@@ -160,6 +199,7 @@ impl APCollectionState{
                     false,
                     &self.ap_randomizer.as_ref().unwrap().randomizer.difficulty_tiers[0],
                 ) {
+                    //println!("link.requirement: passed");
                     let dst_new_cost = compute_cost(dst_new_local_state, &self.global_state);
                     if dst_new_cost < dst_old_cost {
                         self.local_states[dst_id] = Some(dst_new_local_state);
@@ -170,6 +210,22 @@ impl APCollectionState{
             }
         }
         result
+    }
+
+    pub fn add_item(&mut self, item: usize) {
+        self.global_state.collect(unsafe { transmute(item) }, &self.ap_randomizer.as_ref().unwrap().randomizer.game_data);
+    }
+
+    pub fn remove_item(&mut self, item: usize) {
+        self.global_state.remove(unsafe { transmute(item) }, &self.ap_randomizer.as_ref().unwrap().randomizer.game_data);
+    }
+
+    pub fn add_flag(&mut self, flag: usize) {
+        self.global_state.flags[flag] = true;
+    }
+
+    pub fn remove_flag(&mut self, flag: usize) {
+        self.global_state.flags[flag] = false;
     }
 
     pub fn __deepcopy__(&self, _memo: &PyDict) -> Self {self.clone()}
@@ -213,7 +269,7 @@ impl APRandomizer{
 
     pub fn get_links_infos(&self) -> HashMap<(usize, usize), HashMap<String, Vec<usize>>> {
         let mut links: HashMap<(usize, usize), HashMap<String, Vec<usize>>> = HashMap::new();
-        for (idx, link) in self.randomizer.game_data.links.iter().enumerate() {
+        for (idx, link) in self.randomizer.links.iter().enumerate() {
             let key= (self.regions_map[link.from_vertex_id], self.regions_map[link.to_vertex_id]);
             links.entry(key).or_insert_with(HashMap::new).entry(link.strat_name.clone()).or_insert_with(Vec::new).push(idx);
         }
@@ -297,11 +353,21 @@ impl GameData {
     }
     
     fn get_location_names(&self) -> Vec<String> {
-        let mut items: Vec<String> = Vec::new();
+        let mut item_loc: Vec<String> = Vec::new();
         for i in 0..self.item_locations.len() {
-            items.push(self.node_json_map[&self.item_locations[i]]["name"].to_string());
+            item_loc.push(self.node_json_map[&self.item_locations[i]]["name"].to_string());
         }
-        items
+        item_loc
+    }
+
+    fn get_event_location_names(&self) -> Vec<String> {
+        let mut flag_loc: Vec<String> = Vec::new();
+        for &(room_id, node_id, flag_id) in &self.flag_locations {
+            let flag_name = self.flag_isv.keys[flag_id].clone();
+            println!("{} {} {}", room_id, node_id, flag_name);
+            flag_loc.push(format!("{flag_name} ({room_id}, {node_id})"));
+        }
+        flag_loc
     }
 
     fn get_vertex_names(&self) -> Vec<(String, Option<String>)> {
@@ -311,6 +377,15 @@ impl GameData {
                 let mut location_name = None;
                 if self.item_locations.contains(&(room_id, node_id)) {
                     location_name = Some(self.node_json_map[&(room_id, node_id)]["name"].to_string());
+                }
+                else {
+                    for i in 0..self.flag_locations.len() {
+                        if self.flag_locations[i].0 == room_id && self.flag_locations[i].1 == node_id {
+                            let flag_name = self.flag_isv.keys[self.flag_locations[i].2].clone();
+                            location_name = Some(format!("{flag_name} ({room_id}, {node_id})"));
+                            break;
+                        }
+                    } 
                 }
                 nodes.push((self.node_json_map[&(room_id, node_id)]["name"].to_string(), location_name));
             }

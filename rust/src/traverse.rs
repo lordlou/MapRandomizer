@@ -18,14 +18,23 @@ use crate::{
 pub struct GlobalState {
     pub tech: Vec<bool>,
     pub notable_strats: Vec<bool>,
+    #[pyo3(get)]
     pub items: Vec<bool>,
+    #[pyo3(get)]
     pub flags: Vec<bool>,
+    #[pyo3(get)]
     pub max_energy: Capacity,
+    #[pyo3(get)]
     pub max_reserves: Capacity,
+    #[pyo3(get)]
     pub max_missiles: Capacity,
+    #[pyo3(get)]
     pub max_supers: Capacity,
+    #[pyo3(get)]
     pub max_power_bombs: Capacity,
+    #[pyo3(get)]
     pub weapon_mask: WeaponMask,
+    #[pyo3(get)]
     pub shine_charge_tiles: f32,
 }
 

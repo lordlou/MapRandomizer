@@ -139,6 +139,7 @@ pub struct Randomizer {
     #[pyo3(get)]
     pub game_data: Box<GameData>,
     pub difficulty_tiers: Box<Vec<DifficultyConfig>>,
+    #[pyo3(get)]
     pub links: Vec<Link>,
     #[pyo3(get)]
     pub initial_items_remaining: Vec<usize>, // Corresponds to GameData.items_isv (one count per distinct item name)
