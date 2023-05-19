@@ -509,6 +509,7 @@ pub struct GameData {
     #[pyo3(get)]
     pub item_locations: Vec<(RoomId, NodeId)>,
     pub item_vertex_ids: Vec<Vec<VertexId>>,
+    #[pyo3(get)]
     pub flag_locations: Vec<(RoomId, NodeId, FlagId)>,
     pub flag_vertex_ids: Vec<Vec<VertexId>>,
     pub save_locations: Vec<(RoomId, NodeId)>,
@@ -2298,6 +2299,9 @@ impl GameData {
             "f_DefeatedPhantoon",
             "f_DefeatedDraygon",
             "f_DefeatedRidley",
+            "f_DefeatedMotherBrain",
+            "f_ZebesSetAblaze",
+            "f_BeatSuperMetroid",
         ]
         .iter()
         .map(|x| x.to_string())
