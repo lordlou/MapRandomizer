@@ -238,7 +238,7 @@ pub fn apply_ips_patch(rom: &mut Rom, patch_path: &Path) -> Result<()> {
 }
 
 fn apply_orig_ips_patches(rom: &mut Rom, randomization: &Randomization) -> Result<()> {
-    let patches_dir = Path::new("../patches/ips/");
+    let patches_dir = Path::new("worlds/sm_map_rando/data/patches/ips/");
     let mut patches: Vec<&'static str> = vec!["mb_barrier", "mb_barrier_clear", "gray_doors"];
     patches.push("hud_expansion_opaque");
     for patch_name in patches {
@@ -268,7 +268,7 @@ fn apply_orig_ips_patches(rom: &mut Rom, randomization: &Randomization) -> Resul
 impl<'a> Patcher<'a> {
     fn apply_ips_patches(&mut self) -> Result<()> {
         self.rom.data.resize(0x400000, 0);
-        let patches_dir = Path::new("../patches/ips/");
+        let patches_dir = Path::new("worlds/sm_map_rando/data/patches/ips/");
         let mut patches = vec![
             "everest_tube",
             "sandfalls3",
@@ -1698,6 +1698,7 @@ pub fn make_rom(
     randomization: &Randomization,
     game_data: &GameData,
 ) -> Result<Rom> {
+    println!("make_rom start");
     let mut orig_rom = base_rom.clone();
     apply_orig_ips_patches(&mut orig_rom, randomization)?;
 
@@ -1723,6 +1724,7 @@ pub fn make_rom(
         locked_door_state_indices: vec![],
         // door_room_map: get_door_room_map(&self.game_data.)
     };
+    println!("make_rom 2");
     patcher.apply_ips_patches()?;
     patcher.place_items()?;
     patcher.set_start_location()?;

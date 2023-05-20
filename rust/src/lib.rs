@@ -7,11 +7,14 @@ pub mod seed_repository;
 pub mod web;
 pub mod customize;
 
+use patch::Rom;
 use pyo3::{prelude::*, types::PyDict};
+use randomize::{Randomization, SpoilerLog, escape_timer};
 use crate::{
     game_data::{GameData, Map, IndexedVec, Item, NodeId, RoomId, ObstacleMask},
     randomize::{Randomizer, get_difficulty_config, DifficultyConfig, VertexInfo},
-    traverse::{GlobalState, LocalState, apply_requirement, compute_cost}
+    traverse::{GlobalState, LocalState, apply_requirement, compute_cost},
+    patch::make_rom,
 };
 use std::{path::{Path, PathBuf}, mem::transmute};
 use std::fs;
@@ -364,7 +367,7 @@ impl GameData {
         let mut flag_loc: Vec<String> = Vec::new();
         for &(room_id, node_id, flag_id) in &self.flag_locations {
             let flag_name = self.flag_isv.keys[flag_id].clone();
-            println!("{} {} {}", room_id, node_id, flag_name);
+            // println!("{} {} {}", room_id, node_id, flag_name);
             flag_loc.push(format!("{flag_name} ({room_id}, {node_id})"));
         }
         flag_loc
@@ -402,6 +405,40 @@ fn create_gamedata() -> GameData {
     GameData::load(sm_json_data_path, room_geometry_path, palettes_path).unwrap()
 }
 
+#[pyfunction]
+fn patch_rom(
+    base_rom_path: String,
+    randomizer: &Randomizer,
+    item_placement_ids: Vec<usize>,
+) -> Vec<u8> {
+    let rom_path = Path::new(&base_rom_path);
+    let base_rom = Rom::load(rom_path).unwrap();
+    println!("{:?}", base_rom_path);
+    println!("{:?}", randomizer.difficulty_tiers);
+    println!("{:?}", item_placement_ids);
+
+    let item_placement: Vec<Item> = item_placement_ids.iter().map(|v| Item::try_from(*v).unwrap()).collect::<Vec<_>>();
+    println!("{:?}", item_placement);
+
+    let spoiler_escape = escape_timer::compute_escape_data(&randomizer.game_data, &randomizer.map, &randomizer.difficulty_tiers[0]);
+    let spoiler_log = SpoilerLog {
+        summary: Vec::new(),
+        escape: spoiler_escape,
+        details: Vec::new(),
+        all_items: Vec::new(),
+        all_rooms: Vec::new(),
+    };
+    println!("SpoilerLog created");
+    let randomization = Randomization {
+        difficulty: randomizer.difficulty_tiers[0].clone(),
+        map: *randomizer.map.clone(),
+        item_placement: item_placement,
+        spoiler_log: spoiler_log,
+    };
+    println!("Randomization created");
+    make_rom(&base_rom, &randomization, &randomizer.game_data).unwrap().data
+}
+
 #[pymodule]
 #[pyo3(name = "map_randomizer")]
 fn map_randomizer(_py: Python, m: &PyModule) -> PyResult<()> {
@@ -412,5 +449,6 @@ fn map_randomizer(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<APRandomizer>()?;
     m.add_class::<APCollectionState>()?;
     m.add_wrapped(wrap_pyfunction!(create_gamedata))?;
+    m.add_wrapped(wrap_pyfunction!(patch_rom))?;
     Ok(())
 }
