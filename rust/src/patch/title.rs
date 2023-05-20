@@ -203,7 +203,7 @@ impl<'a> TitlePatcher<'a> {
     }
 
     pub fn patch_title_background(&mut self) -> Result<()> {
-        let image_path = Path::new("../gfx/title/Title3.png");
+        let image_path = Path::new("worlds/sm_map_rando/data/gfx/title/Title3.png");
 
         let img = read_image(image_path)?;
         assert!(img.dim() == (224, 256, 3));
@@ -313,7 +313,7 @@ impl<'a> TitlePatcher<'a> {
 
         // Now we will patch the tiles & spritemap by adding "Map Rando" to the same sprite.
         // First load the image:
-        let image_path = Path::new("../gfx/title/maprando.png");
+        let image_path = Path::new("worlds/sm_map_rando/data/gfx/title/maprando.png");
         let img = read_image(image_path)?;
         assert!(img.dim() == (224, 256, 3));
         
