@@ -1278,7 +1278,7 @@ struct Args {
     static_visualizer: bool,
 }
 
-fn get_ignored_notable_strats() -> HashSet<String> {
+pub fn get_ignored_notable_strats() -> HashSet<String> {
     [
         "Suitless Botwoon Kill",
         "Maridia Bug Room Frozen Menu Bridge",
