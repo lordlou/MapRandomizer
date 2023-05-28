@@ -7,8 +7,9 @@ use crate::customize::room_palettes::decode_palette;
 use hashbrown::{HashMap, HashSet};
 use pyo3::prelude::*;
 use anyhow::{bail, ensure, Context, Result};
-use hashbrown::{HashSet};
-use std::collections::HashMap;
+use hashbrown::{HashMap, HashSet};
+use std::collections::hash_map::DefaultHasher;
+use std::hash::BuildHasherDefault;
 use json::{self, JsonValue};
 use num_enum::TryFromPrimitive;
 use serde::Serialize;
@@ -21,6 +22,7 @@ use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
 
 use self::themed_retiling::RetiledThemeData;
+type DefaultHashBuilder = BuildHasherDefault<DefaultHasher>;
 
 #[pyclass]
 #[derive(Deserialize, Clone)]
@@ -490,7 +492,7 @@ pub struct GameData {
     pub helpers: HashMap<String, Option<Requirement>>,
     pub room_json_map: HashMap<RoomId, JsonValue>,
     pub room_obstacle_idx_map: HashMap<RoomId, HashMap<String, usize>>,
-    pub node_json_map: HashMap<(RoomId, NodeId), JsonValue>,
+    pub node_json_map: HashMap<(RoomId, NodeId), JsonValue, DefaultHashBuilder>,
     pub node_spawn_at_map: HashMap<(RoomId, NodeId), NodeId>,
     pub node_runways_map: HashMap<(RoomId, NodeId), Vec<Runway>>,
     pub node_jumpways_map: HashMap<(RoomId, NodeId), Vec<Jumpway>>,
@@ -2299,9 +2301,10 @@ impl GameData {
             "f_DefeatedPhantoon",
             "f_DefeatedDraygon",
             "f_DefeatedRidley",
-            "f_DefeatedMotherBrain",
-            "f_ZebesSetAblaze",
-            "f_BeatSuperMetroid",
+            "f_KilledMetroidRoom1",
+            "f_KilledMetroidRoom2",
+            "f_KilledMetroidRoom3",
+            "f_KilledMetroidRoom4",
         ]
         .iter()
         .map(|x| x.to_string())
