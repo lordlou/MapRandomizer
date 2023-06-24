@@ -103,6 +103,7 @@ pub enum Item {
     ScrewAttack,  // 18
     Morph,        // 19
     ReserveTank,  // 20
+    ArchipelagoItem, // 21
 }
 
 impl Item {

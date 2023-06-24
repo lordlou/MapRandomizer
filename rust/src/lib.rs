@@ -363,7 +363,7 @@ impl APCollectionState{
         let global_state = match &ap_randomizer {
             Some(ap_r) => {
                     let rando = &ap_r.randomizer;
-                    let items = vec![false; rando.game_data.item_isv.keys.len()];
+                    let items = vec![false; rando.game_data.item_isv.keys.len() - 1];
                     let weapon_mask = rando.game_data.get_weapon_mask(&items);
                     GlobalState {
                         tech: rando.get_tech_vec(0),
@@ -685,6 +685,14 @@ impl GameData {
             item_loc.push(self.node_json_map[&self.item_locations[i]]["name"].to_string());
         }
         item_loc
+    }
+
+    fn get_location_addresses(&self) -> Vec<usize> {
+        let mut addresses: Vec<usize> = Vec::new();
+        for i in 0..self.item_locations.len() {
+            addresses.push(self.node_ptr_map[&self.item_locations[i]]);
+        }
+        addresses
     }
 
     fn get_event_location_names(&self) -> Vec<String> {
