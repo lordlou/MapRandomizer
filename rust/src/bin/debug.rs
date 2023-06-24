@@ -51,7 +51,7 @@ fn main() -> Result<()> {
     //     }
     // }
 
-    let mut items = vec![true; game_data.item_isv.keys.len()];
+    let mut items = vec![true; game_data.item_isv.keys.len() - 1];
     // items[Item::Missile as usize] = true;
     // items[Item::SpaceJump as usize] = true;
     // items[Item::Super as usize] = true;

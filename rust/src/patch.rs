@@ -171,10 +171,8 @@ fn xy_to_explored_bit_ptr(x: isize, y: isize) -> (isize, u8) {
     (offset_byte_part, offset_bitmask)
 }
 
-fn item_to_plm_type(item: Item, orig_plm_type: isize) -> isize {
-    let item_id = item as isize;
-    let old_item_id = ((orig_plm_type - 0xEED7) / 4) % 21;
-    orig_plm_type + (item_id - old_item_id) * 4
+fn item_to_plm_type(_item: Item, orig_plm_type: isize) -> isize {
+    0xFC20 + 4 * (((orig_plm_type - 0xEED7) / 4) / 21)
 }
 
 fn write_credits_big_letter(rom: &mut Rom, letter: char, addr: usize) -> Result<()> {
