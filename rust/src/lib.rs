@@ -565,7 +565,7 @@ pub struct APRandomizer {
 #[pymethods]
 impl APRandomizer{
     #[new]
-    pub fn new(options: Options, map_seed: i32) -> Self {
+    pub fn new(options: Options, map_seed: usize) -> Self {
         let sm_json_data_path = Path::new("worlds/sm_map_rando/data/sm-json-data");
         let room_geometry_path = Path::new("worlds/sm_map_rando/data/room_geometry.json");
         let palettes_path = Path::new("worlds/sm_map_rando/data/palettes.json");
