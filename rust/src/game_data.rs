@@ -1842,7 +1842,7 @@ impl GameData {
         } else {
             HashMap::new()
         };
-        let num_obstacles = obstacles_idx_map.len();
+        let num_obstacles = 0; //obstacles_idx_map.len();
         self.room_num_obstacles.insert(room_id, num_obstacles);
         self.room_obstacle_idx_map
             .insert(room_id, obstacles_idx_map.clone());
@@ -2274,7 +2274,7 @@ impl GameData {
                         let from_vertex_id = self.vertex_isv.index_by_key
                             [&(room_id, from_node_id, from_obstacles_bitmask)];
                         let to_vertex_id = self.vertex_isv.index_by_key
-                            [&(room_id, to_node_id, to_obstacles_bitmask)];
+                            [&(room_id, to_node_id, 0)];
                         let link = Link {
                             from_vertex_id,
                             to_vertex_id,
