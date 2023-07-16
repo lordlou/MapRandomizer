@@ -2971,6 +2971,7 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         fast_elevators: true,
         fast_doors: true,
         objectives: Objectives::Bosses,
+        vanilla_map: false,
         debug_options: Some(DebugOptions {
             new_game_extra: true,
             extended_spoiler: true,

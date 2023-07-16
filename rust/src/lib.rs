@@ -236,6 +236,8 @@ pub struct Options {
     fast_elevators: bool,
     #[pyo3(get, set)]
     fast_doors: bool,
+    #[pyo3(get, set)]
+    vanilla_map: bool, 
 }
 
 #[pymethods]
@@ -263,7 +265,8 @@ impl Options{
                 item_markers: u8,
                 all_items_spawn: bool,
                 fast_elevators: bool,
-                fast_doors: bool) -> Self {
+                fast_doors: bool,
+                vanilla_map: bool) -> Self {
         Options { 
             preset,
             techs,
@@ -287,7 +290,8 @@ impl Options{
             item_markers,
             all_items_spawn,
             fast_elevators,
-            fast_doors
+            fast_doors,
+            vanilla_map
         }
     }
 }
@@ -415,6 +419,7 @@ impl APCollectionState{
         let src_local_state = self.local_states[src_id].unwrap();
         let mut result = false;
         for link_vec_id in strats_links.values() {
+            let mut strat_result = true;
             for link_id in link_vec_id {
                 let link = &self.ap_randomizer.as_ref().unwrap().randomizer.links[*link_id];
                 let dst_id = link.to_vertex_id;
@@ -432,10 +437,13 @@ impl APCollectionState{
                     if dst_new_cost < dst_old_cost {
                         self.local_states[dst_id] = Some(dst_new_local_state);
                         self.cost[dst_id] = dst_new_cost;
-                        result = true;
                     }
                 }
+                else {
+                    strat_result = false;
+                }
             }
+            result |= strat_result;
         }
         result
     }
@@ -548,6 +556,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
         },
         objectives: unsafe { transmute(options.objectives) },
+        vanilla_map: options.vanilla_map,
         debug_options: None,
     }
 }
@@ -571,17 +580,21 @@ impl APRandomizer{
         let palettes_path = Path::new("worlds/sm_map_rando/data/palettes.json");
         let game_data: GameData = GameData::load(sm_json_data_path, room_geometry_path, palettes_path).unwrap();
 
-        let binding = get_map_repository("worlds/sm_map_rando/data/mapRepository.json").unwrap();
-        let map_repository_array = binding.as_slice();
-        let map = get_map(Path::new("https://storage.googleapis.com/super-metroid-map-rando/maps/session-2022-06-03T17%3A19%3A29.727911.pkl-bk30-subarea-balance-2/"),
-                            map_repository_array,
-                            TryInto::<usize>::try_into(map_seed).unwrap()).unwrap();
-
         let presets: Vec<Preset> = serde_json::from_str(&std::fs::read_to_string(&"worlds/sm_map_rando/data/presets.json").unwrap()).unwrap();
         let ignored_notable_strats = get_ignored_notable_strats();
         let preset_datas = init_presets(presets, &game_data, &ignored_notable_strats);
-        
         let difficulty_tiers = vec![get_difficulty_config(&options, &preset_datas, &game_data); 1];
+
+        let binding = get_map_repository("worlds/sm_map_rando/data/mapRepository.json").unwrap();
+        let map_repository_array = binding.as_slice();
+        let map = if difficulty_tiers[0].vanilla_map {
+            get_vanilla_map().unwrap()
+        } else {
+            get_map(Path::new("https://storage.googleapis.com/super-metroid-map-rando/maps/session-2022-06-03T17%3A19%3A29.727911.pkl-bk30-subarea-balance-2/"),
+                            map_repository_array,
+                            TryInto::<usize>::try_into(map_seed).unwrap()).unwrap()
+        };
+
         let randomizer = Randomizer::new(Box::new(map), Box::new(difficulty_tiers), Box::new(game_data));
 
         let (regions_map, regions_map_reverse) = randomizer.game_data.get_regions_map();
@@ -601,6 +614,14 @@ impl APRandomizer{
             links.entry(key).or_insert_with(HashMap::new).entry(link.strat_name.clone()).or_insert_with(Vec::new).push(idx);
         }
         links
+    }
+
+    pub fn get_link_requirement(&self, link_id: usize) -> String {
+        format!("from:{} to:{} using {}: {:?}", 
+        self.regions_map[self.randomizer.links[link_id].from_vertex_id], 
+        self.regions_map[self.randomizer.links[link_id].to_vertex_id], 
+            self.randomizer.links[link_id].strat_name, 
+            self.randomizer.links[link_id].requirement)
     }
 }
 
@@ -622,6 +643,16 @@ fn get_map(base_path: & Path, filenames: &[String], seed: usize) -> Result<Map> 
     let response = get(url)
         .with_context(|| format!("Unable to fetch map file from {}", path.display()))?;
     let map: Map = response.json()
+        .with_context(|| format!("Unable to parse map file at {}", path.display()))?;
+    Ok(map)
+}
+
+fn get_vanilla_map() -> Result<Map> {
+    let path = Path::new("worlds/sm_map_rando/data/vanilla_map.json");
+    let map_string = std::fs::read_to_string(&path)
+        .with_context(|| format!("Unable to read map file at {}", path.display()))?;
+    // info!("Map: {}", path.display());
+    let map: Map = serde_json::from_str(&map_string)
         .with_context(|| format!("Unable to parse map file at {}", path.display()))?;
     Ok(map)
 }
