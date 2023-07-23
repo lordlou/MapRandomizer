@@ -169,19 +169,39 @@ pub struct Randomizer {
     pub initial_items_remaining: Vec<usize>, // Corresponds to GameData.items_isv (one count per distinct item name)
 }
 
+#[pyclass]
 #[derive(Clone)]
-struct ItemLocationState {
+pub struct ItemLocationState {
+    #[pyo3(get)]
     pub placed_item: Option<Item>,
+    #[pyo3(get)]
     pub collected: bool,
+    #[pyo3(get)]
     pub reachable: bool,
+    #[pyo3(get)]
     pub bireachable: bool,
+    #[pyo3(get)]
     pub bireachable_vertex_id: Option<VertexId>,
 }
 
+#[pyclass]
 #[derive(Clone)]
-struct FlagLocationState {
+pub struct FlagLocationState {
+    #[pyo3(get)]
     pub bireachable: bool,
+    #[pyo3(get)]
     pub bireachable_vertex_id: Option<VertexId>,
+}
+
+#[pyclass]
+#[derive(Clone)]
+pub struct DebugData {
+    #[pyo3(get)]
+    pub global_state: GlobalState,
+    #[pyo3(get)]
+    pub forward: TraverseResult,
+    #[pyo3(get)]
+    pub reverse: TraverseResult,
 }
 
 #[derive(Clone)]
@@ -212,16 +232,23 @@ pub struct LockedDoor {
 }
 
 // State that changes over the course of item placement attempts
-struct RandomizationState {
-    step_num: usize,
+#[pyclass]
+#[derive(Clone)]
+pub struct RandomizationState {
+    pub step_num: usize,
     start_location: StartLocation,
     hub_location: HubLocation,
     item_precedence: Vec<Item>, // An ordering of the 21 distinct item names. The game will prioritize placing key items earlier in the list.
+    #[pyo3(get)]
     save_location_state: Vec<SaveLocationState>, // Corresponds to GameData.item_locations (one record for each of 100 item locations)
+    #[pyo3(get)]
     item_location_state: Vec<ItemLocationState>, // Corresponds to GameData.item_locations (one record for each of 100 item locations)
+    #[pyo3(get)]
     flag_location_state: Vec<FlagLocationState>, // Corresponds to GameData.flag_locations
     items_remaining: Vec<usize>, // Corresponds to GameData.items_isv (one count for each of 21 distinct item names)
+    #[pyo3(get)]
     global_state: GlobalState,
+    #[pyo3(get)]
     debug_data: Option<DebugData>,
     previous_debug_data: Option<DebugData>,
     key_visited_vertices: HashSet<usize>,
@@ -1300,7 +1327,7 @@ impl Randomizer {
         flag_vec
     }
 
-    fn update_reachability(&self, state: &mut RandomizationState) {
+    pub fn update_reachability(&self, state: &mut RandomizationState) {
         let num_vertices = self.game_data.vertex_isv.keys.len();
         // let start_vertex_id = self.game_data.vertex_isv.index_by_key[&(8, 5, 0)]; // Landing site
         let start_vertex_id = self.game_data.vertex_isv.index_by_key

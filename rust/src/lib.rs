@@ -9,11 +9,11 @@ pub mod customize;
 
 use patch::Rom;
 use pyo3::{prelude::*, types::PyDict};
-use randomize::{Randomization, SpoilerLog, escape_timer, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers};
+use randomize::{Randomization, SpoilerLog, escape_timer, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers, RandomizationState, ItemLocationState, FlagLocationState};
 use crate::{
     game_data::{GameData, Map, IndexedVec, Item, NodeId, RoomId, ObstacleMask},
     randomize::{Randomizer, DifficultyConfig, VertexInfo},
-    traverse::{GlobalState, LocalState, apply_requirement, compute_cost},
+    traverse::{GlobalState, LocalState, apply_requirement, compute_cost, traverse, is_bireachable},
     patch::make_rom,
 };
 use std::{path::{Path, PathBuf}, mem::transmute};
@@ -347,16 +347,56 @@ impl GlobalState {
 }
 
 
-#[pyclass]
 #[derive(Clone)]
+#[pyclass]
 pub struct APCollectionState {
     #[pyo3(get)]
-    global_state: GlobalState,
-    local_states: Vec<Option<LocalState>>,
-    #[pyo3(get)]
-    cost: Vec<f32>,
+    randomization_state: RandomizationState,
+    //local_states: Vec<Option<LocalState>>,
+    //#[pyo3(get)]
+    //cost: Vec<f32>,
     ap_randomizer: Option<Box<APRandomizer>>,
 }
+
+/*
+#[pymethods]
+impl RandomizationState {
+    #[new]
+    fn new(randomizer: Randomizer) -> Self {
+        let initial_item_location_state = ItemLocationState {
+            placed_item: None,
+            collected: false,
+            reachable: false,
+            bireachable: false,
+            bireachable_vertex_id: None,
+        };
+        let initial_flag_location_state = FlagLocationState {
+            bireachable: false,
+            bireachable_vertex_id: None,
+        };
+        // let item_precedence: Vec<Item> =
+        //    randomizer.get_item_precedence(&randomizer.difficulty_tiers[0].item_priorities, &mut rng);
+        // info!("Item precedence: {:?}", item_precedence);
+        RandomizationState {
+            step_num: 1,
+            item_precedence: Vec::new(),
+            item_location_state: vec![
+                initial_item_location_state;
+                randomizer.game_data.item_locations.len()
+            ],
+            flag_location_state: vec![
+                initial_flag_location_state;
+                randomizer.game_data.flag_locations.len()
+            ],
+            items_remaining: randomizer.initial_items_remaining.clone(),
+            global_state: initial_global_state,
+            done: false,
+            debug_data: None,
+            previous_debug_data: None,
+            key_visited_vertices: HashSet::new(),
+        }
+    }
+}*/
 
 #[pymethods]
 impl APCollectionState{
@@ -364,6 +404,17 @@ impl APCollectionState{
     pub fn new(
         #[pyo3(from_py_with = "make_optional_box")]
         ap_randomizer: Option<Box<APRandomizer>>) -> Self {
+        let initial_item_location_state = ItemLocationState {
+            placed_item: None,
+            collected: false,
+            reachable: false,
+            bireachable: false,
+            bireachable_vertex_id: None,
+        };
+        let initial_flag_location_state = FlagLocationState {
+            bireachable: false,
+            bireachable_vertex_id: None,
+        };
         let global_state = match &ap_randomizer {
             Some(ap_r) => {
                     let rando = &ap_r.randomizer;
@@ -397,24 +448,31 @@ impl APCollectionState{
                 shine_charge_tiles: 0.0,
             },
         };
-        let num_vertices = ap_randomizer.as_ref().unwrap().randomizer.game_data.vertex_isv.keys.len();
-        let local_states = vec![Some(LocalState {
-                energy_used: 0,
-                reserves_used: 0,
-                missiles_used: 0,
-                supers_used: 0,
-                power_bombs_used: 0
-            }); num_vertices];
-        let cost = vec![f32::INFINITY; num_vertices];
+        let randomization_state = RandomizationState {
+            step_num: 1,
+            item_precedence: Vec::new(),
+            item_location_state: vec![
+                initial_item_location_state;
+                ap_randomizer.as_ref().unwrap().randomizer.game_data.item_locations.len()
+            ],
+            flag_location_state: vec![
+                initial_flag_location_state;
+                ap_randomizer.as_ref().unwrap().randomizer.game_data.flag_locations.len()
+            ],
+            items_remaining: ap_randomizer.as_ref().unwrap().randomizer.initial_items_remaining.clone(),
+            global_state: global_state,
+            done: false,
+            debug_data: None,
+            previous_debug_data: None,
+            key_visited_vertices: HashSet::new(),
+        };
         APCollectionState { 
-            global_state,
-            local_states,
-            cost,
-            ap_randomizer,
+            randomization_state,
+            ap_randomizer
         }
     }
 
-    fn can_traverse(&mut self, ap_region_from_id: usize, strats_links: HashMap<String, Vec<usize>>) -> bool {
+    /*fn can_traverse(&mut self, ap_region_from_id: usize, strats_links: HashMap<String, Vec<usize>>) -> bool {
         let src_id = self.ap_randomizer.as_ref().unwrap().regions_map_reverse[ap_region_from_id];
         let src_local_state = self.local_states[src_id].unwrap();
         let mut result = false;
@@ -446,22 +504,22 @@ impl APCollectionState{
             result |= strat_result;
         }
         result
-    }
+    }*/
 
     pub fn add_item(&mut self, item: usize) {
-        self.global_state.collect(unsafe { transmute(item) }, &self.ap_randomizer.as_ref().unwrap().randomizer.game_data);
+        self.randomization_state.global_state.collect(unsafe { transmute(item) }, &self.ap_randomizer.as_ref().unwrap().randomizer.game_data);
     }
 
     pub fn remove_item(&mut self, item: usize) {
-        self.global_state.remove(unsafe { transmute(item) }, &self.ap_randomizer.as_ref().unwrap().randomizer.game_data);
+        self.randomization_state.global_state.remove(unsafe { transmute(item) }, &self.ap_randomizer.as_ref().unwrap().randomizer.game_data);
     }
 
     pub fn add_flag(&mut self, flag: usize) {
-        self.global_state.flags[flag] = true;
+        self.randomization_state.global_state.flags[flag] = true;
     }
 
     pub fn remove_flag(&mut self, flag: usize) {
-        self.global_state.flags[flag] = false;
+        self.randomization_state.global_state.flags[flag] = false;
     }
 
     pub fn __deepcopy__(&self, _memo: &PyDict) -> Self {self.clone()}
@@ -622,6 +680,45 @@ impl APRandomizer{
         self.regions_map[self.randomizer.links[link_id].to_vertex_id], 
             self.randomizer.links[link_id].strat_name, 
             self.randomizer.links[link_id].requirement)
+    }
+
+    pub fn update_reachability(&self, state: &mut RandomizationState)
+        -> (Vec<bool>, Vec<bool>, Vec<bool>) {
+        let num_vertices = self.randomizer.game_data.vertex_isv.keys.len();
+        let mut bi_reachability = vec![false; num_vertices];
+        let mut f_reachability = vec![false; num_vertices];
+        let mut r_reachability = vec![false; num_vertices];
+        let start_vertex_id = self.randomizer.game_data.vertex_isv.index_by_key[&(8, 5, 0)]; // Landing site
+        let forward = traverse(
+            &self.randomizer.links,
+            None,
+            &state.global_state,
+            num_vertices,
+            start_vertex_id,
+            false,
+            &self.randomizer.difficulty_tiers[0],
+            self.randomizer.game_data.as_ref(),
+        );
+        let reverse = traverse(
+            &self.randomizer.links,
+            None,
+            &state.global_state,
+            num_vertices,
+            start_vertex_id,
+            true,
+            &self.randomizer.difficulty_tiers[0],
+            self.randomizer.game_data.as_ref(),
+        );
+        for i in 0..num_vertices {
+            bi_reachability[i] = is_bireachable(
+                                            &state.global_state,
+                                            &forward.local_states[i],
+                                            &reverse.local_states[i],
+                                            );
+            f_reachability[i] = forward.local_states[i].is_some();
+            r_reachability[i] = reverse.local_states[i].is_some();
+        }
+        (bi_reachability, f_reachability, r_reachability)
     }
 }
 
@@ -811,6 +908,7 @@ fn map_randomizer(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Item>()?;
     m.add_class::<APRandomizer>()?;
     m.add_class::<APCollectionState>()?;
+    m.add_class::<RandomizationState>()?;    
     m.add_class::<Options>()?;
     m.add_wrapped(wrap_pyfunction!(create_gamedata))?;
     m.add_wrapped(wrap_pyfunction!(patch_rom))?;
