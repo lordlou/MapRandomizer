@@ -915,17 +915,23 @@ pub fn is_bireachable(
 pub type StepTrailId = i32;
 pub type LinkIdx = u32;
 
+#[pyclass]
 #[derive(Clone)]
 pub struct StepTrail {
     pub prev_trail_id: StepTrailId,
     pub link_idx: LinkIdx,
 }
 
+#[pyclass]
 #[derive(Clone)]
 pub struct TraverseResult {
+    #[pyo3(get)]
     pub local_states: Vec<Option<LocalState>>,
+    #[pyo3(get)]
     pub cost: Vec<f32>,
+    #[pyo3(get)]
     pub step_trails: Vec<StepTrail>,
+    #[pyo3(get)]
     pub start_trail_ids: Vec<Option<StepTrailId>>,
 }
 
