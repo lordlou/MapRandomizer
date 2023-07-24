@@ -823,14 +823,12 @@ impl GameData {
         addresses
     }
 
-    fn get_event_location_names(&self) -> Vec<String> {
-        let mut flag_loc: Vec<String> = Vec::new();
+    fn get_event_vertex_ids(&self) -> HashMap<usize, usize> {
+        let mut flag_vertex_ids: HashMap<usize, usize> = HashMap::new();
         for &(room_id, node_id, flag_id) in &self.flag_locations {
-            let flag_name = self.flag_isv.keys[flag_id].clone();
-            // println!("{} {} {}", room_id, node_id, flag_name);
-            flag_loc.push(format!("{flag_name} ({room_id}, {node_id})"));
+            flag_vertex_ids.insert(self.vertex_isv.index_by_key[&(room_id, node_id, 0)], flag_id);
         }
-        flag_loc
+        flag_vertex_ids
     }
 
     fn get_vertex_names(&self) -> Vec<(String, Option<String>)> {
@@ -841,7 +839,7 @@ impl GameData {
                 if self.item_locations.contains(&(room_id, node_id)) {
                     location_name = Some(self.node_json_map[&(room_id, node_id)]["name"].to_string());
                 }
-                else {
+                /*else {
                     for i in 0..self.flag_locations.len() {
                         if self.flag_locations[i].0 == room_id && self.flag_locations[i].1 == node_id {
                             let flag_name = self.flag_isv.keys[self.flag_locations[i].2].clone();
@@ -849,7 +847,7 @@ impl GameData {
                             break;
                         }
                     } 
-                }
+                }*/
                 nodes.push((self.node_json_map[&(room_id, node_id)]["name"].to_string(), location_name));
             }
         }
