@@ -9,7 +9,8 @@ pub mod customize;
 
 use patch::Rom;
 use pyo3::{prelude::*, types::PyDict};
-use randomize::{Randomization, SpoilerLog, escape_timer, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers, RandomizationState, ItemLocationState, FlagLocationState};
+use rand::SeedableRng;
+use randomize::{Randomization, SpoilerLog, escape_timer, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers, RandomizationState, ItemLocationState, FlagLocationState, MotherBrainFight};
 use crate::{
     game_data::{GameData, Map, IndexedVec, Item, NodeId, RoomId, ObstacleMask},
     randomize::{Randomizer, DifficultyConfig, VertexInfo},
@@ -42,26 +43,29 @@ struct Preset {
 struct PresetData {
     preset: Preset,
     tech_setting: Vec<(String, bool)>,
+    implicit_tech: HashSet<String>,
     notable_strat_setting: Vec<(String, bool)>,
 }
 
-fn init_presets(presets: Vec<Preset>, game_data: &GameData, ignored_notable_strats: &HashSet<String>) -> Vec<PresetData> {
+fn init_presets(
+    presets: Vec<Preset>,
+    game_data: &GameData,
+    ignored_notable_strats: &HashSet<String>,
+    implicit_tech: &HashSet<String>,
+) -> Vec<PresetData> {
     let mut out: Vec<PresetData> = Vec::new();
     let mut cumulative_tech: HashSet<String> = HashSet::new();
     let mut cumulative_strats: HashSet<String> = HashSet::new();
 
     // Tech which is currently not used by any strat in logic, so we avoid showing on the website:
     let ignored_tech: HashSet<String> = [
-        "canWallIceClip",
         "canGrappleClip",
         "canShinesparkWithReserve",
         "canRiskPermanentLossOfAccess",
+        "canIceZebetitesSkip",
         "canSpeedZebetitesSkip",
         "canRemorphZebetiteSkip",
-        //"canEnterRMode",
-        //"canEnterGMode",
-        //"canEnterGModeImmobile",
-        //"canArtificialMorph",
+        "canEscapeMorphLocation", // Special internal tech for "vanilla map" option
     ]
     .iter()
     .map(|x| x.to_string())
@@ -69,6 +73,14 @@ fn init_presets(presets: Vec<Preset>, game_data: &GameData, ignored_notable_stra
     for tech in &ignored_tech {
         if !game_data.tech_isv.index_by_key.contains_key(tech) {
             panic!("Unrecognized ignored tech \"{tech}\"");
+        }
+    }
+    for tech in implicit_tech {
+        if !game_data.tech_isv.index_by_key.contains_key(tech) {
+            panic!("Unrecognized implicit tech \"{tech}\"");
+        }
+        if ignored_tech.contains(tech) {
+            panic!("Tech is both ignored and implicit: \"{tech}\"");
         }
     }
 
@@ -89,7 +101,7 @@ fn init_presets(presets: Vec<Preset>, game_data: &GameData, ignored_notable_stra
         .tech_isv
         .keys
         .iter()
-        .filter(|&x| !ignored_tech.contains(x))
+        .filter(|&x| !ignored_tech.contains(x) && !implicit_tech.contains(x))
         .cloned()
         .collect();
     let visible_tech_set: HashSet<String> = visible_tech.iter().cloned().collect();
@@ -100,6 +112,7 @@ fn init_presets(presets: Vec<Preset>, game_data: &GameData, ignored_notable_stra
         .cloned()
         .collect();
 
+    cumulative_tech.extend(implicit_tech.iter().cloned());
     for preset in presets {
         for tech in &preset.tech {
             if cumulative_tech.contains(tech) {
@@ -114,6 +127,9 @@ fn init_presets(presets: Vec<Preset>, game_data: &GameData, ignored_notable_stra
             cumulative_tech.insert(tech.clone());
         }
         let mut tech_setting: Vec<(String, bool)> = Vec::new();
+        for tech in implicit_tech {
+            tech_setting.push((tech.clone(), true));
+        }
         for tech in &visible_tech {
             tech_setting.push((tech.clone(), cumulative_tech.contains(tech)));
         }
@@ -133,6 +149,7 @@ fn init_presets(presets: Vec<Preset>, game_data: &GameData, ignored_notable_stra
         out.push(PresetData {
             preset: preset,
             tech_setting: tech_setting,
+            implicit_tech: implicit_tech.clone(),
             notable_strat_setting: notable_strat_setting,
         });
     }
@@ -162,11 +179,9 @@ fn init_presets(presets: Vec<Preset>, game_data: &GameData, ignored_notable_stra
 
 fn get_ignored_notable_strats() -> HashSet<String> {
     [
-        "Frozen Geemer Alcatraz Escape",
         "Suitless Botwoon Kill",
         "Maridia Bug Room Frozen Menu Bridge",
         "Breaking the Maridia Tube Gravity Jump",
-        "Crumble Shaft Consecutive Crumble Climb",
         "Metroid Room 1 PB Dodge Kill (Left to Right)",
         "Metroid Room 1 PB Dodge Kill (Right to Left)",
         "Metroid Room 2 PB Dodge Kill (Bottom to Top)",
@@ -176,13 +191,29 @@ fn get_ignored_notable_strats() -> HashSet<String> {
         "Metroid Room 4 Six PB Dodge Kill (Bottom to Top)",
         "Metroid Room 4 Three PB Dodge Kill (Bottom to Top)",
         "Partial Covern Ice Clip",
-        "Basement Speedball (Phantoon Dead)",
-        "Basement Speedball (Phantoon Alive)",
-        "MickeyMouse Crumbleless MidAir Spring Ball",
-        "Mickey Mouse Crumble IBJ",
-        "Botwoon Hallway Puyo Ice Clip",
+        "Mickey Mouse Crumble Jump IBJ",
+        "G-Mode Morph Breaking the Maridia Tube Gravity Jump", // not usable because of canRiskPermanentLossOfAccess
+        "Mt. Everest Cross Room Jump through Top Door", // currently unusable because of obstacleCleared requirement
     ]
     .iter()
+    .map(|x| x.to_string())
+    .collect()
+}
+
+fn get_implicit_tech() -> HashSet<String> {
+    [
+        "canPseudoScrew",
+        "canMidAirMorph",
+        "canTurnaroundSpinJump",
+        "canCameraManip",
+        "canStopOnADime",
+        "canUseGrapple",
+        "canDisableEquipment",
+        "canEscapeEnemyGrab",
+        "canSpecialBeamAttack",
+        "canDownBack",
+    ]
+    .into_iter()
     .map(|x| x.to_string())
     .collect()
 }
@@ -211,33 +242,59 @@ pub struct Options {
     #[pyo3(get, set)]
     escape_timer_multiplier: f32,
     #[pyo3(get, set)]
+    randomized_start: bool,
+    #[pyo3(get, set)]
     save_animals: bool,
     #[pyo3(get, set)]
     objectives: u8,
     #[pyo3(get, set)]
     filler_items: String,
     #[pyo3(get, set)]
-    quality_of_life_preset: usize,
-    #[pyo3(get, set)]
     supers_double: bool,
     #[pyo3(get, set)]
-    mother_brain_short: bool,
+    mother_brain_fight: u8,
     #[pyo3(get, set)]
     escape_enemies_cleared: bool,
+    #[pyo3(get, set)]
+    escape_refill: bool,
     #[pyo3(get, set)]
     escape_movement_items: bool,
     #[pyo3(get, set)]
     mark_map_stations: bool,
     #[pyo3(get, set)]
+    transition_letters: bool, 
+    #[pyo3(get, set)]
     item_markers: u8,
     #[pyo3(get, set)]
+    item_dots_disappear: bool,
+    #[pyo3(get, set)]
     all_items_spawn: bool,
+    #[pyo3(get, set)]
+    acid_chozo: bool,
     #[pyo3(get, set)]
     fast_elevators: bool,
     #[pyo3(get, set)]
     fast_doors: bool,
     #[pyo3(get, set)]
-    vanilla_map: bool, 
+    fast_pause_menu: bool, 
+    #[pyo3(get, set)]
+    respin: bool, 
+    #[pyo3(get, set)]
+    infinite_space_jump: bool,
+    #[pyo3(get, set)]
+    disable_walljump: bool,
+    #[pyo3(get, set)]
+    maps_revealed: bool,
+    #[pyo3(get, set)]
+    vanilla_map: bool,
+    #[pyo3(get, set)]
+    ultra_low_qol: bool,
+    #[pyo3(get, set)]
+    skill_assumptions_preset: String,
+    #[pyo3(get, set)]
+    item_progression_preset: String,
+    #[pyo3(get, set)]
+    quality_of_life_preset: usize,
 }
 
 #[pymethods]
@@ -253,20 +310,33 @@ impl Options{
                 ridley_proficiency: f32,
                 botwoon_proficiency: f32,
                 escape_timer_multiplier: f32,
+                randomized_start: bool,
                 save_animals: bool,
                 objectives: u8,
                 filler_items: String,
-                quality_of_life_preset: usize,
                 supers_double: bool,
-                mother_brain_short: bool,
+                mother_brain_fight: u8,
                 escape_enemies_cleared: bool,
+                escape_refill: bool,
                 escape_movement_items: bool,
                 mark_map_stations: bool,
+                transition_letters: bool,
                 item_markers: u8,
+                item_dots_disappear: bool,
                 all_items_spawn: bool,
+                acid_chozo: bool,
                 fast_elevators: bool,
                 fast_doors: bool,
-                vanilla_map: bool) -> Self {
+                fast_pause_menu: bool,
+                respin: bool,
+                infinite_space_jump: bool,
+                disable_walljump: bool,
+                maps_revealed: bool,
+                vanilla_map: bool,
+                ultra_low_qol: bool,
+                skill_assumptions_preset: String,
+                item_progression_preset: String,
+                quality_of_life_preset: usize) -> Self {
         Options { 
             preset,
             techs,
@@ -278,20 +348,33 @@ impl Options{
             ridley_proficiency,
             botwoon_proficiency,
             escape_timer_multiplier,
+            randomized_start,
             save_animals,
             objectives,
             filler_items,
-            quality_of_life_preset,
             supers_double,
-            mother_brain_short,
+            mother_brain_fight,
             escape_enemies_cleared,
+            escape_refill,
             escape_movement_items,
             mark_map_stations,
+            transition_letters,
             item_markers,
+            item_dots_disappear,
             all_items_spawn,
+            acid_chozo,
             fast_elevators,
             fast_doors,
-            vanilla_map
+            fast_pause_menu,
+            respin,
+            infinite_space_jump,
+            disable_walljump,
+            maps_revealed,
+            vanilla_map,
+            ultra_low_qol,
+            skill_assumptions_preset,
+            item_progression_preset,
+            quality_of_life_preset
         }
     }
 }
@@ -448,18 +531,29 @@ impl APCollectionState{
                 shine_charge_tiles: 0.0,
             },
         };
+        let randomizer = &ap_randomizer.as_ref().unwrap().randomizer;
+        let mut rng = {
+            let mut rng_seed = [0u8; 32];
+            rng_seed[..8].copy_from_slice(&ap_randomizer.as_ref().unwrap().seed.to_le_bytes());
+            rand::rngs::StdRng::from_seed(rng_seed)
+        };
+        let num_attempts_start_location = 10;
+        let (start_location, hub_location) =
+            randomizer.determine_start_location(num_attempts_start_location, &mut rng).unwrap();
         let randomization_state = RandomizationState {
             step_num: 1,
+            start_location: start_location,
+            hub_location: hub_location,
             item_precedence: Vec::new(),
             item_location_state: vec![
                 initial_item_location_state;
-                ap_randomizer.as_ref().unwrap().randomizer.game_data.item_locations.len()
+                randomizer.game_data.item_locations.len()
             ],
             flag_location_state: vec![
                 initial_flag_location_state;
-                ap_randomizer.as_ref().unwrap().randomizer.game_data.flag_locations.len()
+                randomizer.game_data.flag_locations.len()
             ],
-            items_remaining: ap_randomizer.as_ref().unwrap().randomizer.initial_items_remaining.clone(),
+            items_remaining: randomizer.initial_items_remaining.clone(),
             global_state: global_state,
             done: false,
             debug_data: None,
@@ -547,6 +641,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         shine_charge_tiles: preset.shinespark_tiles as f32,
         progression_rate: randomize::ProgressionRate::Normal,
         filler_items: vec![Item::Missile],
+        early_filler_items: vec![],
         item_placement_style: ItemPlacementStyle::Neutral,
         item_priorities: vec![ItemPriorityGroup {
             name: "Default".to_string(),
@@ -554,6 +649,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         }],
         resource_multiplier: preset.resource_multiplier,
         escape_timer_multiplier: preset.escape_timer_multiplier,
+        randomized_start: options.randomized_start,
         save_animals: options.save_animals,
         phantoon_proficiency: preset.phantoon_proficiency,
         draygon_proficiency: preset.draygon_proficiency,
@@ -565,10 +661,10 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             2 => options.supers_double,
             _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
         },
-        mother_brain_short: match options.quality_of_life_preset {
-            0 => false,
-            1 => true,
-            2 => options.mother_brain_short,
+        mother_brain_fight: match options.quality_of_life_preset {
+            0 => MotherBrainFight::Vanilla,
+            1 => MotherBrainFight::Skip,
+            2 => unsafe { transmute(options.mother_brain_fight)},
             _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
         },
         escape_enemies_cleared: match options.quality_of_life_preset {
@@ -577,6 +673,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             2 => options.escape_enemies_cleared,
             _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
         },
+        escape_refill: options.escape_refill, 
         escape_movement_items: match options.quality_of_life_preset {
             0 => false,
             1 => true,
@@ -589,18 +686,21 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             2 => options.mark_map_stations,
             _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
         },
+        transition_letters: options.transition_letters,
         item_markers: match options.quality_of_life_preset {
-            0 => ItemMarkers::Basic,
+            0 => ItemMarkers::Simple,
             1 => ItemMarkers::ThreeTiered,
             2 => unsafe { transmute(options.item_markers) },
             _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
         },
+        item_dots_disappear: options.item_dots_disappear,
         all_items_spawn: match options.quality_of_life_preset {
             0 => false,
             1 => true,
             2 => options.all_items_spawn,
             _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
         },
+        acid_chozo: options.acid_chozo,
         fast_elevators: match options.quality_of_life_preset {
             0 => false,
             1 => true,
@@ -613,8 +713,17 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             2 => options.fast_doors,
             _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
         },
+        fast_pause_menu: options.fast_pause_menu,
+        respin:  options.respin,
+        infinite_space_jump:  options.infinite_space_jump,
         objectives: unsafe { transmute(options.objectives) },
+        disable_walljump:  options.disable_walljump,
+        maps_revealed:  options.maps_revealed,
         vanilla_map: options.vanilla_map,
+        ultra_low_qol:  options.ultra_low_qol,
+        skill_assumptions_preset: Some("".to_string()/*options.skill_assumptions_preset*/),
+        item_progression_preset: Some("".to_string()/*options.item_progression_preset*/),
+        quality_of_life_preset: Some("Default".to_string()/*options.quality_of_life_preset*/),
         debug_options: None,
     }
 }
@@ -627,20 +736,31 @@ pub struct APRandomizer {
     regions_map: Vec<usize>,
     regions_map_reverse: Vec<usize>, 
     preset_datas: Vec<PresetData>,
+    seed: usize
 }
 
 #[pymethods]
 impl APRandomizer{
     #[new]
-    pub fn new(options: Options, map_seed: usize) -> Self {
+    pub fn new(options: Options, seed: usize) -> Self {
         let sm_json_data_path = Path::new("worlds/sm_map_rando/data/sm-json-data");
         let room_geometry_path = Path::new("worlds/sm_map_rando/data/room_geometry.json");
         let palettes_path = Path::new("worlds/sm_map_rando/data/palettes.json");
-        let game_data: GameData = GameData::load(sm_json_data_path, room_geometry_path, palettes_path).unwrap();
+        let escape_timings_path = Path::new("worlds/sm_map_rando/data/escape_timings.json");
+        let start_locations_path = Path::new("worlds/sm_map_rando/data/start_locations.json");
+        let hub_locations_path = Path::new("worlds/sm_map_rando/data/hub_locations.json");
+        let game_data: GameData = GameData::load(
+            sm_json_data_path, 
+            room_geometry_path, 
+            palettes_path,
+            escape_timings_path,
+            start_locations_path,
+            hub_locations_path).unwrap();
 
         let presets: Vec<Preset> = serde_json::from_str(&std::fs::read_to_string(&"worlds/sm_map_rando/data/presets.json").unwrap()).unwrap();
         let ignored_notable_strats = get_ignored_notable_strats();
-        let preset_datas = init_presets(presets, &game_data, &ignored_notable_strats);
+        let implicit_tech = get_implicit_tech();
+        let preset_datas = init_presets(presets, &game_data, &ignored_notable_strats, &implicit_tech);
         let difficulty_tiers = vec![get_difficulty_config(&options, &preset_datas, &game_data); 1];
 
         let binding = get_map_repository("worlds/sm_map_rando/data/mapRepository.json").unwrap();
@@ -650,7 +770,7 @@ impl APRandomizer{
         } else {
             get_map(Path::new("https://storage.googleapis.com/super-metroid-map-rando/maps/session-2022-06-03T17%3A19%3A29.727911.pkl-bk30-subarea-balance-2/"),
                             map_repository_array,
-                            TryInto::<usize>::try_into(map_seed).unwrap()).unwrap()
+                            TryInto::<usize>::try_into(seed).unwrap()).unwrap()
         };
 
         let randomizer = Randomizer::new(Box::new(map), Box::new(difficulty_tiers), Box::new(game_data));
@@ -662,6 +782,7 @@ impl APRandomizer{
             regions_map,
             regions_map_reverse,
             preset_datas,
+            seed
         }
     }
 
@@ -693,6 +814,7 @@ impl APRandomizer{
             &self.randomizer.links,
             None,
             &state.global_state,
+            LocalState::new(),
             num_vertices,
             start_vertex_id,
             false,
@@ -703,6 +825,7 @@ impl APRandomizer{
             &self.randomizer.links,
             None,
             &state.global_state,
+            LocalState::new(),
             num_vertices,
             start_vertex_id,
             true,
@@ -860,7 +983,16 @@ fn create_gamedata() -> GameData {
     let sm_json_data_path = Path::new("worlds/sm_map_rando/data/sm-json-data");
     let room_geometry_path = Path::new("worlds/sm_map_rando/data/room_geometry.json");
     let palettes_path = Path::new("worlds/sm_map_rando/data/palettes.json");
-    GameData::load(sm_json_data_path, room_geometry_path, palettes_path).unwrap()
+    let escape_timings_path = Path::new("worlds/sm_map_rando/data/escape_timings.json");
+    let start_locations_path = Path::new("worlds/sm_map_rando/data/start_locations.json");
+    let hub_locations_path = Path::new("worlds/sm_map_rando/data/hub_locations.json");
+    GameData::load(
+        sm_json_data_path, 
+        room_geometry_path, 
+        palettes_path,
+        escape_timings_path,
+        start_locations_path,
+        hub_locations_path).unwrap()
 }
 
 #[pyfunction]
@@ -868,6 +1000,7 @@ fn patch_rom(
     base_rom_path: String,
     randomizer: &Randomizer,
     item_placement_ids: Vec<usize>,
+    state: &RandomizationState
 ) -> Vec<u8> {
     let rom_path = Path::new(&base_rom_path);
     let base_rom = Rom::load(rom_path).unwrap();
@@ -878,7 +1011,7 @@ fn patch_rom(
     let item_placement: Vec<Item> = item_placement_ids.iter().map(|v| Item::try_from(*v).unwrap()).collect::<Vec<_>>();
     println!("{:?}", item_placement);
 
-    let spoiler_escape = escape_timer::compute_escape_data(&randomizer.game_data, &randomizer.map, &randomizer.difficulty_tiers[0]);
+    let spoiler_escape = escape_timer::compute_escape_data(&randomizer.game_data, &randomizer.map, &randomizer.difficulty_tiers[0]).unwrap();
     let spoiler_log = SpoilerLog {
         summary: Vec::new(),
         escape: spoiler_escape,
@@ -892,6 +1025,9 @@ fn patch_rom(
         map: *randomizer.map.clone(),
         item_placement: item_placement,
         spoiler_log: spoiler_log,
+        seed: 0, //display_seed,
+        display_seed: 0,
+        start_location: state.start_location.clone(),
     };
     println!("Randomization created");
     make_rom(&base_rom, &randomization, &randomizer.game_data).unwrap().data

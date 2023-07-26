@@ -236,9 +236,9 @@ pub struct LockedDoor {
 #[derive(Clone)]
 pub struct RandomizationState {
     pub step_num: usize,
-    start_location: StartLocation,
-    hub_location: HubLocation,
-    item_precedence: Vec<Item>, // An ordering of the 21 distinct item names. The game will prioritize placing key items earlier in the list.
+    pub start_location: StartLocation,
+    pub hub_location: HubLocation,
+    pub item_precedence: Vec<Item>, // An ordering of the 21 distinct item names. The game will prioritize placing key items earlier in the list.
     #[pyo3(get)]
     save_location_state: Vec<SaveLocationState>, // Corresponds to GameData.item_locations (one record for each of 100 item locations)
     #[pyo3(get)]
@@ -1213,12 +1213,13 @@ impl Randomizer {
             }
         }
 
-        let mut preprocessor = Preprocessor::new(game_data, map, locked_doors, &locked_door_map);
+        let mut preprocessor = Preprocessor::new(game_data.as_ref(), map.as_ref(), locked_doors, &locked_door_map);
         let mut links: Vec<Link> = game_data
             .links
             .iter()
             .map(|x| preprocessor.preprocess_link(x))
-            .collect();
+            .collect()
+        };
         for door in &map.doors {
             let src_exit_ptr = door.0 .0;
             let src_entrance_ptr = door.0 .1;
@@ -1272,7 +1273,7 @@ impl Randomizer {
         initial_items_remaining[Item::ReserveTank as usize] = 4;
         assert!(initial_items_remaining.iter().sum::<usize>() == game_data.item_locations.len());
 
-        let map = Box::new(*map);
+        //let map = Box::new(*map);
         Randomizer {
             map,
             locked_doors,
@@ -2224,7 +2225,7 @@ impl Randomizer {
                 start_vertex_id,
                 false,
                 &self.difficulty_tiers[0],
-                self.game_data,
+                &self.game_data,
             );
             let forward0 = traverse(
                 &self.links,
@@ -2246,7 +2247,7 @@ impl Randomizer {
                 start_vertex_id,
                 true,
                 &self.difficulty_tiers[0],
-                self.game_data,
+                &self.game_data,
             );
 
             // We require several conditions for a start location to be valid with a given hub location:
@@ -2970,6 +2971,7 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         // shine_charge_tiles: 32,
         progression_rate: ProgressionRate::Slow,
         filler_items: vec![Item::Missile],
+        early_filler_items: vec![],
         item_placement_style: ItemPlacementStyle::Neutral,
         item_priorities: vec![
             ItemPriorityGroup {
@@ -2982,23 +2984,37 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
             }
         ],
         resource_multiplier: 1.0,
-        escape_timer_multiplier: 1.0,
-        save_animals: false,
+        escape_timer_multiplier: 3.0,
         phantoon_proficiency: 1.0,
         draygon_proficiency: 1.0,
         ridley_proficiency: 1.0,
         botwoon_proficiency: 1.0,
         supers_double: true,
-        mother_brain_short: true,
+        mother_brain_fight: MotherBrainFight::Short,
         escape_enemies_cleared: true,
+        escape_refill: true,
         escape_movement_items: true,
         mark_map_stations: true,
+        transition_letters: false,
         item_markers: ItemMarkers::ThreeTiered,
+        item_dots_disappear: true,
         all_items_spawn: true,
+        acid_chozo: true,
         fast_elevators: true,
         fast_doors: true,
+        fast_pause_menu: true,
+        respin: false,
+        infinite_space_jump: false,
         objectives: Objectives::Bosses,
+        randomized_start: false,
+        save_animals: false,
+        disable_walljump: false,
+        maps_revealed: true,
         vanilla_map: false,
+        ultra_low_qol: false,
+        skill_assumptions_preset: Some("None".to_string()),
+        item_progression_preset: Some("None".to_string()),
+        quality_of_life_preset: Some("None".to_string()),
         debug_options: Some(DebugOptions {
             new_game_extra: true,
             extended_spoiler: true,
