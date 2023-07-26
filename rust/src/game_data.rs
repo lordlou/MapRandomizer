@@ -263,7 +263,7 @@ pub struct Jumpway {
     pub requirement: Requirement,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct CanLeaveCharged {
     // TODO: add more details like slopes
     pub frames_remaining: i32,
@@ -273,19 +273,19 @@ pub struct CanLeaveCharged {
     pub shinespark_frames: Option<i32>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LeaveWithGModeSetup {
     pub knockback: bool,
     pub requirement: Requirement,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct LeaveWithGMode {
     pub artificial_morph: bool,
     pub requirement: Requirement,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct GModeImmobile {
     pub requirement: Requirement,
 }
@@ -340,7 +340,7 @@ pub struct RoomGeometry {
     pub twin_node_tiles: Option<Vec<(usize, Vec<(usize, usize)>)>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct EscapeTimingDoor {
     pub name: String,
     pub direction: String,
@@ -372,13 +372,13 @@ pub enum EscapeConditionRequirement {
     CanHeroShot,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct EscapeTimingCondition {
     pub requires: Vec<EscapeConditionRequirement>,
     pub in_game_time: f32,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct EscapeTiming {
     pub to_door: EscapeTimingDoor,
     pub in_game_time: Option<f32>,
@@ -386,13 +386,13 @@ pub struct EscapeTiming {
     pub conditions: Vec<EscapeTimingCondition>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct EscapeTimingGroup {
     pub from_door: EscapeTimingDoor,
     pub to: Vec<EscapeTiming>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct EscapeTimingRoom {
     pub room_name: String,
     pub timings: Vec<EscapeTimingGroup>,

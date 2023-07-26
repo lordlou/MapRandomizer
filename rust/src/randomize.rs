@@ -185,8 +185,8 @@ pub struct DebugData {
 #[derive(Clone)]
 pub struct RandomizationState {
     pub step_num: usize,
-    start_location: StartLocation,
-    hub_location: HubLocation,
+    pub start_location: StartLocation,
+    pub hub_location: HubLocation,
     pub item_precedence: Vec<Item>, // An ordering of the 21 distinct item names. The game will prioritize placing key items earlier in the list.
     #[pyo3(get)]
     pub item_location_state: Vec<ItemLocationState>, // Corresponds to GameData.item_locations (one record for each of 100 item locations)
@@ -839,12 +839,14 @@ impl Randomizer {
         difficulty_tiers: Box<Vec<DifficultyConfig>>,
         game_data: Box<GameData>,
     ) -> Randomizer {
-        let preprocessor = Preprocessor::new(game_data.as_ref(), map.as_ref());
-        let mut links: Vec<Link> = game_data
+        let mut links: Vec<Link> = {
+            let mut preprocessor = Preprocessor::new(game_data.as_ref(), map.as_ref());
+            game_data
             .links
             .iter()
             .map(|x| preprocessor.preprocess_link(x))
-            .collect();
+            .collect()
+        };
         for door in &map.doors {
             let src_exit_ptr = door.0 .0;
             let src_entrance_ptr = door.0 .1;
@@ -888,7 +890,7 @@ impl Randomizer {
         initial_items_remaining[Item::ReserveTank as usize] = 4;
         assert!(initial_items_remaining.iter().sum::<usize>() == game_data.item_locations.len());
 
-        let map = Box::new(*map);
+        //let map = Box::new(*map);
         Randomizer {
             map,
             initial_items_remaining,
@@ -1769,7 +1771,7 @@ impl Randomizer {
                 start_vertex_id,
                 false,
                 &self.difficulty_tiers[0],
-                self.game_data,
+                &self.game_data,
             );
             let reverse = traverse(
                 &self.links,
@@ -1780,7 +1782,7 @@ impl Randomizer {
                 start_vertex_id,
                 true,
                 &self.difficulty_tiers[0],
-                self.game_data,
+                &self.game_data,
             );
 
             for hub in &self.game_data.hub_locations {
@@ -2454,6 +2456,7 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         // shine_charge_tiles: 32,
         progression_rate: ProgressionRate::Slow,
         filler_items: vec![Item::Missile],
+        early_filler_items: vec![],
         item_placement_style: ItemPlacementStyle::Neutral,
         item_priorities: vec![
             ItemPriorityGroup {
@@ -2466,23 +2469,37 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
             }
         ],
         resource_multiplier: 1.0,
-        escape_timer_multiplier: 1.0,
-        save_animals: false,
+        escape_timer_multiplier: 3.0,
         phantoon_proficiency: 1.0,
         draygon_proficiency: 1.0,
         ridley_proficiency: 1.0,
         botwoon_proficiency: 1.0,
         supers_double: true,
-        mother_brain_short: true,
+        mother_brain_fight: MotherBrainFight::Short,
         escape_enemies_cleared: true,
+        escape_refill: true,
         escape_movement_items: true,
         mark_map_stations: true,
+        transition_letters: false,
         item_markers: ItemMarkers::ThreeTiered,
+        item_dots_disappear: true,
         all_items_spawn: true,
+        acid_chozo: true,
         fast_elevators: true,
         fast_doors: true,
+        fast_pause_menu: true,
+        respin: false,
+        infinite_space_jump: false,
         objectives: Objectives::Bosses,
+        randomized_start: false,
+        save_animals: false,
+        disable_walljump: false,
+        maps_revealed: true,
         vanilla_map: false,
+        ultra_low_qol: false,
+        skill_assumptions_preset: Some("None".to_string()),
+        item_progression_preset: Some("None".to_string()),
+        quality_of_life_preset: Some("None".to_string()),
         debug_options: Some(DebugOptions {
             new_game_extra: true,
             extended_spoiler: true,
