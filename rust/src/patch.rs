@@ -171,7 +171,7 @@ fn xy_to_explored_bit_ptr(x: isize, y: isize) -> (isize, u8) {
 }
 
 fn item_to_plm_type(_item: Item, orig_plm_type: isize) -> isize {
-    0xFC20 + 4 * (((orig_plm_type - 0xEED7) / 4) / 21)
+    0xF430 + 4 * (((orig_plm_type - 0xEED7) / 4) / 21)
 }
 
 fn write_credits_big_letter(rom: &mut Rom, letter: char, addr: usize) -> Result<()> {
