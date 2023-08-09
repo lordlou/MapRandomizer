@@ -809,7 +809,9 @@ impl APRandomizer{
         let mut bi_reachability = vec![false; num_vertices];
         let mut f_reachability = vec![false; num_vertices];
         let mut r_reachability = vec![false; num_vertices];
-        let start_vertex_id = self.randomizer.game_data.vertex_isv.index_by_key[&(8, 5, 0)]; // Landing site
+        // let start_vertex_id = self.randomizer.game_data.vertex_isv.index_by_key[&(8, 5, 0)]; // Landing site
+        let start_vertex_id = self.randomizer.game_data.vertex_isv.index_by_key
+            [&(state.hub_location.room_id, state.hub_location.node_id, 0)];
         let forward = traverse(
             &self.randomizer.links,
             None,
@@ -946,10 +948,20 @@ impl GameData {
         addresses
     }
 
-    fn get_event_vertex_ids(&self) -> HashMap<usize, usize> {
-        let mut flag_vertex_ids: HashMap<usize, usize> = HashMap::new();
+    fn get_flag_location_names(&self) -> Vec<String> {
+        let mut item_loc: Vec<String> = Vec::new();
+        for i in 0..self.flag_locations.len() {
+            if !item_loc.contains(&self.flag_isv.keys[self.flag_locations[i].2]) { 
+                item_loc.push(self.flag_isv.keys[self.flag_locations[i].2].clone());
+            }
+        }
+        item_loc
+    }
+
+    fn get_event_vertex_ids(&self) -> HashMap<usize, Vec<usize>> {
+        let mut flag_vertex_ids: HashMap<usize, Vec<usize>> = HashMap::new();
         for &(room_id, node_id, flag_id) in &self.flag_locations {
-            flag_vertex_ids.insert(self.vertex_isv.index_by_key[&(room_id, node_id, 0)], flag_id);
+            flag_vertex_ids.entry(self.vertex_isv.index_by_key[&(room_id, node_id, 0)]).or_insert_with(Vec::new).push(flag_id);
         }
         flag_vertex_ids
     }
