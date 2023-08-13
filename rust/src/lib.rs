@@ -834,6 +834,11 @@ impl APRandomizer{
             &self.randomizer.difficulty_tiers[0],
             self.randomizer.game_data.as_ref(),
         );
+        let mut bi_reachability_collapsed = Vec::new();
+        let mut f_reachability_collapsed = Vec::new();
+        let mut r_reachability_collapsed = Vec::new();
+        let mut collapsed_count = 0;
+
         for i in 0..num_vertices {
             bi_reachability[i] = is_bireachable(
                                             &state.global_state,
@@ -842,8 +847,20 @@ impl APRandomizer{
                                             );
             f_reachability[i] = forward.local_states[i].is_some();
             r_reachability[i] = reverse.local_states[i].is_some();
+
+            if self.randomizer.game_data.vertex_isv.keys[i].2 == 0 {
+                bi_reachability_collapsed.push(bi_reachability[i]);
+                f_reachability_collapsed.push(f_reachability[i]);
+                r_reachability_collapsed.push(r_reachability[i]);
+                collapsed_count = collapsed_count + 1;
+            }     
+            else {
+                bi_reachability_collapsed[collapsed_count - 1] |= bi_reachability[i];
+                f_reachability_collapsed[collapsed_count - 1] |= f_reachability[i];
+                r_reachability_collapsed[collapsed_count - 1] |= r_reachability[i];
+            }                               
         }
-        (bi_reachability, f_reachability, r_reachability)
+        (bi_reachability_collapsed, f_reachability_collapsed, r_reachability_collapsed)
     }
 }
 
