@@ -39,7 +39,7 @@ document.getElementById("navigation-logic").classList.add("active");
         <div class="col-lg-9 my-2 btn-group overflow-auto" role="group">
         <% for (i, difficulty) in difficulty_names.iter().enumerate() { 
             let name_no_space = &difficulty.replace(" ", "");
-            let checked = if i == difficulty_names.len() - 1 { "checked" } else { "" }; 
+            let checked = if i == difficulty_names.len() - 2 { "checked" } else { "" }; 
             %>
             <input type="radio" class="btn-check difficulty-filter" name="preset" value="<%= i %>"
                 id="preset<%= i %>" autocomplete="off" onclick="presetChanged()" <%- checked %>>

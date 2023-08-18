@@ -96,6 +96,7 @@ pub enum Item {
     Morph,        // 19
     ReserveTank,  // 20
     ArchipelagoItem, // 21
+    ArchipelagoProgItem, // 22
 }
 
 impl Item {
@@ -106,6 +107,7 @@ impl Item {
             Item::PowerBomb,
             Item::ETank,
             Item::ReserveTank,
+            Item::ArchipelagoItem,
         ]
         .contains(&self)
     }
