@@ -1265,7 +1265,7 @@ impl Randomizer {
             }
         }
 
-        let mut initial_items_remaining: Vec<usize> = vec![1; game_data.item_isv.keys.len() - 1];
+        let mut initial_items_remaining: Vec<usize> = vec![1; game_data.item_isv.keys.len() - 2];
         initial_items_remaining[Item::Missile as usize] = 46;
         initial_items_remaining[Item::Super as usize] = 10;
         initial_items_remaining[Item::PowerBomb as usize] = 10;
@@ -1729,7 +1729,7 @@ impl Randomizer {
 
     fn finish(&self, attempt_num_rando: usize, state: &mut RandomizationState) {
         let mut remaining_items: Vec<Item> = Vec::new();
-        for item_id in 0..(self.game_data.item_isv.keys.len() - 1) {
+        for item_id in 0..(self.game_data.item_isv.keys.len() - 2) {
             for _ in 0..state.items_remaining[item_id] {
                 remaining_items.push(Item::try_from(item_id).unwrap());
             }
@@ -2568,7 +2568,7 @@ impl Randomizer {
 
     fn get_spoiler_start_state(&self, global_state: &GlobalState) -> SpoilerStartState {
         let mut items: Vec<String> = Vec::new();
-        for i in 0..(self.game_data.item_isv.keys.len() - 1) {
+        for i in 0..(self.game_data.item_isv.keys.len() - 2) {
             if global_state.items[i] {
                 items.push(self.game_data.item_isv.keys[i].to_string());
             }

@@ -501,7 +501,7 @@ impl APCollectionState{
         let global_state = match &ap_randomizer {
             Some(ap_r) => {
                     let rando = &ap_r.randomizer;
-                    let items = vec![false; rando.game_data.item_isv.keys.len() - 1];
+                    let items = vec![false; rando.game_data.item_isv.keys.len() - 2];
                     let weapon_mask = rando.game_data.get_weapon_mask(&items);
                     GlobalState {
                         tech: rando.get_tech_vec(0),
