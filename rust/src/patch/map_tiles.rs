@@ -1451,7 +1451,7 @@ impl<'a> MapPatcher<'a> {
                 ItemMarkers::ThreeTiered => {
                     if item.is_unique() {
                         basic_tile.interior = Interior::MajorItem;
-                    } else if item != Item::Missile && basic_tile.interior != Interior::MajorItem {
+                    } else if (item != Item::Missile || item != Item::ArchipelagoItem) && basic_tile.interior != Interior::MajorItem {
                         basic_tile.interior = Interior::MediumItem;
                     }
                 }

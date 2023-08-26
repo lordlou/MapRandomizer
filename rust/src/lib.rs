@@ -25,8 +25,10 @@ use serde_derive::Deserialize;
 use url::Url;
 use hashbrown::{HashMap, HashSet};
 
+#[pyclass]
 #[derive(Deserialize, Clone)]
 struct Preset {
+    #[pyo3(get)]
     name: String,
     shinespark_tiles: usize,
     resource_multiplier: f32,
@@ -35,19 +37,27 @@ struct Preset {
     draygon_proficiency: f32,
     ridley_proficiency: f32,
     botwoon_proficiency: f32,
+    #[pyo3(get)]
     tech: Vec<String>,
+    #[pyo3(get)]
     notable_strats: Vec<String>,
 }
 
+#[pyclass]
 #[derive(Clone)]
 struct PresetData {
+    #[pyo3(get)]
     preset: Preset,
+    #[pyo3(get)]
     tech_setting: Vec<(String, bool)>,
+    #[pyo3(get)]
     implicit_tech: HashSet<String>,
+    #[pyo3(get)]
     notable_strat_setting: Vec<(String, bool)>,
 }
 
 fn init_presets(
+
     presets: Vec<Preset>,
     game_data: &GameData,
     ignored_notable_strats: &HashSet<String>,
@@ -566,6 +576,11 @@ impl APCollectionState{
         }
     }
 
+    pub fn copy(&self) -> APCollectionState {
+        let mut ap_collection_state = APCollectionState::new(self.ap_randomizer.clone());
+        ap_collection_state.randomization_state = self.randomization_state.clone();
+        ap_collection_state
+    }
     /*fn can_traverse(&mut self, ap_region_from_id: usize, strats_links: HashMap<String, Vec<usize>>) -> bool {
         let src_id = self.ap_randomizer.as_ref().unwrap().regions_map_reverse[ap_region_from_id];
         let src_local_state = self.local_states[src_id].unwrap();
@@ -620,9 +635,43 @@ impl APCollectionState{
 }
 
 fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_data: &GameData) -> DifficultyConfig {
-    let preset: Preset = match options.preset {
-        index if options.preset < preset_data.len() => preset_data[index].preset.clone(),
-        _ => Preset {
+    
+    let preset;
+    if options.preset < preset_data.len() {
+        let pd = preset_data[options.preset].clone();
+        //let tech_set: HashSet<String> = pd.preset.tech.iter().cloned().collect();
+        //let strat_set: HashSet<String> = pd.preset.notable_strats.iter().cloned().collect();
+        let mut tech_vec: Vec<String> = Vec::new();
+        for (tech, enabled) in &pd.tech_setting {
+            if *enabled {
+                tech_vec.push(tech.clone());
+            }
+        }
+        tech_vec.sort();
+
+        let mut strat_vec: Vec<String> = vec![]; //= app_data.ignored_notable_strats.iter().cloned().collect();
+        for (strat, enabled) in &pd.notable_strat_setting {
+            if *enabled {
+                strat_vec.push(strat.clone());
+            }
+        }
+        strat_vec.sort();
+
+        preset = Preset {
+            name: pd.preset.name,
+            shinespark_tiles: options.shinespark_tiles,
+            resource_multiplier: options.resource_multiplier,
+            escape_timer_multiplier: options.escape_timer_multiplier,
+            phantoon_proficiency: options.phantoon_proficiency,
+            draygon_proficiency: options.draygon_proficiency,
+            ridley_proficiency: options.ridley_proficiency,
+            botwoon_proficiency: options.botwoon_proficiency,
+            tech: tech_vec,
+            notable_strats: strat_vec,
+        }
+    }
+    else {
+        preset = Preset {
             name: "Custom".to_string(),
             shinespark_tiles: options.shinespark_tiles,
             resource_multiplier: options.resource_multiplier,
@@ -634,7 +683,8 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             tech: options.techs.clone(),
             notable_strats: options.strats.clone(),
             }
-     };
+    }
+
     DifficultyConfig {
         tech: preset.tech,
         notable_strats: preset.notable_strats,
@@ -733,8 +783,11 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
 pub struct APRandomizer {
     #[pyo3(get)]
     randomizer: Randomizer,
+    #[pyo3(get)]
+    diff_settings: DifficultyConfig,   
     regions_map: Vec<usize>,
     regions_map_reverse: Vec<usize>, 
+    #[pyo3(get)]
     preset_datas: Vec<PresetData>,
     seed: usize
 }
@@ -772,13 +825,17 @@ impl APRandomizer{
                             map_repository_array,
                             TryInto::<usize>::try_into(seed).unwrap()).unwrap()
         };
+        let diff_settings = difficulty_tiers[0].clone();
+        println!("{:?}", diff_settings.tech);
 
         let randomizer = Randomizer::new(Box::new(map), Box::new(difficulty_tiers), Box::new(game_data));
+        
 
         let (regions_map, regions_map_reverse) = randomizer.game_data.get_regions_map();
 
         APRandomizer { 
             randomizer,
+            diff_settings,
             regions_map,
             regions_map_reverse,
             preset_datas,
