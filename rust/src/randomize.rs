@@ -100,7 +100,9 @@ pub struct ItemPriorityGroup {
 #[pyclass]
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
 pub struct DifficultyConfig {
+    #[pyo3(get)]   
     pub tech: Vec<String>,
+    #[pyo3(get)]
     pub notable_strats: Vec<String>,
     // pub notable_strats: Vec<String>,
     pub shine_charge_tiles: f32,
@@ -145,8 +147,11 @@ pub struct DifficultyConfig {
     pub vanilla_map: bool,
     pub ultra_low_qol: bool,
     // Presets:
+    #[pyo3(get)]
     pub skill_assumptions_preset: Option<String>,
+    #[pyo3(get)]
     pub item_progression_preset: Option<String>,
+    #[pyo3(get)]
     pub quality_of_life_preset: Option<String>,
     // Debug:
     #[serde(skip_serializing_if = "Option::is_none")]
