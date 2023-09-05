@@ -400,8 +400,10 @@ pub struct EscapeTimingRoom {
     pub timings: Vec<EscapeTimingGroup>,
 }
 
+#[pyclass]
 #[derive(Deserialize, Debug, Clone, Default)]
 pub struct StartLocation {
+    #[pyo3(get)]
     pub name: String,
     pub room_id: usize,
     pub node_id: usize,
@@ -417,8 +419,10 @@ pub struct StartLocation {
     pub requires_parsed: Option<Requirement>,
 }
 
+#[pyclass]
 #[derive(Deserialize, Debug, Clone, Default)]
 pub struct HubLocation {
+    #[pyo3(get)]
     pub name: String,
     pub room_id: usize,
     pub node_id: usize,
@@ -2373,15 +2377,21 @@ impl GameData {
             if node_json["nodeType"] == "item" {
                 self.item_locations.push((room_id, node_id));
             }
-            if node_json.has_key("yields") {
-                ensure!(node_json["yields"].len() >= 1);
-                let flag_id = self.flag_isv.index_by_key[node_json["yields"][0].as_str().unwrap()];
-                if flag_set.contains(&self.flag_isv.keys[flag_id]) {
-                    let mut unlocked_node_id = node_id;
-                    if self.unlocked_node_map.contains_key(&(room_id, node_id)) {
-                        unlocked_node_id = self.unlocked_node_map[&(room_id, node_id)];
+            if node_json.has_key("yields") || (node_json.has_key("locks") && node_json["locks"][0].has_key("yields")) {
+                let yield_node = match node_json.has_key("yields") {
+                    true => &node_json["yields"],
+                    false => &node_json["locks"][0]["yields"]
+                };
+                ensure!(yield_node.len() >= 1);
+                for i in 0..yield_node.len() {
+                    let flag_id = self.flag_isv.index_by_key[yield_node[i].as_str().unwrap()];
+                    if flag_set.contains(&self.flag_isv.keys[flag_id]) {
+                        let mut unlocked_node_id = node_id;
+                        if self.unlocked_node_map.contains_key(&(room_id, node_id)) {
+                            unlocked_node_id = self.unlocked_node_map[&(room_id, node_id)];
+                        }
+                        self.flag_locations.push((room_id, unlocked_node_id, flag_id));
                     }
-                    self.flag_locations.push((room_id, unlocked_node_id, flag_id));
                 }
             }
         }

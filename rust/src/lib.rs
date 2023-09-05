@@ -577,9 +577,10 @@ impl APCollectionState{
     }
 
     pub fn copy(&self) -> APCollectionState {
-        let mut ap_collection_state = APCollectionState::new(self.ap_randomizer.clone());
+        /*let mut ap_collection_state = APCollectionState::new(self.ap_randomizer.clone());
         ap_collection_state.randomization_state = self.randomization_state.clone();
-        ap_collection_state
+        ap_collection_state*/
+        self.clone()
     }
     /*fn can_traverse(&mut self, ap_region_from_id: usize, strats_links: HashMap<String, Vec<usize>>) -> bool {
         let src_id = self.ap_randomizer.as_ref().unwrap().regions_map_reverse[ap_region_from_id];

@@ -190,7 +190,9 @@ pub struct DebugData {
 #[derive(Clone)]
 pub struct RandomizationState {
     pub step_num: usize,
+    #[pyo3(get)]
     pub start_location: StartLocation,
+    #[pyo3(get)]
     pub hub_location: HubLocation,
     pub item_precedence: Vec<Item>, // An ordering of the 21 distinct item names. The game will prioritize placing key items earlier in the list.
     #[pyo3(get)]
