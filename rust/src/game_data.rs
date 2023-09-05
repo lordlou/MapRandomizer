@@ -420,8 +420,10 @@ pub struct EscapeTimingRoom {
     pub timings: Vec<EscapeTimingGroup>,
 }
 
+#[pyclass]
 #[derive(Deserialize, Debug, Clone, Default)]
 pub struct StartLocation {
+    #[pyo3(get)]
     pub name: String,
     pub room_id: usize,
     pub node_id: usize,
@@ -436,8 +438,10 @@ pub struct StartLocation {
     pub requires_parsed: Option<Requirement>,
 }
 
+#[pyclass]
 #[derive(Deserialize, Debug, Clone, Default)]
 pub struct HubLocation {
+    #[pyo3(get)]
     pub name: String,
     pub room_id: usize,
     pub node_id: usize,
