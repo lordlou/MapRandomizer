@@ -796,31 +796,17 @@ pub struct APRandomizer {
 #[pymethods]
 impl APRandomizer{
     #[new]
-    pub fn new(options: Options, seed: usize) -> Self {
-        let sm_json_data_path = Path::new("worlds/sm_map_rando/data/sm-json-data");
-        let room_geometry_path = Path::new("worlds/sm_map_rando/data/room_geometry.json");
-        let palettes_path = Path::new("worlds/sm_map_rando/data/palettes.json");
-        let escape_timings_path = Path::new("worlds/sm_map_rando/data/escape_timings.json");
-        let start_locations_path = Path::new("worlds/sm_map_rando/data/start_locations.json");
-        let hub_locations_path = Path::new("worlds/sm_map_rando/data/hub_locations.json");
-        let game_data: GameData = GameData::load(
-            sm_json_data_path, 
-            room_geometry_path, 
-            palettes_path,
-            escape_timings_path,
-            start_locations_path,
-            hub_locations_path).unwrap();
-
-        let presets: Vec<Preset> = serde_json::from_str(&std::fs::read_to_string(&"worlds/sm_map_rando/data/presets.json").unwrap()).unwrap();
+    pub fn new(game_data: &GameData, options: Options, seed: usize) -> Self {
+        let presets: Vec<Preset> = serde_json::from_str(&game_data.read_to_string(Path::new(&"worlds/sm_map_rando/data/presets.json")).unwrap()).unwrap();
         let ignored_notable_strats = get_ignored_notable_strats();
         let implicit_tech = get_implicit_tech();
-        let preset_datas = init_presets(presets, &game_data, &ignored_notable_strats, &implicit_tech);
-        let difficulty_tiers = vec![get_difficulty_config(&options, &preset_datas, &game_data); 1];
+        let preset_datas = init_presets(presets, game_data, &ignored_notable_strats, &implicit_tech);
+        let difficulty_tiers = vec![get_difficulty_config(&options, &preset_datas, game_data); 1];
 
-        let binding = get_map_repository("worlds/sm_map_rando/data/mapRepository.json").unwrap();
+        let binding = get_map_repository(game_data, "worlds/sm_map_rando/data/mapRepository.json").unwrap();
         let map_repository_array = binding.as_slice();
         let map = if difficulty_tiers[0].vanilla_map {
-            get_vanilla_map().unwrap()
+            get_vanilla_map(game_data).unwrap()
         } else {
             get_map(Path::new("https://storage.googleapis.com/super-metroid-map-rando/maps/session-2022-06-03T17%3A19%3A29.727911.pkl-bk30-subarea-balance-2/"),
                             map_repository_array,
@@ -829,7 +815,7 @@ impl APRandomizer{
         let diff_settings = difficulty_tiers[0].clone();
         println!("{:?}", diff_settings.tech);
 
-        let randomizer = Randomizer::new(Box::new(map), Box::new(difficulty_tiers), Box::new(game_data));
+        let randomizer = Randomizer::new(Box::new(map), Box::new(difficulty_tiers), Box::new(game_data.clone()));
         
 
         let (regions_map, regions_map_reverse) = randomizer.game_data.get_regions_map();
@@ -927,8 +913,8 @@ pub struct MapRepository {
     pub map_array: Vec<String>,
 }
 
-fn get_map_repository(path: &str) -> Result<Vec<String>> {
-    let contents = fs::read_to_string(path)?;
+fn get_map_repository(game_data: &GameData, path: &str) -> Result<Vec<String>> {
+    let contents = game_data.read_to_string(Path::new(path))?;
     let map_array: Vec<String> = serde_json::from_str(&contents).unwrap();
     Ok(map_array)
 }
@@ -944,9 +930,9 @@ fn get_map(base_path: & Path, filenames: &[String], seed: usize) -> Result<Map> 
     Ok(map)
 }
 
-fn get_vanilla_map() -> Result<Map> {
+fn get_vanilla_map(game_data: &GameData) -> Result<Map> {
     let path = Path::new("worlds/sm_map_rando/data/vanilla_map.json");
-    let map_string = std::fs::read_to_string(&path)
+    let map_string = game_data.read_to_string(Path::new(&path))
         .with_context(|| format!("Unable to read map file at {}", path.display()))?;
     // info!("Map: {}", path.display());
     let map: Map = serde_json::from_str(&map_string)
@@ -1066,7 +1052,7 @@ impl GameData {
 }
 
 #[pyfunction]
-fn create_gamedata() -> GameData {
+fn create_gamedata(apworld_path: Option<String>) -> GameData {
     let sm_json_data_path = Path::new("worlds/sm_map_rando/data/sm-json-data");
     let room_geometry_path = Path::new("worlds/sm_map_rando/data/room_geometry.json");
     let palettes_path = Path::new("worlds/sm_map_rando/data/palettes.json");
@@ -1079,7 +1065,8 @@ fn create_gamedata() -> GameData {
         palettes_path,
         escape_timings_path,
         start_locations_path,
-        hub_locations_path).unwrap()
+        hub_locations_path,
+        apworld_path).unwrap()
 }
 
 #[pyfunction]

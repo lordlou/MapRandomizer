@@ -1,6 +1,6 @@
-use std::path::Path;
+use std::{path::Path, io::Cursor};
 
-use crate::{game_data::IndexedVec, patch::compress::compress};
+use crate::{game_data::{IndexedVec, GameData}, patch::compress::compress};
 
 use super::{decompress::decompress, pc2snes, snes2pc, PcAddr, Rom};
 use anyhow::{Context, Result};
@@ -14,9 +14,9 @@ pub struct TitlePatcher<'a> {
     next_free_space_pc: usize,
 }
 
-fn read_image(path: &Path) -> Result<Array3<u8>> {
-    let img = ImageReader::open(path)
-        .with_context(|| format!("Unable to open image: {}", path.display()))?
+fn read_image(path: &Path, game_data: &GameData) -> Result<Array3<u8>> {
+    let img = ImageReader::new(Cursor::new(game_data.read_to_bytes(path).unwrap()))
+        .with_guessed_format()?
         .decode()
         .with_context(|| format!("Unable to decode image: {}", path.display()))?
         .to_rgb8();
@@ -202,10 +202,10 @@ impl<'a> TitlePatcher<'a> {
         Ok(())
     }
 
-    pub fn patch_title_background(&mut self) -> Result<()> {
+    pub fn patch_title_background(&mut self, game_data: &GameData) -> Result<()> {
         let image_path = Path::new("worlds/sm_map_rando/data/gfx/title/Title3.png");
 
-        let img = read_image(image_path)?;
+        let img = read_image(image_path, game_data)?;
         assert!(img.dim() == (224, 256, 3));
 
         // Compute title background palette, tile GFX, and tilemap:
@@ -306,7 +306,7 @@ impl<'a> TitlePatcher<'a> {
         Ok(())
     }
 
-    pub fn patch_title_foreground(&mut self) -> Result<()> {
+    pub fn patch_title_foreground(&mut self, game_data: &GameData) -> Result<()> {
         // Start by loading the vanilla tiles & spritemap, for "Super Metroid" title:
         let mut tiles = self.read_compressed_tiles(snes2pc(0x9580D8))?;
         let mut spritemap = self.read_spritemap(snes2pc(0x8C879D))?;
@@ -314,7 +314,7 @@ impl<'a> TitlePatcher<'a> {
         // Now we will patch the tiles & spritemap by adding "Map Rando" to the same sprite.
         // First load the image:
         let image_path = Path::new("worlds/sm_map_rando/data/gfx/title/maprando.png");
-        let img = read_image(image_path)?;
+        let img = read_image(image_path, game_data)?;
         assert!(img.dim() == (224, 256, 3));
         
         // We don't modify the palette, just reuse colors from the existing palette.

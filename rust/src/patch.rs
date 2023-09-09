@@ -235,13 +235,13 @@ pub fn apply_ips_patch(rom: &mut Rom, patch_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn apply_orig_ips_patches(rom: &mut Rom, randomization: &Randomization) -> Result<()> {
+fn apply_orig_ips_patches(rom: &mut Rom, randomization: &Randomization, game_data: &GameData) -> Result<()> {
     let patches_dir = Path::new("worlds/sm_map_rando/data/patches/ips/");
     let mut patches: Vec<&'static str> = vec!["mb_barrier", "mb_barrier_clear", "gray_doors"];
     patches.push("hud_expansion_opaque");
     for patch_name in patches {
         let patch_path = patches_dir.join(patch_name.to_string() + ".ips");
-        apply_ips_patch(rom, &patch_path)?;
+        apply_ips_patch(rom, &patch_path, game_data)?;
     }
 
     // Overwrite door ASM for entering Mother Brain room from right, used for clearing objective barriers:
@@ -370,7 +370,7 @@ impl<'a> Patcher<'a> {
 
         for patch_name in patches {
             let patch_path = patches_dir.join(patch_name.to_string() + ".ips");
-            apply_ips_patch(&mut self.rom, &patch_path)?;
+            apply_ips_patch(&mut self.rom, &patch_path, self.game_data)?;
         }
         Ok(())
     }
@@ -1223,8 +1223,8 @@ impl<'a> Patcher<'a> {
 
     fn apply_title_screen_patches(&mut self) -> Result<()> {
         let mut title_patcher = title::TitlePatcher::new(&mut self.rom);
-        title_patcher.patch_title_background()?;
-        title_patcher.patch_title_foreground()?;
+        title_patcher.patch_title_background(self.game_data)?;
+        title_patcher.patch_title_foreground(self.game_data)?;
         Ok(())
     }
 
