@@ -1,0 +1,58 @@
+name: build-github-actions
+on: [push]
+jobs:
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+          architecture: x64
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build wheels - x86_64
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64
+          args: --release --out dist --sdist -m rust/Cargo.toml
+      - name: Build wheels - universal2
+        uses: PyO3/maturin-action@v1
+        with:
+          target: universal2-apple-darwin
+          args: --release --out dist -m rust/Cargo.toml
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: [x64, x86]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: 3.9
+          architecture: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist -m rust/Cargo.toml
+
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [x86_64, i686]
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: 3.9
+        architecture: x64
+    - name: Build wheels
+      uses: PyO3/maturin-action@v1
+      with:
+        target: ${{ matrix.target }}
+        manylinux: auto
+        args: --release --out dist -m rust/Cargo.toml
