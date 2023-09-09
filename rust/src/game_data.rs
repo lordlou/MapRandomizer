@@ -3,6 +3,7 @@ use anyhow::{bail, ensure, Context, Result};
 use hashbrown::{HashMap, HashSet};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::BuildHasherDefault;
+use std::io::Read;
 use json::{self, JsonValue};
 use num_enum::TryFromPrimitive;
 use serde::Serialize;
@@ -450,6 +451,7 @@ pub struct EnemyVulnerabilities {
 #[pyclass]
 #[derive(Default, Clone)]
 pub struct GameData {
+    pub apworld_path: Option<String>,
     #[pyo3(get)]
     sm_json_data_path: PathBuf,
     #[pyo3(get)]
@@ -541,15 +543,6 @@ impl<T: Hash + Eq> IndexedVec<T> {
     }
 }
 
-pub fn read_json(path: &Path) -> Result<JsonValue> {
-    let file = File::open(path).with_context(|| format!("unable to open {}", path.display()))?;
-    let json_str = std::io::read_to_string(file)
-        .with_context(|| format!("unable to read {}", path.display()))?;
-    let json_data =
-        json::parse(&json_str).with_context(|| format!("unable to parse {}", path.display()))?;
-    Ok(json_data)
-}
-
 // TODO: Take steep slopes into account here:
 pub fn get_effective_runway_length(used_tiles: f32, open_end: f32) -> f32 {
     used_tiles + open_end * 0.5
@@ -564,8 +557,53 @@ struct RequirementContext<'a> {
 }
 
 impl GameData {
+    pub fn read_to_string(&self, path: &Path) -> Result<String> {
+        match &self.apworld_path {
+            Some(apworldpath) => {
+                println!("apworldpath {}", apworldpath);
+                let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
+                let mut archive = zip::ZipArchive::new(zipfile).unwrap();
+                let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
+                println!("path_str {}", path_str.as_str());
+                for names in archive.file_names() {
+                    println!("archive.file_names() {:?}", names);
+                }
+                std::io::read_to_string(archive.by_name(path_str.as_str()).unwrap())
+                    .with_context(|| format!("unable to read {}", path_str.as_str()))
+            },
+            None => std::io::read_to_string(File::open(path).with_context(|| format!("unable to open {}", path.display())).unwrap())
+                    .with_context(|| format!("unable to read {}", path.display()))
+        }
+    }
+
+    pub fn read_to_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+        match &self.apworld_path {
+            Some(apworldpath) => {
+                println!("apworldpath {}", apworldpath);
+                let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
+                let mut archive = zip::ZipArchive::new(zipfile).unwrap();
+                let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
+                println!("path_str {}", path_str.as_str());
+                for names in archive.file_names() {
+                    println!("archive.file_names() {:?}", names);
+                }
+                let mut zip_file = archive.by_name(path_str.as_str()).unwrap();
+                let mut bytes = Vec::with_capacity(zip_file.size() as usize);
+                zip_file.read_to_end(&mut bytes);
+                Ok(bytes)
+            },
+            None => Ok(std::fs::read(path)?)
+        }
+    }
+
+    fn read_json(&self, path: &Path) -> Result<JsonValue> {
+        let json_str = self.read_to_string(path)?;
+        let json_data = json::parse(&json_str).with_context(|| format!("unable to parse {}", path.display()))?;
+        Ok(json_data)
+    }
+
     fn load_tech(&mut self) -> Result<()> {
-        let mut full_tech_json = read_json(&self.sm_json_data_path.join("tech.json"))?;
+        let mut full_tech_json = self.read_json(&self.sm_json_data_path.join("tech.json"))?;
         ensure!(full_tech_json["techCategories"].is_array());
         full_tech_json["techCategories"].members_mut().find(|x| x["name"] == "Shots").unwrap()["techs"].push(json::object!{
             "name": "canHyperGateShot",
@@ -667,7 +705,7 @@ impl GameData {
     }
 
     fn load_items_and_flags(&mut self) -> Result<()> {
-        let item_json = read_json(&self.sm_json_data_path.join("items.json"))?;
+        let item_json = self.read_json(&self.sm_json_data_path.join("items.json"))?;
 
         for item_name in Item::VARIANTS {
             self.item_isv.add(&item_name.to_string());
@@ -685,7 +723,7 @@ impl GameData {
     }
 
     fn load_weapons(&mut self) -> Result<()> {
-        let weapons_json = read_json(&self.sm_json_data_path.join("weapons/main.json"))?;
+        let weapons_json = self.read_json(&self.sm_json_data_path.join("weapons/main.json"))?;
         ensure!(weapons_json["weapons"].is_array());
         for weapon_json in weapons_json["weapons"].members() {
             let name = weapon_json["name"].as_str().unwrap();
@@ -709,7 +747,7 @@ impl GameData {
 
     fn load_enemies(&mut self) -> Result<()> {
         for file in ["main.json", "bosses/main.json"] {
-            let enemies_json = read_json(&self.sm_json_data_path.join("enemies").join(file))?;
+            let enemies_json = self.read_json(&self.sm_json_data_path.join("enemies").join(file))?;
             ensure!(enemies_json["enemies"].is_array());
             for enemy_json in enemies_json["enemies"].members() {
                 let enemy_name = enemy_json["name"].as_str().unwrap();
@@ -794,7 +832,7 @@ impl GameData {
     }
 
     fn load_helpers(&mut self) -> Result<()> {
-        let helpers_json = read_json(&self.sm_json_data_path.join("helpers.json"))?;
+        let helpers_json = self.read_json(&self.sm_json_data_path.join("helpers.json"))?;
         ensure!(helpers_json["helperCategories"].is_array());
         for category_json in helpers_json["helperCategories"].members() {
             ensure!(category_json["helpers"].is_array());
@@ -1323,20 +1361,33 @@ impl GameData {
 
     fn load_regions(&mut self) -> Result<()> {
         let region_pattern =
-            self.sm_json_data_path.to_str().unwrap().to_string() + "/region/**/*.json";
-        for entry in glob::glob(&region_pattern).unwrap() {
-            if let Ok(path) = entry {
-                let path_str = path.to_str().with_context(|| {
-                    format!("Unable to convert path to string: {}", path.display())
-                })?;
-                if path_str.contains("ceres") || path_str.contains("roomDiagrams") {
-                    continue;
-                }
-                self.process_region(&read_json(&path)?)
+            self.sm_json_data_path.to_str().unwrap().to_string();
+        let files = [
+            "/region/brinstar/blue.json",
+            "/region/brinstar/green.json",
+            "/region/brinstar/kraid.json",
+            "/region/brinstar/pink.json",
+            "/region/brinstar/red.json",
+            "/region/crateria/central.json",
+            "/region/crateria/east.json",
+            "/region/crateria/west.json",
+            "/region/lowernorfair/east.json",
+            "/region/lowernorfair/west.json",
+            "/region/maridia/inner-green.json",
+            "/region/maridia/inner-pink.json",
+            "/region/maridia/inner-yellow.json",
+            "/region/maridia/outer.json",
+            "/region/norfair/crocomire.json",
+            "/region/norfair/east.json",
+            "/region/norfair/west.json",
+            "/region/tourian/main.json",
+            "/region/wreckedship/main.json"
+        ];
+        for entry in files {
+                let path_str = region_pattern.clone() + entry;
+                self.process_region(&self.read_json(Path::new(&path_str))?)
                     .with_context(|| format!("Processing {}", path_str))?;
-            } else {
-                bail!("Error processing region path: {}", entry.err().unwrap());
-            }
+
         }
         // Add Pants Room in-room transition
         let from_vertex_id = self.vertex_isv.index_by_key[&(220, 2, 0)]; // Pants Room
@@ -2303,15 +2354,35 @@ impl GameData {
 
     fn load_connections(&mut self) -> Result<()> {
         let connection_pattern =
-            self.sm_json_data_path.to_str().unwrap().to_string() + "/connection/**/*.json";
-        for entry in glob::glob(&connection_pattern)? {
-            if let Ok(path) = entry {
-                if !path.to_str().unwrap().contains("ceres") {
-                    self.process_connections(&read_json(&path)?)?;
-                }
-            } else {
-                bail!("Error processing connection path: {}", entry.err().unwrap());
-            }
+            self.sm_json_data_path.to_str().unwrap().to_string();
+        let files = [
+            "/connection/brinstar/blue.json",
+            "/connection/brinstar/green.json",
+            "/connection/brinstar/intra.json",
+            "/connection/brinstar/kraid.json",
+            "/connection/brinstar/pink.json",
+            "/connection/brinstar/red.json",
+            "/connection/crateria/central.json",
+            "/connection/crateria/east.json",
+            "/connection/crateria/intra.json",
+            "/connection/crateria/west.json",
+            "/connection/lowernorfair/east.json",
+            "/connection/lowernorfair/intra.json",
+            "/connection/lowernorfair/west.json",
+            "/connection/maridia/inner.json",
+            "/connection/maridia/intra.json",
+            "/connection/maridia/outer.json",
+            "/connection/norfair/crocomire.json",
+            "/connection/norfair/east.json",
+            "/connection/norfair/intra.json",
+            "/connection/norfair/west.json",
+            "/connection/tourian/main.json",
+            "/connection/wreckedship/main.json",
+            "/connection/inter.json"
+        ];
+        for entry in files {
+            let path = connection_pattern.clone() + entry;
+            self.process_connections(&self.read_json(Path::new(&path))?)?;
         }
         Ok(())
     }
@@ -2446,14 +2517,14 @@ impl GameData {
     }
 
     fn load_escape_timings(&mut self, escape_timings_path: &Path) -> Result<()> {
-        let escape_timings_str = std::fs::read_to_string(escape_timings_path)?;
+        let escape_timings_str = self.read_to_string(escape_timings_path)?;
         self.escape_timings = serde_json::from_str(&escape_timings_str)?;
         assert_eq!(self.escape_timings.len(), self.room_geometry.len());
         Ok(())
     }
 
     fn load_start_locations(&mut self, path: &Path) -> Result<()> {
-        let start_locations_str = std::fs::read_to_string(path)?;
+        let start_locations_str = self.read_to_string(path)?;
         let mut start_locations: Vec<StartLocation> = serde_json::from_str(&start_locations_str)?;
         for loc in &mut start_locations {
             if loc.requires.is_none() {
@@ -2475,7 +2546,7 @@ impl GameData {
     }
 
     fn load_hub_locations(&mut self, path: &Path) -> Result<()> {
-        let hub_locations_str = std::fs::read_to_string(path)?;
+        let hub_locations_str = self.read_to_string(path)?;
         let mut hub_locations: Vec<HubLocation> = serde_json::from_str(&hub_locations_str)?;
         for loc in &mut hub_locations {
             if loc.requires.is_none() {
@@ -2497,7 +2568,7 @@ impl GameData {
     }
 
     fn load_room_geometry(&mut self, room_geometry_path: &Path) -> Result<()> {
-        let room_geometry_str = std::fs::read_to_string(room_geometry_path)?;
+        let room_geometry_str = self.read_to_string(room_geometry_path)?;
         self.room_geometry = serde_json::from_str(&room_geometry_str)?;
         for (room_idx, room) in self.room_geometry.iter().enumerate() {
             self.room_idx_by_name.insert(room.name.clone(), room_idx);
@@ -2540,8 +2611,8 @@ impl GameData {
     }
 
     fn load_palette(&mut self, json_path: &Path) -> Result<()> {
-        let file = File::open(json_path)?;
-        let json_value: serde_json::Value = serde_json::from_reader(file)?;
+        let file = self.read_to_string(json_path)?;
+        let json_value: serde_json::Value = serde_json::from_str(file.as_str())?;
         for area_json in json_value.as_array().unwrap() {
             let mut pal_map: HashMap<TilesetIdx, [[u8; 3]; 128]> = HashMap::new();
             for (tileset_idx_str, palette) in area_json.as_object().unwrap().iter() {
@@ -2602,8 +2673,10 @@ impl GameData {
         escape_timings_path: &Path,
         start_locations_path: &Path,
         hub_locations_path: &Path,
+        apworld_path: Option<String>
     ) -> Result<GameData> {
         let mut game_data = GameData::default();
+        game_data.apworld_path = apworld_path;
         game_data.sm_json_data_path = sm_json_data_path.to_owned();
 
         game_data.load_items_and_flags()?;

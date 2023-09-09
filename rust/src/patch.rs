@@ -201,8 +201,8 @@ pub fn write_credits_big_char(rom: &mut Rom, c: char, addr: usize) -> Result<()>
     Ok(())
 }
 
-pub fn apply_ips_patch(rom: &mut Rom, patch_path: &Path) -> Result<()> {
-    let patch_data = std::fs::read(&patch_path)
+pub fn apply_ips_patch(rom: &mut Rom, patch_path: &Path, game_data: &GameData) -> Result<()> {
+    let patch_data = game_data.read_to_bytes(&patch_path)
         .with_context(|| format!("Unable to read patch {}", patch_path.display()))?;
     let patch = ips::Patch::parse(&patch_data)
         .with_context(|| format!("Unable to parse patch {}", patch_path.display()))?;
@@ -212,7 +212,7 @@ pub fn apply_ips_patch(rom: &mut Rom, patch_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn apply_orig_ips_patches(rom: &mut Rom, randomization: &Randomization) -> Result<()> {
+fn apply_orig_ips_patches(rom: &mut Rom, randomization: &Randomization, game_data: &GameData) -> Result<()> {
     let patches_dir = Path::new("worlds/sm_map_rando/data/patches/ips/");
     let mut patches: Vec<&'static str> = vec!["mb_barrier", "mb_barrier_clear", "gray_doors"];
     // if randomization.difficulty.ultra_low_qol {
@@ -222,7 +222,7 @@ fn apply_orig_ips_patches(rom: &mut Rom, randomization: &Randomization) -> Resul
     // }
     for patch_name in patches {
         let patch_path = patches_dir.join(patch_name.to_string() + ".ips");
-        apply_ips_patch(rom, &patch_path)?;
+        apply_ips_patch(rom, &patch_path, game_data)?;
     }
 
     // Overwrite door ASM for entering Mother Brain room from right, used for clearing objective barriers:
@@ -347,7 +347,7 @@ impl<'a> Patcher<'a> {
 
         for patch_name in patches {
             let patch_path = patches_dir.join(patch_name.to_string() + ".ips");
-            apply_ips_patch(&mut self.rom, &patch_path)?;
+            apply_ips_patch(&mut self.rom, &patch_path, self.game_data)?;
         }
         Ok(())
     }
@@ -1245,8 +1245,8 @@ impl<'a> Patcher<'a> {
 
     fn apply_title_screen_patches(&mut self) -> Result<()> {
         let mut title_patcher = title::TitlePatcher::new(&mut self.rom);
-        title_patcher.patch_title_background()?;
-        title_patcher.patch_title_foreground()?;
+        title_patcher.patch_title_background(self.game_data)?;
+        title_patcher.patch_title_foreground(self.game_data)?;
         Ok(())
     }
 
@@ -1499,7 +1499,7 @@ pub fn make_rom(
 ) -> Result<Rom> {
     println!("make_rom start");
     let mut orig_rom = base_rom.clone();
-    apply_orig_ips_patches(&mut orig_rom, randomization)?;
+    apply_orig_ips_patches(&mut orig_rom, randomization, game_data)?;
     println!("make_rom 1");
     let mut rom = orig_rom.clone();
     let mut patcher = Patcher {

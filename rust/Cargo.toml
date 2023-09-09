@@ -5,8 +5,8 @@ edition = "2021"
 autobins = false
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-[profile.release]
-debug = true
+#[profile.release]
+#debug = true
 
 [lib]
 name = "map_randomizer"
@@ -40,7 +40,7 @@ sailfish = "0.5.0"
 env_logger = "0.10.0"
 hashers = "1.0.1"
 log = "0.4.17"
-zip = "0.6.3"
+zip = "0.6.6"
 object_store = {version = "0.6.1", features=["gcp"]}
 base64 = "0.21.0"
 futures = "0.3.25"

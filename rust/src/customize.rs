@@ -53,7 +53,7 @@ pub fn customize_rom(
     if settings.samus_sprite.is_some() || !settings.vanilla_screw_attack_animation {
         let sprite_name = settings.samus_sprite.clone().unwrap_or("samus".to_string());
         let patch_path_str = format!("../patches/samus_sprites/{}.ips", sprite_name);
-        apply_ips_patch(rom, Path::new(&patch_path_str))?;
+        apply_ips_patch(rom, Path::new(&patch_path_str), game_data)?;
 
         if settings.vanilla_screw_attack_animation {
             // Disable spin attack animation, to make it behave like vanilla: Screw attack animation will look like
@@ -110,7 +110,7 @@ pub fn customize_rom(
     }
     match settings.music {
         MusicSettings::Vanilla => {
-            apply_ips_patch(rom, Path::new(&"../patches/ips/music.ips"))?;
+            apply_ips_patch(rom, Path::new(&"../patches/ips/music.ips"), game_data)?;
         }
         MusicSettings::AreaThemed => {}
         MusicSettings::Disabled => {
