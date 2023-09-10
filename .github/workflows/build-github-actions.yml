@@ -1,32 +1,12 @@
 name: build-github-actions
 on: [push]
 jobs:
-  build_wheels:
-    name: Build wheels on ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+  macos:
+    runs-on: macos-latest
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.8", "3.9", "3.10", "3.11"] # "cp37-*" disabled for now
-        target: ["x86_64", "aarch64", "universal2", "AMD64", x64, x86]
-        exclude:
-          # no universal2 on ubuntu, no aarch64 on windows
-          - os: ubuntu-latest
-            target: universal2
-          - os: macos-latest
-            target: aarch64
-          # AMD64 only on windows
-          - os: ubuntu-latest
-            target: AMD64
-          - os: macos-latest
-            target: AMD64
-          # windows only on AMD64
-          - os: windows-latest
-            target: x86_64
-          - os: windows-latest
-            target: aarch64
-          - os: windows-latest
-            target: universal2
+        target: [x64]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
@@ -34,7 +14,35 @@ jobs:
           python-version: ${{ matrix.python }}
           architecture: ${{ matrix.target }}
       - uses: dtolnay/rust-toolchain@stable
-      - name: Build wheels - ${{ matrix.target }}
+      - name: Build wheels - x86_64
+        uses: PyO3/maturin-action@v1
+        with:
+          target: x86_64
+          args: --release --out dist --sdist -m rust/Cargo.toml
+      - name: Build wheels - universal2
+        uses: PyO3/maturin-action@v1
+        with:
+          target: universal2-apple-darwin
+          args: --release --out dist -m rust/Cargo.toml
+      - uses: actions/upload-artifact@v2
+        with:
+          name: wheels
+          path: ./dist/*.whl
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11"] # "cp37-*" disabled for now
+        target: [x64, x86]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
@@ -43,3 +51,26 @@ jobs:
         with:
           name: wheels
           path: ./dist/*.whl
+
+  linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11"] # "cp37-*" disabled for now
+        target: [x86_64, i686]
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python }}
+        architecture: x64
+    - name: Build wheels
+      uses: PyO3/maturin-action@v1
+      with:
+        target: ${{ matrix.target }}
+        manylinux: auto
+        args: --release --out dist -m rust/Cargo.toml
+    - uses: actions/upload-artifact@v2
+      with:
+        name: wheels
+        path: ./dist/*.whl
