@@ -19,6 +19,8 @@ jobs:
   #       with:
   #         target: ${{ matrix.target }}
   #         args: --release --out dist -m rust/Cargo.toml
+  #     - name: Set env
+  #       run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
   #     - name: Create Release
   #       uses: softprops/action-gh-release@b7e450da2a4b4cb4bfbae528f788167786cfcedf
   #       with:
@@ -48,6 +50,8 @@ jobs:
   #       with:
   #         target: ${{ matrix.target }}
   #         args: --release --out dist -m rust/Cargo.toml
+  #     - name: Set env
+  #       run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
   #     - name: Create Release
   #       uses: softprops/action-gh-release@b7e450da2a4b4cb4bfbae528f788167786cfcedf
   #       with:
@@ -73,6 +77,8 @@ jobs:
           target: ${{ matrix.target }}
           manylinux: auto
           args: --release --out dist -m rust/Cargo.toml -i python${{ matrix.python }}
+      - name: Set env
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
       - name: Create Release
         uses: softprops/action-gh-release@b7e450da2a4b4cb4bfbae528f788167786cfcedf
         with:
