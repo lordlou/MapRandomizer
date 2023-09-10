@@ -65,6 +65,9 @@ jobs:
         python-version: ${{ matrix.python }}
         architecture: x64
     - run: sudo apt install libssl-dev
+    - run: sudo apt-get install build-essential
+    - run: sudo apt-get install librust-openssl-dev
+    - run: sudo apt-get install pgk-config
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
