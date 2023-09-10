@@ -7,7 +7,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python: ["cp38-*", "cp39-*", "cp310-*", "cp311-*"] # "cp37-*" disabled for now
+        python: ["3.8", "3.9", "3.10", "3.11"] # "cp37-*" disabled for now
         target: ["x86_64", "aarch64", "universal2", "AMD64", x64, x86]
         exclude:
           # no universal2 on ubuntu, no aarch64 on windows
@@ -15,10 +15,6 @@ jobs:
             target: universal2
           - os: macos-latest
             target: aarch64
-          # no py 3.7 for universal2 (only x86_64 supported)
-          - os: macos-latest
-            python: "cp37-*"
-            target: universal2
           # AMD64 only on windows
           - os: ubuntu-latest
             target: AMD64
