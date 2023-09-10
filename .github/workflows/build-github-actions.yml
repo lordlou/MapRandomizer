@@ -67,16 +67,12 @@ jobs:
         target: ["x86_64", "aarch64"]
     steps:
       - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python }}
-          architecture: x64
       - name: Build wheels
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
           manylinux: auto
-          args: --release --out dist -m rust/Cargo.toml
+          args: --release --out dist -m rust/Cargo.toml -i python${{ matrix.python }}
       - name: Create Release
         uses: softprops/action-gh-release@b7e450da2a4b4cb4bfbae528f788167786cfcedf
         with:
