@@ -1,8 +1,5 @@
-name: build-github-actions
-on:
-  push:
-    tags:
-      - 'v*.*.*'
+name: manual-build-github-actions
+on: workflow_dispatch
 
 jobs:
   macos:
