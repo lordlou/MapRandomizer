@@ -1,73 +1,78 @@
 name: build-github-actions
-on: [push]
-jobs:
-  # macos:
-  #   runs-on: macos-latest
-  #   strategy:
-  #     matrix:
-  #       python: ["3.8"] #], "3.9", "3.10", "3.11"]
-  #       target: ["x86_64", "universal2"]
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions/setup-python@v4
-  #       with:
-  #         python-version: ${{ matrix.python }}
-  #         architecture: ${{ matrix.target }}
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - name: Build wheels - ${{ matrix.target }}
-  #       uses: PyO3/maturin-action@v1
-  #       with:
-  #         target: ${{ matrix.target }}
-  #         args: --release --out dist -m rust/Cargo.toml
-  #     - name: Set env
-  #       run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
-  #     - name: Create Release
-  #       uses: softprops/action-gh-release@b7e450da2a4b4cb4bfbae528f788167786cfcedf
-  #       with:
-  #         draft: true
-  #         prerelease: true
-  #         name: pysmmaprando v${{ env.RELEASE_VERSION }}
-  #         files: |
-  #           ./dist/*.whl
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
 
-  # windows:
-  #   runs-on: windows-latest
-  #   strategy:
-  #     matrix:
-  #       python: ["3.8"] #, "3.9", "3.10", "3.11"]
-  #       target: [x64]
-  #   steps:
-  #     - uses: actions/checkout@v3
-  #     - uses: actions/setup-python@v4
-  #       with:
-  #         python-version: ${{ matrix.python }}
-  #         architecture: ${{ matrix.target }}
-  #     - uses: dtolnay/rust-toolchain@stable
-  #     - name: Build wheels
-  #       uses: PyO3/maturin-action@v1
-  #       with:
-  #         target: ${{ matrix.target }}
-  #         args: --release --out dist -m rust/Cargo.toml
-  #     - name: Set env
-  #       run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
-  #     - name: Create Release
-  #       uses: softprops/action-gh-release@b7e450da2a4b4cb4bfbae528f788167786cfcedf
-  #       with:
-  #         draft: true
-  #         prerelease: true
-  #         name: pysmmaprando v${{ env.RELEASE_VERSION }}
-  #         files: |
-  #           ./dist/*.whl
-  #       env:
-  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+jobs:
+  macos:
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11"]
+        target: ["x86_64", "universal2"]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build wheels - ${{ matrix.target }}
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist -m rust/Cargo.toml
+      - name: Set env
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
+      - name: Create Release
+        uses: softprops/action-gh-release@b7e450da2a4b4cb4bfbae528f788167786cfcedf
+        with:
+          draft: true
+          prerelease: true
+          name: pysmmaprando v${{ env.RELEASE_VERSION }}
+          files: |
+            ./dist/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        python: ["3.8", "3.9", "3.10", "3.11"]
+        target: [x64]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: ${{ matrix.target }}
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build wheels
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist -m rust/Cargo.toml
+      - name: Set env
+        run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
+      - name: Create Release
+        uses: softprops/action-gh-release@b7e450da2a4b4cb4bfbae528f788167786cfcedf
+        with:
+          draft: true
+          prerelease: true
+          name: pysmmaprando v${{ env.RELEASE_VERSION }}
+          files: |
+            ./dist/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   linux:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: ["3.11"]
+        python: ["3.8", "3.9", "3.10", "3.11"]
         target: ["x86_64", "aarch64"]
     steps:
       - uses: actions/checkout@v3
