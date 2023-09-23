@@ -660,13 +660,13 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
 
         preset = Preset {
             name: pd.preset.name,
-            shinespark_tiles: options.shinespark_tiles,
-            resource_multiplier: options.resource_multiplier,
-            escape_timer_multiplier: options.escape_timer_multiplier,
-            phantoon_proficiency: options.phantoon_proficiency,
-            draygon_proficiency: options.draygon_proficiency,
-            ridley_proficiency: options.ridley_proficiency,
-            botwoon_proficiency: options.botwoon_proficiency,
+            shinespark_tiles: pd.preset.shinespark_tiles,
+            resource_multiplier: pd.preset.resource_multiplier,
+            escape_timer_multiplier: pd.preset.escape_timer_multiplier,
+            phantoon_proficiency: pd.preset.phantoon_proficiency,
+            draygon_proficiency: pd.preset.draygon_proficiency,
+            ridley_proficiency: pd.preset.ridley_proficiency,
+            botwoon_proficiency: pd.preset.botwoon_proficiency,
             tech: tech_vec,
             notable_strats: strat_vec,
         }
