@@ -607,7 +607,7 @@ impl GameData {
                 let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
                 let mut zip_file = archive.by_name(path_str.as_str()).unwrap();
                 let mut bytes = Vec::with_capacity(zip_file.size() as usize);
-                zip_file.read_to_end(&mut bytes);
+                zip_file.read_to_end(&mut bytes).unwrap();
                 Ok(bytes)
             },
             None => Ok(std::fs::read(path)?)

@@ -4,8 +4,6 @@ pub mod randomize;
 pub mod patch;
 pub mod spoiler_map;
 pub mod seed_repository;
-pub mod web;
-pub mod customize;
 
 use patch::Rom;
 use pyo3::{prelude::*, types::PyDict};
@@ -14,11 +12,10 @@ use randomize::{Randomization, SpoilerLog, escape_timer, ItemPlacementStyle, Ite
 use crate::{
     game_data::{GameData, Map, IndexedVec, Item, NodeId, RoomId, ObstacleMask},
     randomize::{Randomizer, DifficultyConfig, VertexInfo},
-    traverse::{GlobalState, LocalState, apply_requirement, compute_cost, traverse, is_bireachable},
+    traverse::{GlobalState, LocalState, traverse, is_bireachable},
     patch::make_rom,
 };
 use std::{path::{Path, PathBuf}, mem::transmute};
-use std::fs;
 use reqwest::blocking::get;
 use anyhow::{Context, Result};
 use serde_derive::Deserialize;
@@ -787,7 +784,6 @@ pub struct APRandomizer {
     #[pyo3(get)]
     diff_settings: DifficultyConfig,   
     regions_map: Vec<usize>,
-    regions_map_reverse: Vec<usize>, 
     #[pyo3(get)]
     preset_datas: Vec<PresetData>,
     seed: usize
@@ -817,13 +813,12 @@ impl APRandomizer{
         let randomizer = Randomizer::new(Box::new(map), Box::new(difficulty_tiers), Box::new(game_data.clone()));
         
 
-        let (regions_map, regions_map_reverse) = randomizer.game_data.get_regions_map();
+        let (regions_map, _) = randomizer.game_data.get_regions_map();
 
         APRandomizer { 
             randomizer,
             diff_settings,
             regions_map,
-            regions_map_reverse,
             preset_datas,
             seed
         }
