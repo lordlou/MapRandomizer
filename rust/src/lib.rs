@@ -813,7 +813,6 @@ impl APRandomizer{
                             TryInto::<usize>::try_into(seed).unwrap()).unwrap()
         };
         let diff_settings = difficulty_tiers[0].clone();
-        println!("{:?}", diff_settings.tech);
 
         let randomizer = Randomizer::new(Box::new(map), Box::new(difficulty_tiers), Box::new(game_data.clone()));
         
@@ -1078,12 +1077,7 @@ fn patch_rom(
 ) -> Vec<u8> {
     let rom_path = Path::new(&base_rom_path);
     let base_rom = Rom::load(rom_path).unwrap();
-    println!("{:?}", base_rom_path);
-    println!("{:?}", randomizer.difficulty_tiers);
-    println!("{:?}", item_placement_ids);
-
     let item_placement: Vec<Item> = item_placement_ids.iter().map(|v| Item::try_from(*v).unwrap()).collect::<Vec<_>>();
-    println!("{:?}", item_placement);
 
     let spoiler_escape = escape_timer::compute_escape_data(&randomizer.game_data, &randomizer.map, &randomizer.difficulty_tiers[0]).unwrap();
     let spoiler_log = SpoilerLog {
@@ -1093,7 +1087,6 @@ fn patch_rom(
         all_items: Vec::new(),
         all_rooms: Vec::new(),
     };
-    println!("SpoilerLog created");
     let randomization = Randomization {
         difficulty: randomizer.difficulty_tiers[0].clone(),
         map: *randomizer.map.clone(),
@@ -1103,7 +1096,6 @@ fn patch_rom(
         display_seed: 0,
         start_location: state.start_location.clone(),
     };
-    println!("Randomization created");
     make_rom(&base_rom, &randomization, &randomizer.game_data).unwrap().data
 }
 

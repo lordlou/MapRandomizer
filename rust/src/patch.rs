@@ -1696,9 +1696,8 @@ pub fn make_rom(
     randomization: &Randomization,
     game_data: &GameData,
 ) -> Result<Rom> {
-    println!("make_rom start");
     let mut orig_rom = base_rom.clone();
-    apply_orig_ips_patches(&mut orig_rom, randomization)?;
+    apply_orig_ips_patches(&mut orig_rom, randomization, game_data)?;
 
     // Remove solid wall that spawns in Tourian Escape Room 1 while coming through right door.
     // Note that this wall spawns in two ways: 1) as a normal PLM which spawns when entering through either door
@@ -1722,7 +1721,6 @@ pub fn make_rom(
         locked_door_state_indices: vec![],
         // door_room_map: get_door_room_map(&self.game_data.)
     };
-    println!("make_rom 2");
     patcher.apply_ips_patches()?;
     patcher.place_items()?;
     patcher.set_start_location()?;

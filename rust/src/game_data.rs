@@ -588,14 +588,9 @@ impl GameData {
     pub fn read_to_string(&self, path: &Path) -> Result<String> {
         match &self.apworld_path {
             Some(apworldpath) => {
-                println!("apworldpath {}", apworldpath);
                 let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
                 let mut archive = zip::ZipArchive::new(zipfile).unwrap();
                 let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
-                println!("path_str {}", path_str.as_str());
-                for names in archive.file_names() {
-                    println!("archive.file_names() {:?}", names);
-                }
                 std::io::read_to_string(archive.by_name(path_str.as_str()).unwrap())
                     .with_context(|| format!("unable to read {}", path_str.as_str()))
             },
@@ -607,14 +602,9 @@ impl GameData {
     pub fn read_to_bytes(&self, path: &Path) -> Result<Vec<u8>> {
         match &self.apworld_path {
             Some(apworldpath) => {
-                println!("apworldpath {}", apworldpath);
                 let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
                 let mut archive = zip::ZipArchive::new(zipfile).unwrap();
                 let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
-                println!("path_str {}", path_str.as_str());
-                for names in archive.file_names() {
-                    println!("archive.file_names() {:?}", names);
-                }
                 let mut zip_file = archive.by_name(path_str.as_str()).unwrap();
                 let mut bytes = Vec::with_capacity(zip_file.size() as usize);
                 zip_file.read_to_end(&mut bytes);
