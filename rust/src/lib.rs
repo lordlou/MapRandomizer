@@ -1108,8 +1108,8 @@ fn patch_rom(
 }
 
 #[pymodule]
-#[pyo3(name = "map_randomizer")]
-fn map_randomizer(_py: Python, m: &PyModule) -> PyResult<()> {
+#[pyo3(name = "pysmmaprando")]
+fn pysmmaprando(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Map>()?;
     m.add_class::<GameData>()?;
     m.add_class::<DifficultyConfig>()?;

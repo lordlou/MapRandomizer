@@ -1,5 +1,5 @@
 [package]
-name = "maprando"
+name = "pysmmaprando"
 version = "0.1.0"
 edition = "2021"
 autobins = false
@@ -9,7 +9,7 @@ autobins = false
 #debug = true
 
 [lib]
-name = "map_randomizer"
+name = "pysmmaprando"
 crate-type = ["cdylib"]
 
 [dependencies]
