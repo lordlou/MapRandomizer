@@ -1497,10 +1497,8 @@ pub fn make_rom(
     randomization: &Randomization,
     game_data: &GameData,
 ) -> Result<Rom> {
-    println!("make_rom start");
     let mut orig_rom = base_rom.clone();
     apply_orig_ips_patches(&mut orig_rom, randomization, game_data)?;
-    println!("make_rom 1");
     let mut rom = orig_rom.clone();
     let mut patcher = Patcher {
         orig_rom: &mut orig_rom,
@@ -1511,7 +1509,6 @@ pub fn make_rom(
         other_door_ptr_pair_map: get_other_door_ptr_pair_map(&randomization.map),
         // door_room_map: get_door_room_map(&self.game_data.)
     };
-    println!("make_rom 2");
     patcher.apply_ips_patches()?;
     patcher.place_items()?;
     patcher.set_start_location()?;
