@@ -1,5 +1,5 @@
 [package]
-name = "maprando"
+name = "pysmmaprando"
 version = "0.1.0"
 edition = "2021"
 autobins = false
@@ -14,7 +14,7 @@ codegen-units = 1   # Reduce number of codegen units to increase optimizations
 # panic = 'abort'     # Abort on panic!
 
 [lib]
-name = "map_randomizer"
+name = "pysmmaprando"
 crate-type = ["cdylib"]
 
 [dependencies]
