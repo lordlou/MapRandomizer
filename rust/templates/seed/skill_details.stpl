@@ -7,8 +7,8 @@
     <div class="col-5 col-sm-6 col-md-7 col-lg-8"><%= difficulty.resource_multiplier %></div>
 </div>
 <div class="row">
-    <div class="col-7 col-sm-6 col-md-5 col-lg-4">Escape timer multiplier:</div>
-    <div class="col-5 col-sm-6 col-md-7 col-lg-8"><%= difficulty.escape_timer_multiplier %></div>
+    <div class="col-7 col-sm-6 col-md-5 col-lg-4">Gate glitch leniency:</div>
+    <div class="col-5 col-sm-6 col-md-7 col-lg-8"><%= difficulty.gate_glitch_leniency %></div>
 </div>
 <div class="row">
     <div class="col-7 col-sm-6 col-md-5 col-lg-4">Phantoon proficiency:</div>
@@ -26,9 +26,13 @@
     <div class="col-7 col-sm-6 col-md-5 col-lg-4">Botwoon proficiency:</div>
     <div class="col-5 col-sm-6 col-md-7 col-lg-8"><%= difficulty.botwoon_proficiency %></div>
 </div>
+<div class="row">
+    <div class="col-7 col-sm-6 col-md-5 col-lg-4">Escape timer multiplier:</div>
+    <div class="col-5 col-sm-6 col-md-7 col-lg-8"><%= difficulty.escape_timer_multiplier %></div>
+</div>
 
 <div class="accordion mt-3">
-<% for (preset_idx, p) in preset_data.iter().enumerate() {
+<% for p in preset_data.iter() {
     let name_no_space = p.preset.name.replace(" ", ""); 
     let tech_enabled_count = p.preset.tech.iter().filter(|&x| enabled_tech.contains(x)).count();
     let notable_enabled_count = p.preset.notable_strats.iter().filter(|&x| enabled_notables.contains(x)).count();

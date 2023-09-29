@@ -1,10 +1,12 @@
 use anyhow::Result;
+use hashbrown::HashMap;
 use image::{Rgb, RgbImage, Rgba, RgbaImage};
 use std::io::Cursor;
 
 use crate::{
-    game_data::{GameData, Map},
-    patch::{snes2pc, xy_to_map_offset, Rom},
+    game_data::{GameData, Map, AreaIdx},
+    patch::{snes2pc, xy_to_map_offset, Rom, map_tiles::{TilemapOffset, TilemapWord}},
+    patch::map_tiles::TILE_GFX_ADDR_4BPP,
 };
 
 // fn read_tile_2bpp(rom: &Rom, base_addr: usize, idx: usize) -> Result<[[u8; 8]; 8]> {
@@ -43,12 +45,12 @@ fn read_tile_4bpp(rom: &Rom, base_addr: usize, idx: usize) -> Result<[[u8; 8]; 8
     Ok(out)
 }
 
-fn render_tile(rom: &Rom, tilemap_word: u16) -> Result<[[u8; 8]; 8]> {
+fn render_tile(rom: &Rom, tilemap_word: u16, map_area: usize) -> Result<[[u8; 8]; 8]> {
     let idx = (tilemap_word & 0x3FF) as usize;
     let x_flip = tilemap_word & 0x4000 != 0;
     let y_flip = tilemap_word & 0x8000 != 0;
     // let tile = read_tile_2bpp(rom, snes2pc(0x9AB200), idx)?;
-    let tile = read_tile_4bpp(rom, snes2pc(0xB68000), idx)?;
+    let tile = read_tile_4bpp(rom, snes2pc(TILE_GFX_ADDR_4BPP + map_area * 0x10000), idx)?;
     let mut out = [[0u8; 8]; 8];
     for y in 0..8 {
         for x in 0..8 {
@@ -60,23 +62,41 @@ fn render_tile(rom: &Rom, tilemap_word: u16) -> Result<[[u8; 8]; 8]> {
     Ok(out)
 }
 
+fn get_rgb(r: isize, g: isize, b: isize)-> Rgb<u8> {
+    Rgb([(r * 255 / 31) as u8, (g * 255 / 31) as u8, (b * 255 / 31) as u8])
+}
+
 fn get_color(value: u8, area: usize) -> Rgb<u8> {
     match value {
-        0 => Rgb([0x00, 0x00, 0x00]),
+        0 => get_rgb(0, 0, 0),
         1 => {
             match area {
-                0 => Rgb([0x84, 0x10, 0xDE]), // Crateria
-                1 => Rgb([0x00, 0xBD, 0x00]), // Brinstar
-                2 => Rgb([0xCE, 0x00, 0x00]), // Norfair
-                3 => Rgb([0xC6, 0xB5, 0x00]), // Wrecked Ship
-                4 => Rgb([0x21, 0x94, 0xFF]), // Maridia
-                5 => Rgb([0xA5, 0xA5, 0xA5]), // Tourian
+                0 => get_rgb(14, 1, 23), // Crateria
+                1 => get_rgb(0, 16, 0), // Brinstar
+                2 => get_rgb(20, 0, 0), // Norfair
+                3 => get_rgb(16, 16, 0), // Wrecked Ship
+                4 => get_rgb(3, 11, 24), // Maridia
+                5 => get_rgb(20, 11, 0), // Tourian
                 _ => panic!("Unexpected area {}", area),
             }
         }
-        2 => Rgb([0xFF, 0xFF, 0xFF]),
-        3 => Rgb([0x00, 0x00, 0x00]),
-        4 => Rgb([0x00, 0x00, 0x00]),
+        2 => {
+            match area {
+                0 => get_rgb(21, 9, 31), // Crateria
+                1 => get_rgb(8, 24, 8), // Brinstar
+                2 => get_rgb(29, 6, 7), // Norfair
+                3 => get_rgb(24, 22, 8), // Wrecked Ship
+                4 => get_rgb(8, 18, 31), // Maridia
+                5 => get_rgb(29, 15, 0), // Tourian
+                _ => panic!("Unexpected area {}", area),
+            }
+        }
+        3 => get_rgb(31, 31, 31), // Wall/passage (white)
+        4 => get_rgb(0, 0, 0), // Opaque black (used in elevators, covers up dotted grid background)
+        6 => get_rgb(29, 15, 0), // Yellow (orange) door
+        7 => get_rgb(27, 7, 18), // Red (pink) door
+        14 => get_rgb(0, 24, 0), // Green door
+        15 => get_rgb(18, 12, 14), // Gray door
         _ => panic!("Unexpected color value {}", value),
     }
 }
@@ -85,6 +105,22 @@ pub struct SpoilerMaps {
     pub assigned: Vec<u8>,
     pub vanilla: Vec<u8>,
     pub grid: Vec<u8>,
+}
+
+fn get_map_overrides(rom: &Rom) -> Result<HashMap<(AreaIdx, TilemapOffset), TilemapWord>> {
+    let mut out = HashMap::new();
+    let base_ptr_pc = snes2pc(0x83B000);
+    for area_idx in 0..6 {
+        let data_ptr_snes = rom.read_u16(base_ptr_pc + 2 * area_idx)?;
+        let data_ptr_pc = snes2pc(0x830000 + data_ptr_snes as usize);
+        let size = rom.read_u16(base_ptr_pc + 12 + 2 * area_idx)? as usize;
+        for i in 0..size {
+            let offset = rom.read_u16(data_ptr_pc + 6 * i + 2)?;
+            let word = rom.read_u16(data_ptr_pc + 6 * i + 4)?;
+            out.insert((area_idx, offset as TilemapOffset), word as TilemapWord);
+        }
+    }
+    Ok(out)
 }
 
 pub fn get_spoiler_map(
@@ -99,6 +135,7 @@ pub fn get_spoiler_map(
     let mut img_vanilla = RgbImage::new(width, height);
     let mut img_grid = RgbaImage::new(width, height);
     let grid_val = Rgba([0x29, 0x29, 0x29, 0xFF]);
+    let map_overrides = get_map_overrides(rom)?;
 
     for y in (7..height).step_by(8) {
         for x in (0..width).step_by(2) {
@@ -132,8 +169,11 @@ pub fn get_spoiler_map(
                 let cell_y = area_room_y + local_y as isize;
                 let offset = xy_to_map_offset(cell_x, cell_y);
                 let cell_ptr = game_data.area_map_ptrs[map_area] + offset;
-                let tilemap_word = rom.read_u16(cell_ptr as usize)? as u16;
-                let tile = render_tile(rom, tilemap_word)?;
+                let mut tilemap_word = rom.read_u16(cell_ptr as usize)? as u16;
+                if let Some(new_word) = map_overrides.get(&(map_area, offset as TilemapOffset)) {
+                    tilemap_word = *new_word;
+                }
+                let tile = render_tile(rom, tilemap_word, map_area)?;
                 for y in 0..8 {
                     for x in 0..8 {
                         let x1 = (global_room_x + local_x + 1) * 8 + x;

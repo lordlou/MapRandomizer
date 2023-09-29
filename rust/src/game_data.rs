@@ -1,4 +1,9 @@
+pub mod themed_retiling;
+pub mod smart_xml;
+
 use anyhow::{bail, ensure, Context, Result};
+// use log::info;
+use crate::customize::room_palettes::decode_palette;
 use hashbrown::{HashMap, HashSet};
 use json::{self, JsonValue};
 use num_enum::TryFromPrimitive;
@@ -10,6 +15,8 @@ use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
+
+use self::themed_retiling::RetiledThemeData;
 
 #[derive(Deserialize, Clone)]
 pub struct Map {
@@ -110,19 +117,24 @@ pub enum Requirement {
     Flag(FlagId),
     NotFlag(FlagId),
     ShineCharge {
+        used_tiles: f32
+    },
+    Shinespark {
         shinespark_tech_id: usize,
-        used_tiles: f32,
-        shinespark_frames: i32,
-        excess_shinespark_frames: i32,
+        frames: i32,
+        excess_frames: i32,
     },
     HeatFrames(i32),
     LavaFrames(i32),
     GravitylessLavaFrames(i32),
     AcidFrames(i32),
+    MetroidFrames(i32),
     Damage(i32),
     // Energy(i32),
     Missiles(i32),
     MissilesCapacity(i32),
+    SupersCapacity(i32),
+    PowerBombsCapacity(i32),
     Supers(i32),
     PowerBombs(i32),
     EnergyRefill,
@@ -131,6 +143,10 @@ pub enum Requirement {
     SuperRefill,
     PowerBombRefill,
     AmmoStationRefill,
+    GateGlitchLeniency {
+        green: bool,
+        heated: bool,
+    },
     EnergyDrain,
     ReserveTrigger {
         min_reserve_energy: i32,
@@ -142,10 +158,10 @@ pub enum Requirement {
     },
     PhantoonFight {},
     DraygonFight {
-        can_be_patient_tech_id: usize,
+        can_be_very_patient_tech_id: usize,
     },
     RidleyFight {
-        can_be_patient_tech_id: usize,
+        can_be_very_patient_tech_id: usize,
     },
     BotwoonFight {
         second_phase: bool,
@@ -168,12 +184,9 @@ pub enum Requirement {
         min_right_position: Option<f32>,
     },
     CanComeInCharged {
-        shinespark_tech_id: usize,
         room_id: RoomId,
         node_id: NodeId,
         frames_remaining: i32,
-        shinespark_frames: i32,
-        excess_shinespark_frames: i32,
         unusable_tiles: i32,
     },
     ComeInWithRMode {
@@ -184,7 +197,12 @@ pub enum Requirement {
         room_id: RoomId,
         node_ids: Vec<NodeId>,
         mode: String,
+        mobility: String,
         artificial_morph: bool,
+    },
+    DoorUnlocked {
+        room_id: RoomId,
+        node_id: NodeId,
     },
     And(Vec<Requirement>),
     Or(Vec<Requirement>),
@@ -259,7 +277,6 @@ pub struct CanLeaveCharged {
     pub used_tiles: i32,
     pub open_end: i32,
     pub requirement: Requirement,
-    pub shinespark_frames: Option<i32>,
 }
 
 #[derive(Debug)]
@@ -289,7 +306,7 @@ pub struct Link {
     pub strat_notes: Vec<String>,
 }
 
-#[derive(Deserialize, Default, Clone)]
+#[derive(Deserialize, Default, Clone, Debug)]
 pub struct RoomGeometryDoor {
     pub direction: String,
     pub x: usize,
@@ -297,6 +314,7 @@ pub struct RoomGeometryDoor {
     pub exit_ptr: Option<usize>,
     pub entrance_ptr: Option<usize>,
     pub subtype: String,
+    pub offset: Option<usize>,
 }
 
 #[derive(Deserialize, Default, Clone)]
@@ -324,6 +342,7 @@ pub struct RoomGeometry {
     pub items: Vec<RoomGeometryItem>,
     pub node_tiles: Vec<(usize, Vec<(usize, usize)>)>,
     pub twin_node_tiles: Option<Vec<(usize, Vec<(usize, usize)>)>>,
+    pub heated: bool,
 }
 
 #[derive(Deserialize)]
@@ -394,7 +413,6 @@ pub struct StartLocation {
     pub y: f32,
     pub requires: Option<Vec<serde_json::Value>>,
     pub note: Option<Vec<String>>,
-    // Don't use these, because they will mess up the door cap animations. Maybe we can find a fix for that someday.
     pub camera_offset_x: Option<f32>,
     pub camera_offset_y: Option<f32>,
     #[serde(skip_deserializing)]
@@ -420,6 +438,13 @@ pub struct EnemyVulnerabilities {
     pub super_damage: i32,
     pub power_bomb_damage: i32,
 }
+
+pub struct ThemedPaletteTileset {
+    pub palette: [[u8; 3]; 128],
+    pub gfx8x8: Vec<u8>,
+    pub gfx16x16: Vec<u8>,
+}
+
 
 // TODO: Clean this up, e.g. pull out a separate structure to hold
 // temporary data used only during loading, replace any
@@ -465,6 +490,7 @@ pub struct GameData {
     pub item_vertex_ids: Vec<Vec<VertexId>>,
     pub flag_locations: Vec<(RoomId, NodeId, FlagId)>,
     pub flag_vertex_ids: Vec<Vec<VertexId>>,
+    pub save_locations: Vec<(RoomId, NodeId)>,
     pub links: Vec<Link>,
     pub room_geometry: Vec<RoomGeometry>,
     pub room_and_door_idxs_by_door_ptr_pair:
@@ -484,7 +510,8 @@ pub struct GameData {
     pub strat_area: HashMap<String, String>,
     pub strat_room: HashMap<String, String>,
     pub strat_description: HashMap<String, String>,
-    pub palette_data: Vec<HashMap<TilesetIdx, [[u8; 3]; 128]>>,
+    pub tileset_palette_themes: Vec<HashMap<TilesetIdx, ThemedPaletteTileset>>,
+    pub retiled_theme_data: Option<RetiledThemeData>,
     pub escape_timings: Vec<EscapeTimingRoom>,
     pub start_locations: Vec<StartLocation>,
     pub hub_locations: Vec<HubLocation>,
@@ -763,7 +790,7 @@ impl GameData {
             for helper in category_json["helpers"].members() {
                 self.helper_json_map
                     .insert(helper["name"].as_str().unwrap().to_owned(), helper.clone());
-            }    
+            }
         }
         Ok(())
     }
@@ -808,6 +835,28 @@ impl GameData {
             let value = req_json.as_str().unwrap();
             if value == "never" {
                 return Ok(Requirement::Never);
+            } else if value == "i_ammoRefill" {
+                return Ok(Requirement::AmmoStationRefill);
+            } else if value == "i_BlueGateGlitchLeniency" {
+                return Ok(Requirement::GateGlitchLeniency {
+                    green: false,
+                    heated: false,
+                });
+            } else if value == "i_GreenGateGlitchLeniency" {
+                return Ok(Requirement::GateGlitchLeniency {
+                    green: true,
+                    heated: false,
+                });
+            } else if value == "i_HeatedBlueGateGlitchLeniency" {
+                return Ok(Requirement::GateGlitchLeniency {
+                    green: false,
+                    heated: true,
+                });
+            } else if value == "i_HeatedGreenGateGlitchLeniency" {
+                return Ok(Requirement::GateGlitchLeniency {
+                    green: true,
+                    heated: true,
+                });
             } else if let Some(&item_id) = self.item_isv.index_by_key.get(value) {
                 return Ok(Requirement::Item(item_id as ItemId));
             } else if let Some(&flag_id) = self.flag_isv.index_by_key.get(value) {
@@ -862,12 +911,49 @@ impl GameData {
                     .expect(&format!("missing/invalid resource count in {}", req_json));
                 if resource_type == "Missile" {
                     return Ok(Requirement::MissilesCapacity(count as Capacity));
+                } else if resource_type == "Super" {
+                    return Ok(Requirement::SupersCapacity(count as Capacity));
+                } else if resource_type == "PowerBomb" {
+                    return Ok(Requirement::PowerBombsCapacity(count as Capacity));
                 } else {
                     bail!("Unexpected ammo type in {}", req_json);
                 }
+            } else if key == "refill" {
+                let mut req_list_and: Vec<Requirement> = vec![];
+                for resource_type_json in value.members() {
+                    let resource_type = resource_type_json.as_str().unwrap();
+                    if resource_type == "Missile" {
+                        req_list_and.push(Requirement::MissileRefill);
+                    } else if resource_type == "Super" {
+                        req_list_and.push(Requirement::SuperRefill);
+                    } else if resource_type == "PowerBomb" {
+                        req_list_and.push(Requirement::PowerBombRefill);
+                    } else if resource_type == "RegularEnergy" {
+                        req_list_and.push(Requirement::EnergyRefill);
+                    } else if resource_type == "ReserveEnergy" {
+                        req_list_and.push(Requirement::ReserveRefill);
+                    } else if resource_type == "Energy" {
+                        req_list_and.push(Requirement::EnergyRefill);
+                        req_list_and.push(Requirement::ReserveRefill);
+                    } else {
+                        bail!("Unrecognized refill resource type: {}", resource_type);
+                    }
+                }
+                return Ok(Requirement::make_and(req_list_and));
             } else if key == "ammoDrain" {
                 // We patch out the ammo drain from the Mother Brain fight.
                 return Ok(Requirement::Free);
+            } else if key == "shinespark" {
+                let frames = value["frames"]
+                    .as_i32()
+                    .expect(&format!("missing/invalid frames in {}", req_json));
+                let excess_frames =
+                    value["excessFrames"].as_i32().unwrap_or(0);
+                return Ok(Requirement::Shinespark {
+                    shinespark_tech_id: self.tech_isv.index_by_key["canShinespark"],
+                    frames,
+                    excess_frames,
+                });    
             } else if key == "canShineCharge" {
                 let used_tiles = value["usedTiles"]
                     .as_f32()
@@ -875,17 +961,9 @@ impl GameData {
                 let open_end = value["openEnd"]
                     .as_f32()
                     .expect(&format!("missing/invalid openEnd in {}", req_json));
-                let shinespark_frames = value["shinesparkFrames"]
-                    .as_i32()
-                    .expect(&format!("missing/invalid shinesparkFrames in {}", req_json));
-                let excess_shinespark_frames =
-                    value["excessShinesparkFrames"].as_i32().unwrap_or(0);
                 // TODO: take slopes into account
                 return Ok(Requirement::ShineCharge {
                     used_tiles: get_effective_runway_length(used_tiles, open_end),
-                    shinespark_frames,
-                    excess_shinespark_frames,
-                    shinespark_tech_id: self.tech_isv.index_by_key["canShinespark"],
                 });
             } else if key == "heatFrames" {
                 let frames = value
@@ -915,6 +993,11 @@ impl GameData {
                     .expect(&format!("invalid acidFrames in {}", req_json));
                 return Ok(Requirement::AcidFrames(frames));
                 // return Ok(Requirement::Damage(3 * frames / 2));
+            } else if key == "metroidFrames" {
+                let frames = value
+                    .as_i32()
+                    .expect(&format!("invalid metroidFrames in {}", req_json));
+                return Ok(Requirement::MetroidFrames(frames));
             } else if key == "draygonElectricityFrames" {
                 let frames = value
                     .as_i32()
@@ -978,11 +1061,11 @@ impl GameData {
                     return Ok(Requirement::PhantoonFight {});
                 } else if enemy_set.contains("Draygon") {
                     return Ok(Requirement::DraygonFight {
-                        can_be_patient_tech_id: self.tech_isv.index_by_key["canBePatient"],
+                        can_be_very_patient_tech_id: self.tech_isv.index_by_key["canBeVeryPatient"],
                     });
                 } else if enemy_set.contains("Ridley") {
                     return Ok(Requirement::RidleyFight {
-                        can_be_patient_tech_id: self.tech_isv.index_by_key["canBePatient"],
+                        can_be_very_patient_tech_id: self.tech_isv.index_by_key["canBeVeryPatient"],
                     });
                 } else if enemy_set.contains("Botwoon 1") {
                     return Ok(Requirement::BotwoonFight {
@@ -1048,12 +1131,6 @@ impl GameData {
                 // Currently this is used only in the Early Supers quick crumble and Mission Impossible strats and is
                 // redundant in both cases, so we treat it as free.
                 return Ok(Requirement::Free);
-            } else if key == "resetRoom" {
-                // In all the places where this is required (excluding runways and canComeInCharged which we are not
-                // yet taking into account), it seems to be essentially unnecessary (ignoring the
-                // possibility of needing to take a small amount of heat damage in an adjacent room to exit and
-                // reenter), so for now we treat it as free.
-                return Ok(Requirement::Free);
             } else if key == "previousStratProperty" {
                 // This is only used in one place in Crumble Shaft, where it doesn't seem to be necessary.
                 return Ok(Requirement::Free);
@@ -1089,12 +1166,12 @@ impl GameData {
                             bail!("Obstacle name {} not found", obstacle_name);
                         }
                     }
+                    return Ok(Requirement::Free);
                 } else {
-                    // No obstacle state in context. This happens with cross-room strats. We're not ready to
-                    // deal with obstacles yet here, so we just keep these out of logic.
-                    return Ok(Requirement::Never);
+                    // No obstacle state in context. This happens with cross-room strats, in which case
+                    // all obstacles should be cleared:
+                    return Ok(Requirement::Free);
                 }
-                return Ok(Requirement::Free);
             } else if key == "adjacentRunway" {
                 if ctx.from_obstacles_bitmask != 0 {
                     return Ok(Requirement::Never);
@@ -1199,11 +1276,6 @@ impl GameData {
                 let frames_remaining = value["framesRemaining"]
                     .as_i32()
                     .with_context(|| format!("missing/invalid framesRemaining in {}", req_json))?;
-                let shinespark_frames = value["shinesparkFrames"]
-                    .as_i32()
-                    .with_context(|| format!("missing/invalid shinesparkFrames in {}", req_json))?;
-                let excess_shinespark_frames =
-                    value["excessShinesparkFrames"].as_i32().unwrap_or(0);
                 let unusable_tiles = value["unusableTiles"].as_i32().unwrap_or(0);
                 // if value["fromNode"].as_usize().unwrap() != ctx.src_node_id {
                 //     println!("In roomId={}, canComeInCharged fromNode={}, from nodeId={}", ctx.room_id,
@@ -1217,13 +1289,10 @@ impl GameData {
                     unlocked_node_id = self.unlocked_node_map[&(ctx.room_id, unlocked_node_id)];
                 }
                 return Ok(Requirement::CanComeInCharged {
-                    shinespark_tech_id: self.tech_isv.index_by_key["canShinespark"],
                     room_id: ctx.room_id,
                     node_id: unlocked_node_id,
                     // node_id: ctx.src_node_id,
                     frames_remaining,
-                    shinespark_frames,
-                    excess_shinespark_frames,
                     unusable_tiles,
                 });
                 // return Ok(Requirement::Never);
@@ -1268,12 +1337,49 @@ impl GameData {
                 let artificial_morph = value["artificialMorph"]
                     .as_bool()
                     .with_context(|| format!("missing/invalid artificialMorph in {}", req_json))?;
+                let mobility = value["mobility"].as_str().unwrap_or("any");
 
                 return Ok(Requirement::ComeInWithGMode {
                     room_id: ctx.room_id,
                     node_ids,
                     mode: mode.to_string(),
                     artificial_morph,
+                    mobility: mobility.to_string(),
+                });
+            } else if key == "resetRoom" {
+                if ctx.from_obstacles_bitmask != 0 {
+                    return Ok(Requirement::Never);
+                }
+                let mut node_ids: Vec<NodeId> = Vec::new();
+                for from_node in value["nodes"].members() {
+                    let mut unlocked_node_id = from_node.as_usize().unwrap();
+                    if self
+                        .unlocked_node_map
+                        .contains_key(&(ctx.room_id, unlocked_node_id))
+                    {
+                        unlocked_node_id = self.unlocked_node_map[&(ctx.room_id, unlocked_node_id)];
+                    }
+                    node_ids.push(unlocked_node_id);
+                }
+                let mut reqs_or: Vec<Requirement> = vec![];
+                for node_id in node_ids {
+                    reqs_or.push(Requirement::DoorUnlocked {
+                        room_id: ctx.room_id,
+                        node_id,
+                    });
+                }
+                return Ok(Requirement::make_or(reqs_or));
+            } else if key == "doorUnlockedAtNode" {
+                let mut unlocked_node_id = value.as_usize().unwrap();
+                if self
+                    .unlocked_node_map
+                    .contains_key(&(ctx.room_id, unlocked_node_id))
+                {
+                    unlocked_node_id = self.unlocked_node_map[&(ctx.room_id, unlocked_node_id)];
+                }
+                return Ok(Requirement::DoorUnlocked {
+                    room_id: ctx.room_id,
+                    node_id: unlocked_node_id,
                 });
             } else if key == "itemNotCollectedAtNode" {
                 // TODO: implement this
@@ -1371,75 +1477,6 @@ impl GameData {
                 }];
             }
         }
-
-        room_json["links"] = json::array![
-            {
-                "from": 1,
-                "to": [
-                {
-                    "id": 3,
-                    "strats": [
-                    {
-                        "name": "Base",
-                        "notable": false,
-                        "requires": [
-                            {"or": [
-                                "h_canUsePowerBombs",
-                                "f_ShaktoolDoneDigging"
-                            ]}
-                        ]
-                    }
-                    ]
-                }
-                ]
-            },
-            {
-                "from": 2,
-                "to": [
-                {
-                    "id": 3,
-                    "strats": [
-                    {
-                        "name": "Base",
-                        "notable": false,
-                        "requires": [
-                            {"or": [
-                                "h_canUsePowerBombs",
-                                "f_ShaktoolDoneDigging"
-                            ]}
-                        ]
-                    }
-                    ],
-                    "note": "Use the snails to dig through the sand."
-                }
-                ]
-            },
-            {
-                "from": 3,
-                "to": [
-                {
-                    "id": 1,
-                    "strats": [
-                    {
-                        "name": "Base",
-                        "notable": false,
-                        "requires": []
-                    }
-                    ]
-                },
-                {
-                    "id": 2,
-                    "strats": [
-                    {
-                        "name": "Base",
-                        "notable": false,
-                        "requires": []
-                    }
-                    ]
-                }
-                ]
-            }
-        ];
     }
 
     fn override_metal_pirates_room(&mut self, room_json: &mut JsonValue) {
@@ -1465,6 +1502,18 @@ impl GameData {
                     "yields": [ "f_ZebesAwake" ]
                   }
                 ];
+            }
+        }
+        assert!(found);
+    }
+
+    fn override_tourian_save_room(&mut self, room_json: &mut JsonValue) {
+        // Remove the "save" utility, as we have a map here instead.
+        let mut found = false;
+        for node_json in room_json["nodes"].members_mut() {
+            if node_json["id"].as_i32().unwrap() == 2 {
+                node_json.remove("utility");
+                found = true;
             }
         }
         assert!(found);
@@ -1522,6 +1571,8 @@ impl GameData {
             self.override_morph_ball_room(&mut new_room_json);
         } else if room_id == 139 {
             self.override_metal_pirates_room(&mut new_room_json);
+        } else if room_id == 225 {
+            self.override_tourian_save_room(&mut new_room_json);
         }
 
         for node_json in new_room_json["nodes"].members_mut() {
@@ -1576,13 +1627,6 @@ impl GameData {
                             ]
                         }
                     ];
-                }
-
-                if unlocked_node_json["nodeType"] == "item" {
-                    unlock_strats.push(json::object! {
-                        "name": "All Items Spawn From Start",
-                        "requires": ["f_AllItemsSpawn"]
-                    })?;
                 }
 
                 extra_nodes.push(unlocked_node_json);
@@ -1849,7 +1893,8 @@ impl GameData {
                             .members()
                             .map(|x| x.clone())
                             .collect();
-                        let ctx = RequirementContext::default();
+                        let mut ctx = RequirementContext::default();
+                        ctx.room_id = room_id;
                         let requirement =
                             Requirement::make_and(self.parse_requires_list(&requires_json, &ctx)?);
                         if strat_json.has_key("obstacles") {
@@ -1870,7 +1915,10 @@ impl GameData {
                                     .as_bool()
                                     .unwrap_or(true),
                             };
+                            // info!("Runway: {:?}", runway);
                             runway_vec.push(runway);
+                        } else {
+                            // info!("Invalid physics in runway: {} - {}", room_json["name"], runway_json["name"])
                         }
                     }
                 }
@@ -1888,7 +1936,8 @@ impl GameData {
                         .members()
                         .map(|x| x.clone())
                         .collect();
-                    let ctx = RequirementContext::default();
+                    let mut ctx = RequirementContext::default();
+                    ctx.room_id = room_id;
                     let requirement =
                         Requirement::make_and(self.parse_requires_list(&requires_json, &ctx)?);
 
@@ -1923,7 +1972,8 @@ impl GameData {
                             .members()
                             .map(|x| x.clone())
                             .collect();
-                        let ctx = RequirementContext::default();
+                        let mut ctx = RequirementContext::default();
+                        ctx.room_id = room_id;
                         let requirement =
                             Requirement::make_and(self.parse_requires_list(&requires_json, &ctx)?);
                         if strat_json.has_key("obstacles") {
@@ -1940,7 +1990,6 @@ impl GameData {
                             frames_remaining: can_leave_charged_json["framesRemaining"]
                                 .as_i32()
                                 .context("Expecting integer framesRemaining")?,
-                            shinespark_frames: can_leave_charged_json["shinesparkFrames"].as_i32(),
                             requirement,
                         };
                         can_leave_charged_vec.push(can_leave_charged);
@@ -2029,6 +2078,7 @@ impl GameData {
                                 room_id,
                                 node_ids: vec![node_id],
                                 mode: "direct".to_string(),
+                                mobility: "any".to_string(),
                                 artificial_morph,
                             },
                         });
@@ -2055,115 +2105,6 @@ impl GameData {
                 let spawn_node_id = node_json["spawnAt"].as_usize().unwrap();
                 self.node_spawn_at_map
                     .insert((room_id, node_id), spawn_node_id);
-            }
-            if node_json.has_key("utility") {
-                let utility = &node_json["utility"];
-                for obstacle_bitmask in 0..(1 << num_obstacles) {
-                    let vertex_id =
-                        self.vertex_isv.index_by_key[&(room_id, node_id, obstacle_bitmask)];
-                    let mut reqs: Vec<Requirement> = Vec::new();
-                    ensure!(utility.is_array());
-                    if utility.contains("energy") {
-                        reqs.push(Requirement::EnergyRefill);
-                    }
-                    if utility.contains("missile") {
-                        if utility.contains("super") && utility.contains("powerbomb") {
-                            reqs.push(Requirement::MissileRefill);
-                            reqs.push(Requirement::SuperRefill);
-                            reqs.push(Requirement::PowerBombRefill);
-                        } else {
-                            reqs.push(Requirement::AmmoStationRefill)
-                        }
-                    }
-                    self.links.push(Link {
-                        from_vertex_id: vertex_id,
-                        to_vertex_id: vertex_id,
-                        requirement: Requirement::make_and(reqs),
-                        notable_strat_name: None,
-                        strat_name: "Refill".to_string(),
-                        strat_notes: vec![],
-                    });
-                }
-            }
-        }
-        if room_json.has_key("enemies") {
-            ensure!(room_json["enemies"].is_array());
-            for enemy in room_json["enemies"].members() {
-                // TODO: implement other types of enemy farms, aside from those with farmCycles
-                // (using a requirement to reset the room).
-                if !enemy.has_key("farmCycles") {
-                    continue;
-                }
-                if !enemy["homeNodes"].is_array() {
-                    continue;
-                }
-                let enemy_name = enemy["enemyName"].as_str().unwrap();
-                let enemy_json = self
-                    .enemy_json
-                    .get(enemy_name)
-                    .with_context(|| format!("Unknown enemy: {}", enemy_name))?;
-                let farm_name = format!("Farm {}", enemy["enemyName"].as_str().unwrap());
-
-                let drops = &enemy_json["drops"];
-                let drops_pb = drops["powerBomb"].as_i32().map(|x| x > 0) == Some(true);
-                let drops_super = drops["super"].as_i32().map(|x| x > 0) == Some(true);
-                let drops_missile = drops["missile"].as_i32().map(|x| x > 0) == Some(true);
-                let drops_big_energy = drops["bigEnergy"].as_i32().map(|x| x > 0) == Some(true);
-                let drops_small_energy = drops["smallEnergy"].as_i32().map(|x| x > 0) == Some(true);
-                for node_id_json in enemy["homeNodes"].members() {
-                    let node_id = node_id_json.as_usize().unwrap();
-                    for obstacles_bitmask in 0..(1 << num_obstacles) {
-                        for farm_cycle in enemy["farmCycles"].members() {
-                            let mut reqs: Vec<Requirement> = Vec::new();
-                            let ctx = RequirementContext {
-                                room_id,
-                                _from_node_id: node_id,
-                                from_obstacles_bitmask: obstacles_bitmask,
-                                obstacles_idx_map: Some(&obstacles_idx_map),
-                            };
-
-                            // For now we ignore heatFrames requirements. The other requirements should be sufficient
-                            // to ensure the farm provides progress.
-                            let farm_reqs_json: Vec<JsonValue> = farm_cycle["requires"]
-                                .members()
-                                .filter(|r| !r.has_key("heatFrames"))
-                                .cloned()
-                                .collect();
-                            let farm_req = self.parse_requires_list(&farm_reqs_json, &ctx)?;
-                            reqs.extend(farm_req);
-                            if drops_pb {
-                                reqs.push(Requirement::PowerBombRefill);
-                            }
-                            if drops_super {
-                                reqs.push(Requirement::SuperRefill);
-                            }
-                            if drops_missile {
-                                reqs.push(Requirement::MissileRefill);
-                            }
-                            if drops_big_energy || drops_small_energy {
-                                reqs.push(Requirement::EnergyRefill);
-                                reqs.push(Requirement::ReserveRefill);
-                            }
-                            let vertex_id = self.vertex_isv.index_by_key
-                                [&(room_id, node_id, obstacles_bitmask)];
-                            let link = Link {
-                                from_vertex_id: vertex_id,
-                                to_vertex_id: vertex_id,
-                                requirement: Requirement::make_and(reqs.clone()),
-                                notable_strat_name: None,
-                                strat_name: format!(
-                                    "{} ({})",
-                                    farm_name.to_string(),
-                                    farm_cycle["name"]
-                                ),
-                                strat_notes: vec![],
-                            };
-                            // println!("Farm: room='{}',node={}, obstacles={}, name={}, req={:?}",
-                            //     room_json["name"], node_id, obstacles_bitmask, link.strat_name, link.requirement);
-                            self.links.push(link);
-                        }
-                    }
-                }
             }
         }
 
@@ -2302,12 +2243,14 @@ impl GameData {
         let dst_ptr = self.node_ptr_map.get(&dst).map(|x| *x);
         if src_ptr.is_some() || dst_ptr.is_some() {
             self.door_ptr_pair_map.insert((src_ptr, dst_ptr), src);
-            self.reverse_door_ptr_pair_map.insert(src, (src_ptr, dst_ptr));
+            self.reverse_door_ptr_pair_map
+                .insert(src, (src_ptr, dst_ptr));
             if self.unlocked_node_map.contains_key(&src) {
                 let src_room_id = src.0;
                 src = (src_room_id, self.unlocked_node_map[&src])
             }
-            self.unlocked_door_ptr_pair_map.insert((src_ptr, dst_ptr), src);
+            self.unlocked_door_ptr_pair_map
+                .insert((src_ptr, dst_ptr), src);
         }
     }
 
@@ -2335,6 +2278,11 @@ impl GameData {
             if node_json["nodeType"] == "item" {
                 self.item_locations.push((room_id, node_id));
             }
+            if node_json.has_key("utility") {
+                if node_json["utility"].members().any(|x| x == "save") {
+                    self.save_locations.push((room_id, node_id));
+                }
+            }
             if node_json.has_key("yields") {
                 ensure!(node_json["yields"].len() >= 1);
                 let flag_id = self.flag_isv.index_by_key[node_json["yields"][0].as_str().unwrap()];
@@ -2343,7 +2291,8 @@ impl GameData {
                     if self.unlocked_node_map.contains_key(&(room_id, node_id)) {
                         unlocked_node_id = self.unlocked_node_map[&(room_id, node_id)];
                     }
-                    self.flag_locations.push((room_id, unlocked_node_id, flag_id));
+                    self.flag_locations
+                        .push((room_id, unlocked_node_id, flag_id));
                 }
             }
         }
@@ -2372,11 +2321,11 @@ impl GameData {
 
     pub fn get_weapon_mask(&self, items: &[bool]) -> WeaponMask {
         let mut weapon_mask = 0;
-        let implicit_item_requires: HashSet<String> = vec![
-            "PowerBeam",
-            "canUseGrapple",
-            "canSpecialBeamAttack",
-        ].into_iter().map(|x| x.to_string()).collect();
+        let implicit_item_requires: HashSet<String> =
+            vec!["PowerBeam", "canUseGrapple", "canSpecialBeamAttack"]
+                .into_iter()
+                .map(|x| x.to_string())
+                .collect();
         // TODO: possibly make this more efficient. We could avoid dealing with strings
         // and just use a pre-computed item bitmask per weapon. But not sure yet if it matters.
         'weapon: for (i, weapon_name) in self.weapon_isv.keys.iter().enumerate() {
@@ -2414,12 +2363,16 @@ impl GameData {
                 let mut req_json_list: Vec<JsonValue> = vec![];
                 for req in loc.requires.as_ref().unwrap() {
                     let req_str = req.to_string();
-                    let req_json = json::parse(&req_str).with_context(|| format!("Error parsing requires in {:?}", loc))?;
+                    let req_json = json::parse(&req_str)
+                        .with_context(|| format!("Error parsing requires in {:?}", loc))?;
                     req_json_list.push(req_json);
-                }    
+                }
                 let ctx = RequirementContext::default();
                 let req_list = self.parse_requires_list(&req_json_list, &ctx)?;
                 loc.requires_parsed = Some(Requirement::make_and(req_list));
+            }
+            if !self.vertex_isv.index_by_key.contains_key(&(loc.room_id, loc.node_id, 0)) {
+                panic!("Bad starting location: {:?}", loc);
             }
         }
         self.start_locations = start_locations;
@@ -2436,9 +2389,10 @@ impl GameData {
                 let mut req_json_list: Vec<JsonValue> = vec![];
                 for req in loc.requires.as_ref().unwrap() {
                     let req_str = req.to_string();
-                    let req_json = json::parse(&req_str).with_context(|| format!("Error parsing requires in {:?}", loc))?;
+                    let req_json = json::parse(&req_str)
+                        .with_context(|| format!("Error parsing requires in {:?}", loc))?;
                     req_json_list.push(req_json);
-                }    
+                }
                 let ctx = RequirementContext::default();
                 let req_list = self.parse_requires_list(&req_json_list, &ctx)?;
                 loc.requires_parsed = Some(Requirement::make_and(req_list));
@@ -2491,32 +2445,79 @@ impl GameData {
         Ok(())
     }
 
-    fn load_palette(&mut self, json_path: &Path) -> Result<()> {
-        let file = File::open(json_path)?;
-        let json_value: serde_json::Value = serde_json::from_reader(file)?;
-        for area_json in json_value.as_array().unwrap() {
-            let mut pal_map: HashMap<TilesetIdx, [[u8; 3]; 128]> = HashMap::new();
-            for (tileset_idx_str, palette) in area_json.as_object().unwrap().iter() {
-                let tileset_idx: usize = tileset_idx_str.parse()?;
-                let mut pal = [[0u8; 3]; 128];
-                for (i, color) in palette.as_array().unwrap().iter().enumerate() {
-                    let color_arr = color.as_array().unwrap();
-                    let r = color_arr[0].as_i64().unwrap();
-                    let g = color_arr[1].as_i64().unwrap();
-                    let b = color_arr[2].as_i64().unwrap();
-                    pal[i][0] = r as u8;
-                    pal[i][1] = g as u8;
-                    pal[i][2] = b as u8;
-                }
+    // fn load_palette(&mut self, json_path: &Path) -> Result<()> {
+    //     let file = File::open(json_path)?;
+    //     let json_value: serde_json::Value = serde_json::from_reader(file)?;
+    //     for area_json in json_value.as_array().unwrap() {
+    //         let mut pal_map: HashMap<TilesetIdx, ThemedTileset> = HashMap::new();
+    //         for (tileset_idx_str, palette) in area_json.as_object().unwrap().iter() {
+    //             let tileset_idx: usize = tileset_idx_str.parse()?;
+    //             let mut pal = [[0u8; 3]; 128];
+    //             for (i, color) in palette.as_array().unwrap().iter().enumerate() {
+    //                 let color_arr = color.as_array().unwrap();
+    //                 let r = color_arr[0].as_i64().unwrap();
+    //                 let g = color_arr[1].as_i64().unwrap();
+    //                 let b = color_arr[2].as_i64().unwrap();
+    //                 pal[i][0] = r as u8;
+    //                 pal[i][1] = g as u8;
+    //                 pal[i][2] = b as u8;
+    //             }
 
-                // for i in 0..128 {
-                //     for j in 0..3 {
-                //         pal[i][j] = 0;
-                //     }
+    //             // for i in 0..128 {
+    //             //     for j in 0..3 {
+    //             //         pal[i][j] = 0;
+    //             //     }
+    //             // }
+    //             pal_map.insert(tileset_idx, ThemedTileset { palette: pal });
+    //         }
+    //         self.tileset_palette_themes.push(pal_map);
+    //     }
+    //     Ok(())
+    // }
+
+    fn load_themes(&mut self, base_path: &Path) -> Result<()> {
+        let ignored_tileset_idxs = vec![
+            1, // Red Crateria
+            15, 16, 17, 18, 19, 20  // Ceres
+        ];
+        for (_area_idx, area) in [
+            "crateria",
+            "brinstar",
+            "norfair",
+            "wrecked_ship",
+            "maridia",
+            "tourian",
+        ].into_iter().enumerate() {
+            let sce_path = base_path.join(area).join("Export/Tileset/SCE");
+            let mut pal_map: HashMap<TilesetIdx, ThemedPaletteTileset> = HashMap::new();
+            for tileset_dir in std::fs::read_dir(sce_path)? {
+                let tileset_dir = tileset_dir?;
+                let tileset_idx =
+                    usize::from_str_radix(tileset_dir.file_name().to_str().unwrap(), 16)?;
+                // if !tileset_idxs[area_idx].contains(&tileset_idx) {
+                //     continue;
                 // }
-                pal_map.insert(tileset_idx, pal);
+                if ignored_tileset_idxs.contains(&tileset_idx) {
+                    continue;
+                }
+                let tileset_path = tileset_dir.path();
+                let palette_path = tileset_path.join("palette.snes");
+                let palette_bytes = std::fs::read(palette_path)?;
+                let palette = decode_palette(&palette_bytes);
+
+                let gfx8x8_path = tileset_path.join("8x8tiles.gfx");
+                let gfx8x8_bytes = std::fs::read(gfx8x8_path)?;
+
+                let gfx16x16_path = tileset_path.join("16x16tiles.ttb");
+                let gfx16x16_bytes = std::fs::read(gfx16x16_path)?;
+                
+                pal_map.insert(tileset_idx, ThemedPaletteTileset { 
+                    palette,
+                    gfx8x8: gfx8x8_bytes,
+                    gfx16x16: gfx16x16_bytes,
+                });
             }
-            self.palette_data.push(pal_map);
+            self.tileset_palette_themes.push(pal_map);
         }
         Ok(())
     }
@@ -2550,10 +2551,11 @@ impl GameData {
     pub fn load(
         sm_json_data_path: &Path,
         room_geometry_path: &Path,
-        palette_path: &Path,
+        palette_theme_path: &Path,
         escape_timings_path: &Path,
         start_locations_path: &Path,
         hub_locations_path: &Path,
+        mosaic_path: &Path,
     ) -> Result<GameData> {
         let mut game_data = GameData::default();
         game_data.sm_json_data_path = sm_json_data_path.to_owned();
@@ -2580,11 +2582,95 @@ impl GameData {
             "name": "h_lavaProof",
             "requires": ["Varia", "Gravity"],
         };
-        *game_data.helper_json_map.get_mut("h_canActivateAcidChozo").unwrap() = json::object! {
+        // Gate glitch leniency
+        *game_data
+            .helper_json_map
+            .get_mut("h_BlueGateGlitchLeniency")
+            .unwrap() = json::object! {
+            "name": "h_BlueGateGlitchLeniency",
+            "requires": ["i_BlueGateGlitchLeniency"],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_GreenGateGlitchLeniency")
+            .unwrap() = json::object! {
+            "name": "h_GreenGateGlitchLeniency",
+            "requires": ["i_GreenGateGlitchLeniency"],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_HeatedBlueGateGlitchLeniency")
+            .unwrap() = json::object! {
+            "name": "h_BlueGateGlitchLeniency",
+            "requires": ["i_HeatedBlueGateGlitchLeniency"],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_HeatedGreenGateGlitchLeniency")
+            .unwrap() = json::object! {
+            "name": "h_GreenGateGlitchLeniency",
+            "requires": ["i_HeatedGreenGateGlitchLeniency"],
+        };
+        // Other:
+        *game_data
+            .helper_json_map
+            .get_mut("h_AllItemsSpawned")
+            .unwrap() = json::object! {
+            "name": "h_AllItemsSpawned",
+            "requires": ["f_AllItemsSpawn"]  // internal flag "f_AllItemsSpawn" gets set at start if QoL option enabled
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_EverestMorphTunnelExpanded")
+            .unwrap() = json::object! {
+            "name": "h_EverestMorphTunnelExpanded",
+            "requires": []  // This morph tunnel is always expanded, so there are no requirements.
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_canActivateAcidChozo")
+            .unwrap() = json::object! {
             "name": "h_canActivateAcidChozo",
             "requires": [{
                 "or": ["SpaceJump", "f_AcidChozoWithoutSpaceJump"]
             }],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_ShaktoolVanillaFlag")
+            .unwrap() = json::object! {
+            "name": "h_ShaktoolVanillaFlag",
+            "requires": ["never"],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_ShaktoolCameraFix")
+            .unwrap() = json::object! {
+            "name": "h_ShaktoolCameraFix",
+            "requires": [],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_KraidCameraFix")
+            .unwrap() = json::object! {
+            "name": "h_KraidCameraFix",
+            "requires": [],
+        };
+        // Ammo station refill
+        *game_data
+            .helper_json_map
+            .get_mut("h_useMissileRefillStation")
+            .unwrap() = json::object! {
+            "name": "h_useMissileRefillStation",
+            "requires": ["i_ammoRefill"],
+        };
+        // Wall on right side of Tourian Escape Room 1 does not spawn in the randomizer:
+        *game_data
+            .helper_json_map
+            .get_mut("h_AccessTourianEscape1RightDoor")
+            .unwrap() = json::object! {
+            "name": "h_AccessTourianEscape1RightDoor",
+            "requires": [],
         };
 
         game_data.load_weapons()?;
@@ -2620,7 +2706,9 @@ impl GameData {
             0x1AC000, // Maridia
             0x1AD000, // Tourian
         ];
-        game_data.load_palette(palette_path)?;
+        // game_data.load_palette(palette_path)?;
+        game_data.load_themes(palette_theme_path)?;
+        game_data.retiled_theme_data = Some(themed_retiling::load_theme_data(mosaic_path)?);
 
         Ok(game_data)
     }

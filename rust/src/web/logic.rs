@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use glob::glob;
 use hashbrown::{HashMap, HashSet};
 use json::JsonValue;
@@ -5,7 +7,7 @@ use sailfish::TemplateOnce;
 use urlencoding;
 
 use crate::game_data::{GameData, Link, NodeId, Requirement, RoomId};
-use crate::randomize::{DebugOptions, DifficultyConfig};
+use crate::randomize::{DebugOptions, DifficultyConfig, SaveAnimals};
 use crate::traverse::{apply_requirement, GlobalState, LocalState};
 use crate::web::VERSION;
 
@@ -17,6 +19,7 @@ struct RoomStrat {
     room_name_stripped: String,
     area: String,
     strat_name: String,
+    strat_name_stripped: String,
     notable: bool,
     from_node_id: usize,
     from_node_name: String,
@@ -25,6 +28,7 @@ struct RoomStrat {
     note: String,
     requires: String,                         // new-line separated requirements
     obstacles: Vec<(String, String, String)>, // list of (obstacle name, obstacle requires, additional obstacles)
+    clears_obstacles: Vec<String>,
     difficulty_idx: usize,
     difficulty_name: String,
 }
@@ -60,6 +64,20 @@ struct TechTemplate {
     area_order: Vec<String>,
 }
 
+#[derive(TemplateOnce, Clone)]
+#[template(path = "logic/strat_page.stpl")]
+struct StratTemplate {
+    version: usize,
+    room_id: usize,
+    room_name: String,
+    room_name_stripped: String,
+    room_name_url_encoded: String,
+    area: String,
+    room_diagram_path: String,
+    strat_name: String,
+    strat: RoomStrat,
+}
+
 #[derive(TemplateOnce)]
 #[template(path = "logic/logic.stpl")]
 struct LogicIndexTemplate<'a> {
@@ -72,18 +90,25 @@ struct LogicIndexTemplate<'a> {
 
 #[derive(Default)]
 pub struct LogicData {
-    pub index_html: String,                        // Logic index page
+    pub index_html: String,                            // Logic index page
     pub room_html: HashMap<String, String>, // Map from room name (alphanumeric characters only) to rendered HTML.
     pub tech_html: HashMap<String, String>, // Map from tech name to rendered HTML.
     pub tech_strat_counts: HashMap<String, usize>, // Map from tech name to strat count using that tech.
+    pub strat_html: HashMap<(String, usize, usize, String), String>, // Map from (room name, from node ID, to node ID, strat name) to rendered HTML.
 }
 
 fn list_room_diagram_files() -> HashMap<usize, String> {
     let mut out: HashMap<usize, String> = HashMap::new();
-    for entry in glob("static/sm-json-data/region/*/roomDiagrams/*.png").unwrap() {
+    for entry in glob("../sm-json-data/region/*/roomDiagrams/*.png").unwrap() {
         match entry {
             Ok(path) => {
-                let path_string = path.to_str().unwrap().to_string();
+                let mut new_path = PathBuf::new();
+                new_path = new_path.join("static");
+                for c in path.components().skip(1) {
+                    new_path = new_path.join(c);
+                }
+
+                let path_string = new_path.to_str().unwrap().to_string();
                 let segments: Vec<&str> = path_string.split("_").collect();
                 let subregion = segments[0];
                 if subregion == "ceres" {
@@ -126,9 +151,7 @@ fn extract_tech_rec(req: &JsonValue, tech: &mut HashSet<usize>, game_data: &Game
             for x in value.members() {
                 extract_tech_rec(x, tech, game_data);
             }
-        } else if key == "canShineCharge" && value["shinesparkFrames"].as_i32().unwrap() > 0 {
-            tech.insert(game_data.tech_isv.index_by_key["canShinespark"]);
-        } else if key == "canComeInCharged" && value["shinesparkFrames"].as_i32().unwrap() > 0 {
+        } else if key == "shinespark" {
             tech.insert(game_data.tech_isv.index_by_key["canShinespark"]);
         } else if key == "comeInWithRMode" {
             tech.insert(game_data.tech_isv.index_by_key["canEnterRMode"]);
@@ -222,7 +245,8 @@ fn make_tech_templates<'a>(
                 s.strat_name.clone(),
             )
         });
-        let mut difficulty_names: Vec<String> = presets.iter().map(|x| x.preset.name.clone()).collect();
+        let mut difficulty_names: Vec<String> =
+            presets.iter().map(|x| x.preset.name.clone()).collect();
         difficulty_names.push("Beyond".to_string());
         let template = TechTemplate {
             version: VERSION,
@@ -242,7 +266,14 @@ fn make_tech_templates<'a>(
 }
 
 fn strip_name(s: &str) -> String {
-    s.chars().filter(|x| x.is_ascii_alphanumeric()).collect()
+    let mut out = String::new();
+    for word in s.split_inclusive(|x: char| !x.is_ascii_alphabetic()) {
+        let capitalized_word = word[0..1].to_ascii_uppercase() + &word[1..];
+        let stripped_word: String = capitalized_word.chars().filter(|x| x.is_ascii_alphanumeric()).collect();
+        out += &stripped_word;
+    }
+    out
+    // s.chars().filter(|x| x.is_ascii_alphanumeric()).collect()
 }
 
 fn get_difficulty_config(preset: &PresetData) -> DifficultyConfig {
@@ -270,6 +301,7 @@ fn get_difficulty_config(preset: &PresetData) -> DifficultyConfig {
         early_filler_items: vec![],
         resource_multiplier: preset.preset.resource_multiplier,
         escape_timer_multiplier: preset.preset.escape_timer_multiplier,
+        gate_glitch_leniency: preset.preset.gate_glitch_leniency as i32,
         phantoon_proficiency: preset.preset.phantoon_proficiency,
         draygon_proficiency: preset.preset.draygon_proficiency,
         ridley_proficiency: preset.preset.ridley_proficiency,
@@ -282,17 +314,20 @@ fn get_difficulty_config(preset: &PresetData) -> DifficultyConfig {
         mark_map_stations: true,
         transition_letters: false,
         item_markers: crate::randomize::ItemMarkers::ThreeTiered,
-        item_dots_disappear: true,
+        item_dot_change: crate::randomize::ItemDotChange::Fade,
         all_items_spawn: true,
         acid_chozo: true,
         fast_elevators: true,
         fast_doors: true,
         fast_pause_menu: true,
-        respin: true,
-        infinite_space_jump: true,
+        respin: false,
+        infinite_space_jump: false,
+        momentum_conservation: false,
         objectives: crate::randomize::Objectives::Bosses,
-        save_animals: false,
+        doors_mode: crate::randomize::DoorsMode::Ammo,
+        save_animals: SaveAnimals::No,
         randomized_start: false,
+        early_save: false,
         disable_walljump: false,
         maps_revealed: false,
         vanilla_map: false,
@@ -331,7 +366,8 @@ fn strip_cross_room_reqs(req: Requirement, game_data: &GameData) -> Requirement 
         }
         Requirement::ComeInWithGMode { .. } => {
             Requirement::Tech(game_data.tech_isv.index_by_key["canEnterGMode"])
-        },
+        }
+        Requirement::DoorUnlocked { .. } => Requirement::Free,
         Requirement::NotFlag(_) => Requirement::Free,
         _ => req,
     }
@@ -432,11 +468,21 @@ fn make_room_template(
                 } else {
                     presets[difficulty_idx].preset.name.clone()
                 };
+                let clears_obstacles: Vec<String> = if strat_json.has_key("clearsObstacles") {
+                    strat_json["clearsObstacles"]
+                        .members()
+                        .map(|x| x.as_str().unwrap().to_string())
+                        .collect()
+                } else {
+                    vec![]
+                };
+                let strat_name = strat_json["name"].as_str().unwrap().to_string();
                 let strat = RoomStrat {
                     room_name: room_name.clone(),
                     room_name_stripped: room_name_stripped.clone(),
                     area: full_area.clone(),
-                    strat_name: strat_json["name"].as_str().unwrap().to_string(),
+                    strat_name: strat_name.clone(),
+                    strat_name_stripped: strip_name(&strat_name),
                     notable: strat_json["notable"].as_bool().unwrap_or(false),
                     from_node_id,
                     from_node_name: node_name_map[&from_node_id].clone(),
@@ -445,6 +491,7 @@ fn make_room_template(
                     note: game_data.parse_note(&strat_json["note"]).join(" "),
                     requires: make_requires(&strat_json["requires"]),
                     obstacles,
+                    clears_obstacles,
                     difficulty_idx,
                     difficulty_name,
                 };
@@ -468,6 +515,23 @@ fn make_room_template(
         nodes,
         strats: room_strats,
         room_json: room_json.pretty(2),
+    }
+}
+
+fn make_strat_template(
+    room: &RoomTemplate,
+    strat: &RoomStrat,
+) -> StratTemplate {
+    StratTemplate {
+        version: VERSION,
+        room_id: room.room_id,
+        room_name: room.room_name.clone(),
+        room_name_stripped: room.room_name_stripped.clone(),
+        room_name_url_encoded: room.room_name_url_encoded.clone(),
+        area: room.area.clone(),
+        room_diagram_path: room.room_diagram_path.clone(),
+        strat_name: strat.strat_name.clone(),
+        strat: strat.clone(),
     }
 }
 
@@ -497,11 +561,11 @@ impl LogicData {
             "Crocomire Upper Norfair",
             "West Lower Norfair",
             "East Lower Norfair",
+            "Wrecked Ship",
             "Outer Maridia",
             "Pink Inner Maridia",
             "Yellow Inner Maridia",
             "Green Inner Maridia",
-            "Wrecked Ship",
             "Tourian",
         ]
         .into_iter()
@@ -568,8 +632,17 @@ impl LogicData {
                 &links_by_ids,
             );
             let html = template.clone().render_once().unwrap();
-            out.room_html.insert(strip_name(&template.room_name), html);
-            room_templates.push(template);
+            let stripped_room_name = strip_name(&template.room_name);
+            out.room_html.insert(stripped_room_name.clone(), html);
+            room_templates.push(template.clone());
+
+            for strat in &template.strats {
+                let strat_template = make_strat_template(&template, &strat);
+                let strat_html = strat_template.render_once().unwrap();
+                let stripped_strat_name = strip_name(&strat.strat_name);
+                out.strat_html
+                    .insert((stripped_room_name.clone(), strat.from_node_id, strat.to_node_id, stripped_strat_name), strat_html);
+            }
         }
         room_templates.sort_by_key(|x| (x.area.clone(), x.room_name.clone()));
 

@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::thread;
 use std::time::SystemTime;
 
 use actix_easy_multipart::bytes::Bytes;
@@ -12,17 +13,18 @@ use base64::Engine;
 use clap::Parser;
 use hashbrown::{HashMap, HashSet};
 use log::{error, info};
-use maprando::customize::{customize_rom, CustomizeSettings, MusicSettings};
+use maprando::customize::{customize_rom, AreaTheming, CustomizeSettings, MusicSettings};
 use maprando::game_data::{GameData, IndexedVec, Item};
 use maprando::patch::ips_write::create_ips_patch;
 use maprando::patch::{make_rom, Rom};
 use maprando::randomize::{
-    DebugOptions, DifficultyConfig, ItemMarkers, ItemPlacementStyle, ItemPriorityGroup,
-    MotherBrainFight, Objectives, Randomization, Randomizer,
+    randomize_doors, DebugOptions, DifficultyConfig, DoorsMode, ItemDotChange, ItemMarkers,
+    ItemPlacementStyle, ItemPriorityGroup, MotherBrainFight, Objectives, Randomization, Randomizer,
+    SaveAnimals,
 };
 use maprando::seed_repository::{Seed, SeedFile, SeedRepository};
 use maprando::spoiler_map;
-use maprando::web::{AppData, MapRepository, Preset, PresetData, SamusSpriteInfo, SamusSpriteCategory};
+use maprando::web::{AppData, MapRepository, Preset, PresetData, SamusSpriteCategory};
 use rand::{RngCore, SeedableRng};
 use sailfish::TemplateOnce;
 use serde_derive::{Deserialize, Serialize};
@@ -32,6 +34,7 @@ use maprando::web::VERSION;
 
 const VISUALIZER_PATH: &'static str = "../visualizer/";
 const TECH_GIF_PATH: &'static str = "static/tech_gifs/";
+const NOTABLE_GIF_PATH: &'static str = "static/notable_gifs/";
 
 #[derive(TemplateOnce)]
 #[template(path = "errors/missing_input_rom.stpl")]
@@ -77,6 +80,7 @@ struct ReleasesTemplate {
 #[template(path = "about.stpl")]
 struct AboutTemplate {
     version: usize,
+    sprite_artists: Vec<String>,
 }
 
 #[derive(TemplateOnce)]
@@ -96,6 +100,7 @@ struct GenerateTemplate<'a> {
     strat_description: &'a HashMap<String, String>,
     strat_id_by_name: &'a HashMap<String, usize>,
     tech_gif_listing: &'a HashSet<String>,
+    notable_gif_listing: &'a HashSet<String>,
     tech_strat_counts: &'a HashMap<String, usize>,
 }
 
@@ -112,8 +117,24 @@ async fn releases(_app_data: web::Data<AppData>) -> impl Responder {
 }
 
 #[get("/about")]
-async fn about(_app_data: web::Data<AppData>) -> impl Responder {
-    let about_template = AboutTemplate { version: VERSION };
+async fn about(app_data: web::Data<AppData>) -> impl Responder {
+    let mut sprite_artists = vec![];
+
+    for category in &app_data.samus_sprite_categories {
+        for info in &category.sprites {
+            for author in &info.authors {
+                if info.display_name != "Samus" {
+                    sprite_artists.push(author.clone());
+                }
+            }
+        }
+    }
+    sprite_artists.sort_by_key(|x| x.to_lowercase());
+    sprite_artists.dedup();
+    let about_template = AboutTemplate {
+        version: VERSION,
+        sprite_artists,
+    };
     HttpResponse::Ok().body(about_template.render_once().unwrap())
 }
 
@@ -146,6 +167,7 @@ async fn generate(app_data: web::Data<AppData>) -> impl Responder {
         strat_description: &app_data.game_data.strat_description,
         strat_id_by_name: &app_data.game_data.notable_strat_isv.index_by_key,
         tech_gif_listing: &app_data.tech_gif_listing,
+        notable_gif_listing: &app_data.notable_gif_listing,
         tech_strat_counts: &app_data.logic_data.tech_strat_counts,
     };
     HttpResponse::Ok().body(generate_template.render_once().unwrap())
@@ -157,6 +179,7 @@ struct RandomizeRequest {
     preset: Option<Text<String>>,
     shinespark_tiles: Text<f32>,
     resource_multiplier: Text<f32>,
+    gate_glitch_leniency: Text<i32>,
     phantoon_proficiency: Text<f32>,
     draygon_proficiency: Text<f32>,
     ridley_proficiency: Text<f32>,
@@ -181,7 +204,7 @@ struct RandomizeRequest {
     mark_map_stations: Text<bool>,
     transition_letters: Text<bool>,
     item_markers: Text<String>,
-    item_dots_disappear: Text<bool>,
+    item_dot_change: Text<String>,
     all_items_spawn: Text<bool>,
     acid_chozo: Text<bool>,
     fast_elevators: Text<bool>,
@@ -189,9 +212,12 @@ struct RandomizeRequest {
     fast_pause_menu: Text<bool>,
     respin: Text<bool>,
     infinite_space_jump: Text<bool>,
+    momentum_conservation: Text<bool>,
     objectives: Text<String>,
+    doors: Text<String>,
     randomized_start: Text<bool>,
-    save_animals: Text<bool>,
+    save_animals: Text<String>,
+    early_save: Text<bool>,
     disable_walljump: Text<bool>,
     maps_revealed: Text<bool>,
     vanilla_map: Text<bool>,
@@ -207,11 +233,14 @@ struct UnlockRequest {
 struct CustomizeRequest {
     rom: Bytes,
     custom_samus_sprite: Text<bool>,
+    custom_etank_color: Text<bool>,
     samus_sprite: Text<String>,
     vanilla_screw_attack_animation: Text<bool>,
     room_palettes: Text<String>,
     music: Text<String>,
     disable_beeping: Text<bool>,
+    etank_color: Text<String>,
+    tile_theme: Text<String>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -237,7 +266,7 @@ struct SeedData {
     mark_map_stations: bool,
     transition_letters: bool,
     item_markers: String,
-    item_dots_disappear: bool,
+    item_dot_change: String,
     all_items_spawn: bool,
     acid_chozo: bool,
     fast_elevators: bool,
@@ -245,7 +274,11 @@ struct SeedData {
     fast_pause_menu: bool,
     respin: bool,
     infinite_space_jump: bool,
+    momentum_conservation: bool,
     objectives: String,
+    doors: String,
+    save_animals: String,
+    early_save: bool,
     disable_walljump: bool,
     maps_revealed: bool,
     vanilla_map: bool,
@@ -274,7 +307,7 @@ struct SeedHeaderTemplate<'a> {
     early_filler_items: Vec<String>,
     item_placement_style: String,
     difficulty: &'a DifficultyConfig,
-    notable_strats: Vec<String>,
+    _notable_strats: Vec<String>,
     quality_of_life_preset: String,
     supers_double: bool,
     mother_brain_fight: String,
@@ -284,7 +317,7 @@ struct SeedHeaderTemplate<'a> {
     mark_map_stations: bool,
     transition_letters: bool,
     item_markers: String,
-    item_dots_disappear: bool,
+    item_dot_change: String,
     all_items_spawn: bool,
     acid_chozo: bool,
     fast_elevators: bool,
@@ -292,14 +325,18 @@ struct SeedHeaderTemplate<'a> {
     fast_pause_menu: bool,
     respin: bool,
     infinite_space_jump: bool,
+    momentum_conservation: bool,
     objectives: String,
+    doors: String,
+    save_animals: String,
+    early_save: bool,
     disable_walljump: bool,
     maps_revealed: bool,
     vanilla_map: bool,
     ultra_low_qol: bool,
     preset_data: &'a [PresetData],
     enabled_tech: HashSet<String>,
-    enabled_notables: HashSet<String>
+    enabled_notables: HashSet<String>,
 }
 
 #[derive(TemplateOnce)]
@@ -320,9 +357,22 @@ struct CustomizeSeedTemplate {
     seed_header: String,
     seed_footer: String,
     samus_sprite_categories: Vec<SamusSpriteCategory>,
+    etank_colors: Vec<Vec<String>>,
 }
 
-fn render_seed(seed_name: &str, seed_data: &SeedData, app_data: &AppData) -> Result<(String, String)> {
+struct Attempt {
+    attempt_num: usize,
+    thread_handle: Option<thread::JoinHandle<Result<Randomization, anyhow::Error>>>,
+    map_seed: usize,
+    door_randomization_seed: usize,
+    item_placement_seed: usize,
+}
+
+fn render_seed(
+    seed_name: &str,
+    seed_data: &SeedData,
+    app_data: &AppData,
+) -> Result<(String, String)> {
     let ignored_notable_strats: HashSet<String> =
         seed_data.ignored_notable_strats.iter().cloned().collect();
     let notable_strats: Vec<String> = seed_data
@@ -333,7 +383,12 @@ fn render_seed(seed_name: &str, seed_data: &SeedData, app_data: &AppData) -> Res
         .filter(|x| !ignored_notable_strats.contains(x))
         .collect();
     let enabled_tech: HashSet<String> = seed_data.difficulty.tech.iter().cloned().collect();
-    let enabled_notables: HashSet<String> = seed_data.difficulty.notable_strats.iter().cloned().collect();
+    let enabled_notables: HashSet<String> = seed_data
+        .difficulty
+        .notable_strats
+        .iter()
+        .cloned()
+        .collect();
     let seed_header_template = SeedHeaderTemplate {
         seed_name: seed_name.to_string(),
         version: VERSION,
@@ -360,7 +415,7 @@ fn render_seed(seed_name: &str, seed_data: &SeedData, app_data: &AppData) -> Res
             .collect(),
         item_placement_style: format!("{:?}", seed_data.difficulty.item_placement_style),
         difficulty: &seed_data.difficulty,
-        notable_strats,
+        _notable_strats: notable_strats,
         quality_of_life_preset: seed_data
             .quality_of_life_preset
             .clone()
@@ -372,7 +427,7 @@ fn render_seed(seed_name: &str, seed_data: &SeedData, app_data: &AppData) -> Res
         escape_movement_items: seed_data.escape_movement_items,
         mark_map_stations: seed_data.mark_map_stations,
         item_markers: seed_data.item_markers.clone(),
-        item_dots_disappear: seed_data.item_dots_disappear,
+        item_dot_change: seed_data.item_dot_change.clone(),
         transition_letters: seed_data.transition_letters,
         all_items_spawn: seed_data.all_items_spawn,
         acid_chozo: seed_data.acid_chozo,
@@ -381,7 +436,11 @@ fn render_seed(seed_name: &str, seed_data: &SeedData, app_data: &AppData) -> Res
         fast_pause_menu: seed_data.fast_pause_menu,
         respin: seed_data.respin,
         infinite_space_jump: seed_data.infinite_space_jump,
+        momentum_conservation: seed_data.momentum_conservation,
         objectives: seed_data.objectives.clone(),
+        doors: seed_data.doors.clone(),
+        save_animals: seed_data.save_animals.clone(),
+        early_save: seed_data.early_save,
         disable_walljump: seed_data.disable_walljump,
         maps_revealed: seed_data.maps_revealed,
         vanilla_map: seed_data.vanilla_map,
@@ -507,6 +566,28 @@ async fn logic_room(info: web::Path<(String,)>, app_data: web::Data<AppData>) ->
     }
 }
 
+#[get("/logic/room/{room_name}/{from_node}/{to_node}/{strat_name}")]
+async fn logic_strat(
+    info: web::Path<(String, usize, usize, String)>,
+    app_data: web::Data<AppData>,
+) -> impl Responder {
+    let room_name = &info.0;
+    let from_node = info.1;
+    let to_node = info.2;
+    let strat_name = &info.3;
+    if let Some(html) = app_data.logic_data.strat_html.get(&(
+        room_name.clone(),
+        from_node,
+        to_node,
+        strat_name.clone(),
+    )) {
+        HttpResponse::Ok().body(html.clone())
+    } else {
+        let template = RoomNotFoundTemplate {};
+        HttpResponse::NotFound().body(template.render_once().unwrap())
+    }
+}
+
 #[get("/logic/tech/{name}")]
 async fn logic_tech(info: web::Path<(String,)>, app_data: web::Data<AppData>) -> impl Responder {
     let tech_name = &info.0;
@@ -551,6 +632,7 @@ async fn view_seed(info: web::Path<(String,)>, app_data: web::Data<AppData>) -> 
                 seed_header: String::from_utf8(header.to_vec()).unwrap(),
                 seed_footer: String::from_utf8(footer.to_vec()).unwrap(),
                 samus_sprite_categories: app_data.samus_sprite_categories.clone(),
+                etank_colors: app_data.etank_colors.clone(),
             };
             HttpResponse::Ok().body(customize_template.render_once().unwrap())
         }
@@ -636,11 +718,23 @@ async fn customize_seed(
     if rom.data.len() < 0x300000 {
         return HttpResponse::BadRequest().body("Invalid base ROM.");
     }
+    let rom_digest = crypto_hash::hex_digest(crypto_hash::Algorithm::MD5, &rom.data);
+    info!("MD5 digest: {rom_digest}");
 
     let settings = CustomizeSettings {
-        samus_sprite: if req.custom_samus_sprite.0 { Some(req.samus_sprite.0.clone()) } else { None },
+        samus_sprite: if req.custom_samus_sprite.0 && req.samus_sprite.0 != "" {
+            Some(req.samus_sprite.0.clone())
+        } else {
+            None
+        },
         vanilla_screw_attack_animation: req.vanilla_screw_attack_animation.0,
-        area_themed_palette: req.room_palettes.0 == "area-themed",
+        area_theming: if req.tile_theme.0 != "none" {
+            AreaTheming::Tiles(req.tile_theme.0.to_owned())
+        } else if req.room_palettes.0 == "area-themed" {
+            AreaTheming::Palettes
+        } else {
+            AreaTheming::Vanilla
+        },
         music: match req.music.0.as_str() {
             "vanilla" => MusicSettings::Vanilla,
             "area" => MusicSettings::AreaThemed,
@@ -648,9 +742,24 @@ async fn customize_seed(
             _ => panic!("Unexpected music option: {}", req.music.0.as_str()),
         },
         disable_beeping: req.disable_beeping.0,
+        etank_color: if req.custom_etank_color.0 {
+            Some((
+                u8::from_str_radix(&req.etank_color.0[0..2], 16).unwrap() / 8,
+                u8::from_str_radix(&req.etank_color.0[2..4], 16).unwrap() / 8,
+                u8::from_str_radix(&req.etank_color.0[4..6], 16).unwrap() / 8,
+            ))
+        } else {
+            None
+        },
     };
     info!("CustomizeSettings: {:?}", settings);
-    match customize_rom(&mut rom, &patch_ips, &settings, &app_data.game_data, &app_data.samus_sprite_categories) {
+    match customize_rom(
+        &mut rom,
+        &patch_ips,
+        &settings,
+        &app_data.game_data,
+        &app_data.samus_sprite_categories,
+    ) {
         Ok(()) => {}
         Err(err) => {
             return HttpResponse::InternalServerError()
@@ -779,6 +888,10 @@ fn get_difficulty_tiers(
                 difficulty.resource_multiplier,
                 preset.resource_multiplier,
             ),
+            gate_glitch_leniency: i32::max(
+                difficulty.gate_glitch_leniency,
+                preset.gate_glitch_leniency as i32,
+            ),
             escape_timer_multiplier: difficulty.escape_timer_multiplier,
             randomized_start: difficulty.randomized_start,
             save_animals: difficulty.save_animals,
@@ -804,7 +917,7 @@ fn get_difficulty_tiers(
             mark_map_stations: difficulty.mark_map_stations,
             transition_letters: difficulty.transition_letters,
             item_markers: difficulty.item_markers,
-            item_dots_disappear: difficulty.item_dots_disappear,
+            item_dot_change: difficulty.item_dot_change,
             all_items_spawn: difficulty.all_items_spawn,
             acid_chozo: difficulty.acid_chozo,
             fast_elevators: difficulty.fast_elevators,
@@ -812,7 +925,10 @@ fn get_difficulty_tiers(
             fast_pause_menu: difficulty.fast_pause_menu,
             respin: difficulty.respin,
             infinite_space_jump: difficulty.infinite_space_jump,
+            momentum_conservation: difficulty.momentum_conservation,
             objectives: difficulty.objectives,
+            doors_mode: difficulty.doors_mode,
+            early_save: difficulty.early_save,
             disable_walljump: difficulty.disable_walljump,
             maps_revealed: difficulty.maps_revealed,
             vanilla_map: difficulty.vanilla_map,
@@ -964,8 +1080,17 @@ async fn randomize(
         item_priorities: get_item_priorities(item_priority_json),
         resource_multiplier: req.resource_multiplier.0,
         escape_timer_multiplier: req.escape_timer_multiplier.0,
+        gate_glitch_leniency: req.gate_glitch_leniency.0,
         randomized_start: req.randomized_start.0,
-        save_animals: req.save_animals.0,
+        save_animals: match req.save_animals.0.as_str() {
+            "No" => SaveAnimals::No,
+            "Maybe" => SaveAnimals::Maybe,
+            "Yes" => SaveAnimals::Yes,
+            _ => panic!(
+                "Unrecognized save_animals options {}",
+                req.save_animals.0.as_str()
+            ),
+        },
         phantoon_proficiency: req.phantoon_proficiency.0,
         draygon_proficiency: req.draygon_proficiency.0,
         ridley_proficiency: req.ridley_proficiency.0,
@@ -992,7 +1117,11 @@ async fn randomize(
             "3-Tiered" => ItemMarkers::ThreeTiered,
             _ => panic!("Unrecognized item_markers: {}", req.item_markers.0),
         },
-        item_dots_disappear: req.item_dots_disappear.0,
+        item_dot_change: match req.item_dot_change.0.as_str() {
+            "Fade" => ItemDotChange::Fade,
+            "Disappear" => ItemDotChange::Disappear,
+            _ => panic!("Unrecognized item_dot_change: {}", req.item_dot_change.0),
+        },
         all_items_spawn: req.all_items_spawn.0,
         acid_chozo: req.acid_chozo.0,
         fast_elevators: req.fast_elevators.0,
@@ -1000,6 +1129,7 @@ async fn randomize(
         fast_pause_menu: req.fast_pause_menu.0,
         respin: req.respin.0,
         infinite_space_jump: req.infinite_space_jump.0,
+        momentum_conservation: req.momentum_conservation.0,
         objectives: match req.objectives.0.as_str() {
             "Bosses" => Objectives::Bosses,
             "Minibosses" => Objectives::Minibosses,
@@ -1008,6 +1138,12 @@ async fn randomize(
             "Pirates" => Objectives::Pirates,
             _ => panic!("Unrecognized objectives: {}", req.objectives.0),
         },
+        doors_mode: match req.doors.0.as_str() {
+            "Blue" => DoorsMode::Blue,
+            "Ammo" => DoorsMode::Ammo,
+            _ => panic!("Unrecognized doors mode: {}", req.doors.0),
+        },
+        early_save: req.early_save.0,
         disable_walljump: req.disable_walljump.0,
         maps_revealed: req.maps_revealed.0,
         vanilla_map: req.vanilla_map.0,
@@ -1033,41 +1169,87 @@ async fn randomize(
     rng_seed[..8].copy_from_slice(&random_seed.to_le_bytes());
     rng_seed[9] = if race_mode { 1 } else { 0 };
     let mut rng = rand::rngs::StdRng::from_seed(rng_seed);
-    let max_attempts = 200;
-    let mut attempt_num = 0;
+    let max_attempts = 300;
+    let max_threads = app_data.parallelism;
+    let mut attempt_num;
+    let mut attempts_triggered = 0;
     let randomization: Randomization;
     // info!(
     //     "Random seed={random_seed}, difficulty={:?}",
     //     difficulty_tiers[0]
     // );
     info!(
-        "Random seed={random_seed}, difficulty={:?}",
+        "Random seed={random_seed}, max_threads={max_threads}, max_attempts={max_attempts}, difficulty={:?}",
         difficulty_tiers[0]
     );
-    let mut map_seed: usize;
-    let mut item_placement_seed: usize;
+
+    let map_seed: usize;
+    let door_randomization_seed: usize;
+    let item_placement_seed: usize;
+    let mut attempt: Attempt;
+    let mut attempts: Vec<Attempt> = Vec::new();
     loop {
-        attempt_num += 1;
-        if attempt_num > max_attempts {
+        // If we need a thread
+        if (attempts.len() < max_threads) && (attempts_triggered < max_attempts) {
+            attempts_triggered += 1;
+            attempt = Attempt{
+                attempt_num: attempts_triggered,
+                thread_handle: None,
+                map_seed: ((rng.next_u64() & 0xFFFFFFFF) as usize),
+                door_randomization_seed: ((rng.next_u64() & 0xFFFFFFFF) as usize),
+                item_placement_seed: ((rng.next_u64() & 0xFFFFFFFF) as usize),
+            };
+            let difficulty_tiers_local = difficulty_tiers.clone();
+            let app_data_local = app_data.clone();
+            let map_seed_local = attempt.map_seed.clone();
+            let door_randomization_seed_local = attempt.door_randomization_seed.clone();
+            let item_placement_seed_local = attempt.item_placement_seed.clone();
+            let attempts_triggered_local = attempts_triggered.clone();
+            attempt.thread_handle = Some(thread::spawn(move || {
+                let map = if difficulty.vanilla_map {
+                    app_data_local.map_repository.get_vanilla_map(attempts_triggered_local).unwrap()
+                } else {
+                    app_data_local.map_repository.get_map(attempts_triggered_local, map_seed_local).unwrap()
+                };
+                info!("Attempt {attempts_triggered_local}/{max_attempts}: Map seed={map_seed_local}, door randomization seed={door_randomization_seed_local}, item placement seed={item_placement_seed_local}");
+                let locked_doors = randomize_doors(&app_data_local.game_data, &map, &difficulty_tiers_local[0], door_randomization_seed_local);
+                let randomizer = Randomizer::new(&map, &locked_doors, &difficulty_tiers_local, &app_data_local.game_data);
+                return randomizer.randomize(attempts_triggered_local, item_placement_seed_local, display_seed);
+            }));
+            // Insert at position 0 so attempts pop off in the order they were created, simpler than using a VecDeque
+            attempts.insert(0, attempt);
+
+            // If we still need another thread
+            if (attempts.len() < max_threads) && (attempts_triggered < max_attempts) {
+                // Skip consuming and trigger another
+                continue;
+            }
+        }
+
+        // If we've run out of attempts
+        if attempts.len() == 0 {
+            error!("Failed too many randomization attempts {attempts_triggered}/{max_attempts}: random_seed={random_seed}");
             return HttpResponse::InternalServerError()
                 .body("Failed too many randomization attempts");
         }
-        map_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
-        let map = if difficulty.vanilla_map {
-            app_data.map_repository.get_vanilla_map().unwrap()
-        } else {
-            app_data.map_repository.get_map(map_seed).unwrap()
-        };
-        item_placement_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
-        info!("Map seed={map_seed}, item placement seed={item_placement_seed}");
-        let randomizer = Randomizer::new(&map, &difficulty_tiers, &app_data.game_data);
-        randomization = match randomizer.randomize(item_placement_seed, display_seed) {
+
+        // Evaluate the oldest attempt
+        attempt = attempts.pop().unwrap();
+        attempt_num = attempt.attempt_num;
+        randomization = match attempt.thread_handle.expect("thread_handle expected to be set").join().unwrap() {
             Ok(r) => r,
             Err(e) => {
-                info!("Failed randomization: {}", e);
+                info!("Failed randomization {attempt_num}/{max_attempts}: {}", e);
                 continue;
             }
         };
+        map_seed = attempt.map_seed;
+        door_randomization_seed = attempt.door_randomization_seed;
+        item_placement_seed = attempt.item_placement_seed;
+        info!(
+            "Successful attempt {attempt_num}/{attempts_triggered}/{max_attempts}: display_seed={}, random_seed={random_seed}, map_seed={map_seed}, door_randomization_seed={door_randomization_seed}, item_placement_seed={item_placement_seed}",
+            randomization.display_seed,
+        );
         break;
     }
 
@@ -1100,7 +1282,7 @@ async fn randomize(
         mark_map_stations: req.mark_map_stations.0,
         transition_letters: req.transition_letters.0,
         item_markers: req.item_markers.0.clone(),
-        item_dots_disappear: req.item_dots_disappear.0,
+        item_dot_change: req.item_dot_change.0.clone(),
         all_items_spawn: req.all_items_spawn.0,
         acid_chozo: req.acid_chozo.0,
         fast_elevators: req.fast_elevators.0,
@@ -1108,7 +1290,11 @@ async fn randomize(
         fast_pause_menu: req.fast_pause_menu.0,
         respin: req.respin.0,
         infinite_space_jump: req.infinite_space_jump.0,
+        momentum_conservation: req.momentum_conservation.0,
         objectives: req.objectives.0.clone(),
+        doors: req.doors.0.clone(),
+        save_animals: req.save_animals.0.clone(),
+        early_save: req.early_save.0,
         disable_walljump: req.disable_walljump.0,
         maps_revealed: req.maps_revealed.0,
         vanilla_map: req.vanilla_map.0,
@@ -1274,6 +1460,8 @@ struct Args {
     debug: bool,
     #[arg(long, action)]
     static_visualizer: bool,
+    #[arg(long)]
+    parallelism: Option<usize>,
 }
 
 fn get_ignored_notable_strats() -> HashSet<String> {
@@ -1320,17 +1508,24 @@ fn list_tech_gif_files() -> HashSet<String> {
     files
 }
 
+fn list_notable_gif_files() -> HashSet<String> {
+    let mut files: HashSet<String> = HashSet::new();
+    for entry_res in std::fs::read_dir(NOTABLE_GIF_PATH).unwrap() {
+        let entry = entry_res.unwrap();
+        let name = entry.file_name().to_str().unwrap().to_string();
+        files.insert(name);
+    }
+    files
+}
+
 fn get_implicit_tech() -> HashSet<String> {
     [
-        "canPseudoScrew",
+        "canSpecialBeamAttack",
         "canMidAirMorph",
         "canTurnaroundSpinJump",
-        "canCameraManip",
         "canStopOnADime",
         "canUseGrapple",
-        "canDisableEquipment",
         "canEscapeEnemyGrab",
-        "canSpecialBeamAttack",
         "canDownBack",
     ]
     .into_iter()
@@ -1342,33 +1537,39 @@ fn build_app_data() -> AppData {
     let args = Args::parse();
     let sm_json_data_path = Path::new("../sm-json-data");
     let room_geometry_path = Path::new("../room_geometry.json");
-    let palette_path = Path::new("../palettes.json");
+    let palette_theme_path = Path::new("../palette_smart_exports");
     let escape_timings_path = Path::new("data/escape_timings.json");
     let start_locations_path = Path::new("data/start_locations.json");
     let hub_locations_path = Path::new("data/hub_locations.json");
-    let maps_path =
-        Path::new("../maps/session-2022-06-03T17:19:29.727911.pkl-bk30-subarea-balance-2");
+    let etank_colors_path = Path::new("data/etank_colors.json");
+    let maps_path = Path::new("../maps/session-2023-06-08T14:55:16.779895.pkl-bk24-subarea-balance-2");
     let samus_sprites_path = Path::new("../MapRandoSprites/samus_sprites/manifest.json");
     // let samus_spritesheet_layout_path = Path::new("data/samus_spritesheet_layout.json");
+    let mosaic_path = Path::new("../Mosaic");
 
     let game_data = GameData::load(
         sm_json_data_path,
         room_geometry_path,
-        palette_path,
+        palette_theme_path,
         escape_timings_path,
         start_locations_path,
         hub_locations_path,
+        mosaic_path,
     )
     .unwrap();
     // let samus_customizer = SamusSpriteCustomizer::new(samus_spritesheet_layout_path).unwrap();
     let tech_gif_listing = list_tech_gif_files();
+    let notable_gif_listing = list_notable_gif_files();
     let presets: Vec<Preset> =
         serde_json::from_str(&std::fs::read_to_string(&"data/presets.json").unwrap()).unwrap();
+    let etank_colors: Vec<Vec<String>> =
+        serde_json::from_str(&std::fs::read_to_string(&etank_colors_path).unwrap()).unwrap();
     let ignored_notable_strats = get_ignored_notable_strats();
     let implicit_tech = get_implicit_tech();
     let preset_data = init_presets(presets, &game_data, &ignored_notable_strats, &implicit_tech);
     let logic_data = LogicData::new(&game_data, &tech_gif_listing, &preset_data);
-    let samus_sprite_categories: Vec<SamusSpriteCategory> = serde_json::from_str(&std::fs::read_to_string(&samus_sprites_path).unwrap()).unwrap();
+    let samus_sprite_categories: Vec<SamusSpriteCategory> =
+        serde_json::from_str(&std::fs::read_to_string(&samus_sprites_path).unwrap()).unwrap();
     AppData {
         game_data,
         preset_data,
@@ -1378,11 +1579,14 @@ fn build_app_data() -> AppData {
         seed_repository: SeedRepository::new(&args.seed_repository_url).unwrap(),
         visualizer_files: load_visualizer_files(),
         tech_gif_listing,
+        notable_gif_listing,
         logic_data,
         samus_sprite_categories,
         // samus_customizer,
         debug: args.debug,
         static_visualizer: args.static_visualizer,
+        etank_colors,
+        parallelism: args.parallelism.unwrap_or(thread::available_parallelism().unwrap().get()),
     }
 }
 
@@ -1391,6 +1595,7 @@ async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()
         .init();
+
     let app_data = web::Data::new(build_app_data());
 
     HttpServer::new(move || {
@@ -1414,7 +1619,9 @@ async fn main() {
             .service(view_seed_redirect)
             .service(logic)
             .service(logic_room)
+            .service(logic_strat)
             .service(logic_tech)
+            .service(actix_files::Files::new("/static/sm-json-data", "../sm-json-data"))
             .service(actix_files::Files::new("/static", "static"))
     })
     .bind("0.0.0.0:8080")

@@ -1,17 +1,50 @@
-next release:
-- playtest
+- start logging the seed generation latency
+- cross-room strat cleanup
+- mosaic preview release
+- release map pool with more variety
+- split off toilet from aqueduct
+- clean up gpu setup
 
 priority:
-- add tech percentages on Generate page
-- order tech/strats in logical way in the UI
-  - for tech: descending order by # of strats
-  - for notable strats: by area/subarea/room
-- randomized start: check requires on hub locations
-- add more random start locations, in item rooms (speed booster room, morph ball room, screw attack room bottom)
-- add momentum conservation patch (in "Max" QoL)
+- consider making "guaranteed early save" the default
+- speed booster hall: heat frames could be slightly less?
+- try using other zebes asleep music, to see if snails make a sound?
+- make script to convert norfair cre to cre.
+- add door flags to refine logic
+- add door lock bypass strats to logic
+- balance door randomization across areas to avoid running out of tiles?
+  - handle lack of tiles more gracefully?
+- randomized title screen
+- controller config special settings (moonwalk) customization
+- set up a more robust way for users to save & select presets
+- overhaul two-phase randomization/customization process
+  - create ROM in customization only
+- move input ROM off Generate page (and into separate dialogue that only shows on first use).
+- convert tech/strat AVIs to WebM & WebP (using ffmpeg CLI)
+  - WebM/VP9 for full playback using HTML5 <video>
+  - WebP for thumbnails
+  - use image-rendering: pixelated
+- add CF health refill to logic
+  - tricky CF at ammo refill stations
+- logic: add some 3-room shinecharge strats to logic (ones that can work with existing schema)
+- add notable for underwater canGateGlitch (Very Hard)?
+- remove old-format farms and refills from sm-json-data?
+- make hub requirements consistent with new farm approach?
+  - actually probably don't need to define hub rooms anymore:
+      - just check for ability to refill each resource type from the start location and get back
+- logic pages (tech/room/strat): add way to fill out items/flags/resources/obstacles to simulate logic
+- take another look at boss fights
+  - create table to show in help button, to make boss logic more transparent (in addition to showing formulas)
+  - 5 Super phantoon fight probably needs more requirements than it currently has.
 - add objectives:
   - Larvas: 4 special items (replacing missiles)
   - Random
+- Improve save station balancing
+  - On model side, spread out the placement of potential save rooms (single-tile rooms).
+  - Define "distance" in a way that accounts for ease of access (e.g. possible item/tech dependencies)
+- Improve area clustering
+- investigate panic during spoiler log construction:
+  - RUST_BACKTRACE=1 time cargo run --bin maprando-cli -- --map ../maps/session-2022-06-03T17:19:29.727911.pkl-bk30-subarea-balance-2/1000001.json --item-placement-seed 3 --input-rom ~/Downloads/Super\ Metroid\ \(JU\)\ \[\!\].smc --output-rom ~/Downloads/testrom.smc
 - investigate resource_multiplier bug that happened in Osse's seed with resource_multiplier=8:
   - https://maprando.com/seed/isnUf9YjIhvW-BJFrvFuyw/data/visualizer/index.html
   - (was from enemykill not using multiplier)
@@ -24,20 +57,9 @@ priority:
   - possibly related: issue where filler items are re-randomized when trying new key item.
     - maybe re-randomizing is ok, but on success it should try replacing key item with Missile (instead of having Missile be first key item tried)
 - fix quick-reload on last frame of pause/unpause
-- adjust area colors
-  - darken wrecked ship a bit
-  - maybe add a little color to tourian, a bit tan maybe (like the tourian sand)
 - check if reloading from bottom/top of elevator works correctly (not skips back a save)
 - do something about screen shaking during samus appears (in start location: rising tide, amphitheatre)
   - maybe customization option to get rid of shaking in general?
-- fix bug in escape room 1: top block of right transition seems solid (reported by somerando)
-- new map pool
-  - bosses not cleared unless "enemies cleared" option is enabled
-- logic:
-  - non infinitely-spawning enemy farms
-  - split canBePatient into canBePatient & canBeVeryPatient
-    - fix three musketeers room
-  - add some 3-room shinecharge strats to logic (ones that can work with existing schema)
 - handle canShinesparkWithReserve in randomizer (and remove it from being ignored)
 - incrementally build graph traversal with increasing difficulty tiers, acquiring flags in the process.
   - will allow better accounting of the difficulty of boss fights in forced mode
@@ -45,29 +67,40 @@ priority:
   - improved spoiler log route
 - show objective progress in pause menu (also zebes awake, phantoon defeated)?
   - or maybe just make objective X's fade on map (if we do faded item dots)
-- overhaul how randomization/customization phases work: run customization on client (with Rust WebAssembly?)
-  - make it so that customization can use matching version from when the seed was generated
-  - include more options for customization
-  - ROM won't need to be provided for generation, only customization
 - help buttons for rest of settings (e.g. explain boss proficiency calculations)
 - logic simulator
-- get rid of symlink for sm-json-data
 - temporarily disable comeInWithGMode strats through sand since this will not be correct with how it
   is currently set up (since there is no way to go up through sand)
 
 later:
-- move input ROM off Generate page (and into separate dialogue that only shows on first use).
-- set up a more robust way for users to save & select presets
+- fix palette fade issue when entering MB room from left (Mother Brain starts from white?)
+- possibly bad idea: should getting map station add arrows to other maps (ones leading into current map)?
+- see if we can do something about silent snails with Zebes asleep music
+- for forced mode, also use tier below Basic?
+- enhancements to momentum conservation patch
+  - remove need to be holding dash or to be in spin
+  - reset speed boost counter whenever momentum conservation comes into play, to avoid making it too easy to get blue
+  - retain speed when turning around with spin?
+  - on ground, retain horizontal speed when unmorphing
+    - by pressing up (or jump, if spring ball not equipped) while holding forward
+  - in air, retain horizontal speed when soft unmorphing while holding forward
+- add animated GIFs on room/tech/strat pages for notable strats.
+- maybe overhaul how randomization/customization phases work: run customization on client (with Rust WebAssembly?)
+  - make it so that customization can use matching version from when the seed was generated
+  - include more options for customization
+  - ROM won't need to be provided for generation, only customization
+- map improvements
+  - fix little pause menu palette issue at top of equipment screen (green where gray should be)
+- handle runways with conditional physics (Volcano Room, Amphitheatre, East Pants Room)
+- check why Tourian Escape Room 1 runway isn't allowing Speedball strat into Wrecked Ship Main Shaft (on Expert)
+- remove invisible solid tile in Tourian Escape Room 1, above transition
+- maybe move enhanced Samus controls into separate option (instead of Max QoL)?
 - enforce tech dependencies:
   - e.g. enabling "canPreciseWalljump" should enable dependency "canWalljump"
   - disabling "canWalljump" should disable dependent "canPreciseWalljump"
 - gravity seems to provide 50% heat reduction on elevator ride? (Remove this.)
    - https://clips.twitch.tv/RepleteShyManateeTBTacoLeft-Ip5vQynrc0SQYQUj
    - maybe during acid chozo drain too?
-- add customization option for etank color
-- improve pause menu map scrolling:
-  - when fast pause is enabled, double map scroll speed (but keep beeping frequency the same)?
-  - allow moving diagonally
 - change how cross-room logic works?:
   - unify cross-room strats to go under links, with annotations on the cross-room state (in new strat properties)
   - replaces "initiateRemotely", allows obstacles and one-way cross-room paths to be handled properly
@@ -88,22 +121,15 @@ later:
   - (not part of QoL:) fix crash when pausing on frame when auto reserve triggers 
   - See existing patch for some of these: https://metroidconstruction.com/resource.php?id=418
 - consider bot-friendly API
-- use "crateria asleep" song somewhere:
-  - maybe in the initial part of crateria when zebes not awake.
-  - alternatively: in the wrecked ship, replacing one of the two nearly identical songs.
 - "wild" item progression mode, where new item may be required to be used for the return path.
 - consider idea from selicre: "what if there was a mode in which walljumps could be unlocked by visiting etecoons (and shinesparking by visiting dachora)?"
 - custom demos
 - include a check that the client and server are matching versions and give a more meaningful error when they aren't
 - look into botwoon requirements: 
   https://maprando.com/seed/-yvSvwjFlrfJN1NRxDi-Jw/data/visualizer/index.html
-- unlock all gray doors during escape (eventually only when "enemies cleared during escape" is enabled)
-  - e.g. metal pirates
-- press X to fast forward during credits?
 - QoL option for save station fast travel (in Max)?
 - investigate problem when using quick reload (L+R+Select+Start) while unpausing with 0 energy.
 - investigate: ridley gray door closed when reserve triggered (in sapphron seed)
-- on seed page: for each tier, show selected tech/strats or deselected tech/strat, whichever is a shorter list
 - fix escape timer tech mapping to use reverse Amphitheatre notable for can_acid_dive
 - model improvement:
   - try using localized output: use token that room is placed in, instead of applying attention across all tokens
@@ -138,19 +164,12 @@ later:
 - fix how spoiler map sometimes won't show escape route
 - see if it is possible to prevent song changes from messing up enemy behavior
 - fix problem with disappearing typewriter text when pausing as escape sequence starts
-- add tech for underwater single-sided wall-jumping (UWU)
-  - limit to climbs of ~2 tiles
-  - require HiJump
-  - require SpaceJump for breaking the water
-  - put in Insane tier
-- Add override for Tourian Hopper run under strat from left to top (imyt strat)
 - add a tip that you can share a seed using the URL.
-- logic: ice moonfall (in dachora room)
 - logic (maybe): moondance (bowling alley), tas dance (green brin shaft)
 - make graph traversals faster by using previous step for initial local states (probably not worth it?):
   - we'd have to do a full graph traversal to get spoiler route as a separate step, to avoid getting weird long paths
-- in sm-json-data: add logical requirement for refills
-  - use this for strats that enter G-mode in a room with a refill (or the Ship), use it, and then go back out still in G-mode?
+- in sm-json-data: use Ship refill in G-mode strats:
+  - for strats that enter G-mode into Landing Site, use it, and then go back out still in G-mode
 - replace Botwoon Hallway portion of Toilet level data with something more neutral
    - also remove the enemies from the Botwoon Hallway part
 - fix gray door after mother brain when entering baby kraid (& metal pirates, boss rooms, etc.?)
@@ -164,48 +183,16 @@ later:
 - check if pants room internal door connects correctly in logic
 - add option (enabled on Challenge) to not treat tanks as filler items anymore after giving Varia (including the step where giving Varia)
   - maybe more general option to postpone unneeded filler items aside from missiles
-- spoiler visualizer improvements:
-  - refinements
-    - get rid of "Route Unavailable"
-    - show faded item if some node in the room is reachable but the item itself is not (or is only one-way reachable)
-    - make it so you can click on an item in the step panel and it will show the route to the item
-    - show the route info in a separate panel below the step panel
-    - initially show only Step 1, and center the screen over Landing Site.
-       - Add button for "Show next step" and "Show all steps"
-  - integrate with logic pages:
-    - double-clicking on room can go to our room page (instead of to wiki)
-    - clicking on a strat (in route info) goes to strat page (create these)
-  - other possible improvements:
-    - mouse-over a room shows an image of the room
-      - or, there's a toggle to switch from map view to image view.
-    - add controls to properly zoom
-    - once available, use junction bounding boxes to plot the paths more accurately, and avoid having lines going outside of the room's tiles
-    - show flags in the steps too (e.g. bosses) and be able to click on them too to show the route
-      - come up with new icons for these: G4 bosses, minibosses, golden torizo, shaktool, maridia tube, acid chozo statue, mother brain
-      - (mother brain needs to be added to the logic as a flag)
-- separate animation for screw attack without space jump (like in SMZ3?)
-- fix panic that is occasionally happening:
-  thread 'actix-rt|system:0|arbiter:0' panicked at 'assertion failed: num_key_items_to_place >= 1', src/randomize.rs:671:9
+- spoiler visualizer improvements (see GitHub issue)
 - find some way to have forced mode take into account difficulty of defeating bosses (and other flags)
   - for each flag, identify its tier using just the flag edge (not redoing a full graph traversal)
   - then for the item placement, have the graph traversal treat that flag not as free but as whatever difficulty it was.
-- consider putting back the save confirmation.
 - fix graphics in door transitions?
 - fix (sometimes?) glitched right door in GT. X-Ray showed a plasma beam inside it
-- add count of how many times each tech is used
-- make tech dependencies also look at "obstacles"
-- consider splitting up Streamlined escape into 3 separate QoL options (removing the need for a footnote to explain it)
-- add crystal flash to logic when needed for energy
-  - do we need sm-json-data to mark nodes which are unsafe for crystal flashing?
-- consider adding a mode that can require leaps-of-faith
 - adjust elevator heatFrames when fast elevators enabled
 - make quick reload work while in pause menu?
 - refine cross room shinesparks:
     - slopes
-- controller config special settings (moonwalk) customization
-- tweak balancing:
-  - give a little more weight to save coverage
-  - give a little less weight to hallway penalty
 - consider overhauling how cross-room logic is encoded:
   - canComeInCharged should be in a special part of the "node" (symmetric to "canLeaveCharged"), not in "links"
   - same thing for adjacentRunway
@@ -238,12 +225,6 @@ later:
   - make OOB cause instant death?
   - others
 - Add way to export settings from seed page (and export/import on main page).
-- With a future ML model, treat Mother Brain room as 0-way (instead of one-way) to ensure items, maps, etc.
-  cannot be locked behind Mother Brain.
-    - Improve map connectedness so it's less likely for a large area to have only one exit.
-    - Spread out placement of single-tile, single-door rooms to help balancing of saves & refills.
-- at end of randomization, make sure G4 bosses are reachable (to guard against a case like Phantoon being locked behind
-  Bowling, or a G4 boss locked behind Mother Brain).
 - Better validation/error-handling of web service
   - push more validation into client
 - Add note to strat in Post-Crocomire farming room to get to top-left with HiJump
@@ -255,7 +236,6 @@ later:
 - Make Gravity-only Samus palette different from Gravity+Varia.
     - Figure out how this can work with custom sprites.
 - Consider rejecting cases where the set of bireachable item locations grows too slow or too fast.
-- fix color of reserve tank energy in equipment menu (got messed up by colored arrows)
 - move GFX colors:
   - Morph Ball room (blue brinstar), tileset 7:
     - [0x31, 0x32, 0x33] -> [0x38, 0x39, 0x3A]
@@ -265,20 +245,19 @@ later:
 - fix suit graphics not showing after getting suit (consequence of skipping animation)?
 - have forced mode take into account return path?
   - probably bad idea, because returning may not be required (before getting another item that makes it easier).
+- Do something about Crocomire funny map behavior (especially when entering from left door)?
+
 
 maybe someday?:
-- see if we can represent more room details on map: heat, water(?), gates, tunnels, sand
 - minimizer mode? (select rooms to include randomly, hand-picked, and/or user-selected)
 - make map rando for other hacks (e.g. project base, subversion?)
   - would be a lot of work. we could invite others to help implement the logic
-- multitroid support
 
 
 rejected ideas (probably):
 - set boss flag immediately when boss dies.
 - balance boss distribution (one boss per area, corresponding to vanilla?)
 - consider moving the MB barriers to the right one tile (or two?), to make them interfere less with ice zeb skip.
-- Remove Crocomire funny map behavior?
 - Option for anti-softlock patches (e.g. in Moat, Early Supers, etc.)?
   - disable acid trigger in Leodox room?
 

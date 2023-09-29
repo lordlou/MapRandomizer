@@ -8,12 +8,13 @@ import os
 
 
 # input_rom_path = '/home/kerby/Downloads/Super Metroid (JU) [!].smc'
-input_rom_path = '/home/kerby/Downloads/Super Metroid Practice Hack-v2.5.3-tinystates-ntsc.sfc'
+# input_rom_path = '/home/kerby/Downloads/Super Metroid Practice Hack-v2.5.3-tinystates-ntsc.sfc'
+input_rom_path = '/home/kerby/Downloads/Super Metroid Practice Hack-v2.5.8.1-tinystates-ntsc.sfc'
 # input_rom_path = '/home/kerby/Downloads/Practice-v2.5.1-suits.sfc'
 # input_rom_path = '/home/kerby/Downloads/smmr-v8-66-115673117270825932886574167490559/smmr-v8-66-115673117270825932886574167490559.sfc'
 # input_rom_path = '/home/kerby/Downloads/smmr-v0-30-115673117270825932886574167490559.sfc'
 # input_rom_path = '/home/kerby/Downloads/smmr-v0-5-115673117270825932886574167490559.sfc'
-output_rom_path = '/home/kerby/Downloads/roms/maptest.smc'
+output_rom_path = '/home/kerby/Downloads/roms/sm-prachack-2.5.8.1-doorhurt-blue.smc'
 orig_rom = Rom(open(input_rom_path, 'rb'))
 rom = Rom(open(input_rom_path, 'rb'))
 
@@ -28,14 +29,14 @@ area_arr = [rom.read_u8(room.rom_address + 1) for room in rooms]
 
 
 patches = [
-    'credits',
-    'new_game_extra',
+    # 'credits',
+    # 'new_game_extra',
     # 'disable_walljump'
     # 'holes',
     # 'oob_death',
     # 'spinjumprestart',
     # 'new_game_extra',
-    # 'door_hurt',
+    'door_hurt',
     # "everest_tube"
     # 'complementary_suits',
     # 'complementary_suits_noheat',
@@ -134,6 +135,7 @@ for i in range(32):
 # # # for i, idx in enumerate(new_text_tile_idxs):
 # # #     map_patcher.write_tile_2bpp(idx, vanilla_text_tiles[i], switch_red_white=False)
 # #
+
 plm_types_to_remove = [
     0xC88A, 0xC85A, 0xC872,  # right pink/yellow/green door
     0xC890, 0xC860, 0xC878,  # left pink/yellow/green door

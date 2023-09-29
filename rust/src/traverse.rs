@@ -214,7 +214,7 @@ fn apply_draygon_requirement(
     global: &GlobalState,
     mut local: LocalState,
     proficiency: f32,
-    can_be_patient_tech_id: usize,
+    can_be_very_patient_tech_id: usize,
 ) -> Option<LocalState> {
     let boss_hp: f32 = 6000.0;
     let charge_damage = get_charge_damage(&global);
@@ -249,7 +249,7 @@ fn apply_draygon_requirement(
         }
     };
 
-    if kill_time >= 180.0 && !global.tech[can_be_patient_tech_id] {
+    if kill_time >= 180.0 && !global.tech[can_be_very_patient_tech_id] {
         // We don't have enough patience to finish the fight:
         return None;
     }
@@ -280,7 +280,7 @@ fn apply_ridley_requirement(
     global: &GlobalState,
     mut local: LocalState,
     proficiency: f32,
-    can_be_patient_tech_id: usize,
+    can_be_very_patient_tech_id: usize,
 ) -> Option<LocalState> {
     let mut boss_hp: f32 = 18000.0;
     let mut time: f32 = 0.0; // Cumulative time in seconds for the fight
@@ -325,7 +325,7 @@ fn apply_ridley_requirement(
         );
         boss_hp = 0.0;
         time += charge_shots_to_use as f32 * 1.5 / firing_rate; // Assume max 1 charge shot per 1.5 seconds
-    } else if global.items[Item::Morph as usize]{
+    } else if global.items[Item::Morph as usize] {
         // Only use Power Bombs if Charge is not available:
         let pbs_available = global.max_power_bombs - local.power_bombs_used;
         let pbs_to_use = max(
@@ -345,7 +345,7 @@ fn apply_ridley_requirement(
         return None;
     }
 
-    if time >= 180.0 && !global.tech[can_be_patient_tech_id] {
+    if time >= 180.0 && !global.tech[can_be_very_patient_tech_id] {
         // We don't have enough patience to finish the fight:
         return None;
     }
@@ -564,6 +564,37 @@ fn suit_damage_factor(global: &GlobalState) -> Capacity {
     }
 }
 
+fn apply_gate_glitch_leniency(
+    mut local: LocalState,
+    global: &GlobalState,
+    green: bool,
+    heated: bool,
+    difficulty: &DifficultyConfig,
+) -> Option<LocalState> {
+    if heated && !global.items[Item::Varia as usize] {
+        local.energy_used +=
+            (difficulty.gate_glitch_leniency as f32 * difficulty.resource_multiplier * 60.0) as i32;
+        local = match validate_energy(local, global) {
+            Some(x) => x,
+            None => return None,
+        };
+    }
+    if green {
+        local.supers_used += difficulty.gate_glitch_leniency;
+        return validate_supers(local, global);
+    } else {
+        let missiles_available = global.max_missiles - local.missiles_used;
+        if missiles_available >= difficulty.gate_glitch_leniency {
+            local.missiles_used += difficulty.gate_glitch_leniency;
+            return validate_missiles(local, global);
+        } else {
+            local.missiles_used = global.max_missiles;
+            local.supers_used += difficulty.gate_glitch_leniency - missiles_available;
+            return validate_supers(local, global);
+        }
+    }
+}
+
 pub fn apply_requirement(
     req: &Requirement,
     global: &GlobalState,
@@ -602,12 +633,15 @@ pub fn apply_requirement(
                 None
             }
         }
-        Requirement::NotFlag(flag_id) => {
-            if !global.flags[*flag_id] {
-                Some(local)
-            } else {
-                None
-            }
+        Requirement::NotFlag(_flag_id) => {
+            // We're ignoring this for now. It should be safe because all strats relying on a "not" flag will be
+            // guarded by "canRiskPermanentLossOfAccess" if there is not an alternative strat with the flag set.
+            Some(local)
+            // if !global.flags[*flag_id] {
+            //     Some(local)
+            // } else {
+            //     None
+            // }
         }
         Requirement::HeatFrames(frames) => {
             let varia = global.items[Item::Varia as usize];
@@ -654,6 +688,12 @@ pub fn apply_requirement(
                 multiply(3 * frames / 2, difficulty) / suit_damage_factor(global);
             validate_energy(new_local, global)
         }
+        Requirement::MetroidFrames(frames) => {
+            let mut new_local = local;
+            new_local.energy_used +=
+                multiply(3 * frames / 4, difficulty) / suit_damage_factor(global);
+            validate_energy(new_local, global)
+        }
         Requirement::Damage(base_energy) => {
             let mut new_local = local;
             new_local.energy_used += base_energy / suit_damage_factor(global);
@@ -666,26 +706,42 @@ pub fn apply_requirement(
         // },
         Requirement::Missiles(count) => {
             let mut new_local = local;
-            new_local.missiles_used += multiply(*count, difficulty);
+            new_local.missiles_used += *count;
             validate_missiles(new_local, global)
         }
+        Requirement::Supers(count) => {
+            let mut new_local = local;
+            new_local.supers_used += *count;
+            validate_supers(new_local, global)
+        }
+        Requirement::PowerBombs(count) => {
+            let mut new_local = local;
+            new_local.power_bombs_used += *count;
+            validate_power_bombs(new_local, global)
+        }
+        Requirement::GateGlitchLeniency { green, heated } => {
+            apply_gate_glitch_leniency(local, global, *green, *heated, difficulty)
+        }
         Requirement::MissilesCapacity(count) => {
-            let adjusted_count = multiply(*count, difficulty);
-            if global.max_missiles >= adjusted_count {
+            if global.max_missiles >= *count {
                 Some(local)
             } else {
                 None
             }
         }
-        Requirement::Supers(count) => {
-            let mut new_local = local;
-            new_local.supers_used += multiply(*count, difficulty);
-            validate_supers(new_local, global)
+        Requirement::SupersCapacity(count) => {
+            if global.max_supers >= *count {
+                Some(local)
+            } else {
+                None
+            }
         }
-        Requirement::PowerBombs(count) => {
-            let mut new_local = local;
-            new_local.power_bombs_used += multiply(*count, difficulty);
-            validate_power_bombs(new_local, global)
+        Requirement::PowerBombsCapacity(count) => {
+            if global.max_power_bombs >= *count {
+                Some(local)
+            } else {
+                None
+            }
         }
         Requirement::EnergyRefill => {
             let mut new_local = local;
@@ -737,9 +793,14 @@ pub fn apply_requirement(
                 Some(new_local)
             }
         }
-        Requirement::ReserveTrigger { min_reserve_energy, max_reserve_energy } => {
+        Requirement::ReserveTrigger {
+            min_reserve_energy,
+            max_reserve_energy,
+        } => {
             if reverse {
-                if local.reserves_used > 0 || local.energy_used >= min(*max_reserve_energy, global.max_reserves) {
+                if local.reserves_used > 0
+                    || local.energy_used >= min(*max_reserve_energy, global.max_reserves)
+                {
                     None
                 } else {
                     let mut new_local = local;
@@ -748,7 +809,10 @@ pub fn apply_requirement(
                     Some(new_local)
                 }
             } else {
-                let reserve_energy = min(global.max_reserves - local.reserves_used, *max_reserve_energy);
+                let reserve_energy = min(
+                    global.max_reserves - local.reserves_used,
+                    *max_reserve_energy,
+                );
                 if reserve_energy >= *min_reserve_energy {
                     let mut new_local = local;
                     new_local.reserves_used = global.max_reserves;
@@ -766,56 +830,60 @@ pub fn apply_requirement(
             apply_phantoon_requirement(global, local, difficulty.phantoon_proficiency)
         }
         Requirement::DraygonFight {
-            can_be_patient_tech_id,
+            can_be_very_patient_tech_id,
         } => apply_draygon_requirement(
             global,
             local,
             difficulty.draygon_proficiency,
-            *can_be_patient_tech_id,
+            *can_be_very_patient_tech_id,
         ),
         Requirement::RidleyFight {
-            can_be_patient_tech_id,
+            can_be_very_patient_tech_id,
         } => apply_ridley_requirement(
             global,
             local,
             difficulty.ridley_proficiency,
-            *can_be_patient_tech_id,
+            *can_be_very_patient_tech_id,
         ),
         Requirement::BotwoonFight { second_phase } => {
             apply_botwoon_requirement(global, local, difficulty.botwoon_proficiency, *second_phase)
         }
         Requirement::ShineCharge {
             used_tiles,
-            shinespark_frames,
-            excess_shinespark_frames,
-            shinespark_tech_id,
         } => {
-            if (global.tech[*shinespark_tech_id] || *shinespark_frames == 0)
-                && global.items[Item::SpeedBooster as usize]
+            if global.items[Item::SpeedBooster as usize]
                 && *used_tiles >= global.shine_charge_tiles
             {
+                Some(local)
+            } else {
+                None
+            }
+        }
+        Requirement::Shinespark {
+            frames,
+            excess_frames,
+            shinespark_tech_id,
+        } => {
+            if global.tech[*shinespark_tech_id] {
                 let mut new_local = local;
-                if *shinespark_frames == 0 {
-                    Some(new_local)
-                } else {
-                    if reverse {
-                        if new_local.energy_used <= 28 {
-                            new_local.energy_used = 28 + shinespark_frames - excess_shinespark_frames;
-                        } else {
-                            new_local.energy_used += shinespark_frames;
-                        }
-                        validate_energy(new_local, global)
+                if reverse {
+                    if new_local.energy_used <= 28 {
+                        new_local.energy_used =
+                            28 + frames - excess_frames;
                     } else {
-                        new_local.energy_used += shinespark_frames - excess_shinespark_frames + 28;
-                        if let Some(mut new_local) = validate_energy(new_local, global) {
-                            let energy_remaining = global.max_energy - new_local.energy_used - 1;
-                            new_local.energy_used +=
-                                std::cmp::min(*excess_shinespark_frames, energy_remaining);
-                            new_local.energy_used -= 28;
-                            Some(new_local)
-                        } else {
-                            None
-                        }
+                        new_local.energy_used += frames;
+                    }
+                    validate_energy(new_local, global)
+                } else {
+                    new_local.energy_used += frames - excess_frames + 28;
+                    if let Some(mut new_local) = validate_energy(new_local, global) {
+                        let energy_remaining = global.max_energy - new_local.energy_used - 1;
+                        new_local.energy_used +=
+                            std::cmp::min(*excess_frames, energy_remaining);
+                        new_local.energy_used -= 28;
+                        Some(new_local)
+                    } else {
+                        None
                     }
                 }
             } else {
@@ -836,6 +904,9 @@ pub fn apply_requirement(
         }
         Requirement::ComeInWithGMode { .. } => {
             panic!("ComeInWithGMode should be resolved during preprocessing")
+        }
+        Requirement::DoorUnlocked { .. } => {
+            panic!("DoorUnlocked should be resolved during preprocessing")
         }
         Requirement::And(reqs) => {
             let mut new_local = local;

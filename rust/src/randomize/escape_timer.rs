@@ -12,6 +12,7 @@ use crate::game_data::IndexedVec;
 use crate::game_data::Map;
 use crate::game_data::RoomGeometryDoorIdx;
 use crate::game_data::RoomGeometryRoomIdx;
+use crate::randomize::SaveAnimals;
 
 use super::DifficultyConfig;
 use super::MotherBrainFight;
@@ -255,7 +256,7 @@ pub fn compute_escape_data(
     let animals_spoiler: Option<Vec<SpoilerEscapeRouteEntry>>;
     let ship_spoiler: Vec<SpoilerEscapeRouteEntry>;
     let base_igt_frames: usize;
-    if difficulty.save_animals {
+    if difficulty.save_animals != SaveAnimals::No {
         let animals_path = get_shortest_path(
             graph.mother_brain_vertex_id,
             graph.animals_vertex_id,
@@ -274,7 +275,7 @@ pub fn compute_escape_data(
     }
 
     let base_igt_seconds: f32 = (base_igt_frames as f32) / 60.0;
-    let base_leniency_factor: f32 = 1.2;
+    let base_leniency_factor: f32 = 1.1;
     let raw_time_seconds =
         base_igt_seconds * base_leniency_factor * difficulty.escape_timer_multiplier;
     let mut final_time_seconds = f32::ceil(raw_time_seconds / 5.0) * 5.0;

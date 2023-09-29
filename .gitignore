@@ -11,3 +11,4 @@ roms/
 rust/target/
 seeds/
 package-lock.json
+tmp/

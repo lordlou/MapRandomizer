@@ -26,6 +26,7 @@ class DoorIdentifier:
     y: int
     exit_ptr: Optional[int]
     entrance_ptr: Optional[int]
+    offset: Optional[int]  # number of tiles between the door shell and the door transition tiles (None if there is no door shell)
     subtype: DoorSubtype = DoorSubtype.NORMAL
 
 
@@ -66,6 +67,7 @@ class Room:
     items: Optional[List[Item]] = None
     node_tiles: Optional[Dict[int, List[Tuple[int, int]]]] = None
     twin_node_tiles: Optional[Dict[int, List[Tuple[int, int]]]] = None
+    heated: bool = False
 
     def populate(self):
         self.height = len(self.map)

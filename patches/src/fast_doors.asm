@@ -1,11 +1,12 @@
 ; Based on https://github.com/tewtal/sm_practice_hack/blob/723e3a6d18a3f66903cc067cd923e0a6b28aebf5/src/cutscenes.asm#L29
+; Author: NobodyNada
 
 arch snes.cpu
 
 !bank_80_freespace_start = $80D100
 !bank_80_freespace_end = $80D140
-!bank_82_freespace_start = $82F900
-!bank_82_freespace_end = $82FA00
+!bank_82_freespace_start = $82FD80
+!bank_82_freespace_end = $82FE00
 
 
 !Speed = 2

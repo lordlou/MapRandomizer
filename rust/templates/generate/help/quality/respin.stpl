@@ -15,9 +15,11 @@
       <p>If enabled, you can press jump to make Samus spin while mid-air. For example, this can be used after
       having broken spin, or when falling or jumping without spin.</p>
 
-      <p><b>Note</b>: The randomizer logic currently does not take this setting into account. Therefore, even 
+      <p><b>Note</b>: The randomizer logic does not take this setting into account. Therefore, even 
       when it is enabled, the game will not require it to be used, and it may create sequence break opportunities.
       </p>
+
+      <p><i>Patch by Kejardon.</i></p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
