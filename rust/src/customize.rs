@@ -3,13 +3,12 @@ pub mod room_palettes;
 pub mod vanilla_music;
 
 use anyhow::{bail, Result};
-use std::path::Path;
 
 use crate::customize::vanilla_music::override_music;
 use crate::{
     game_data::GameData,
-    patch::{apply_ips_patch, snes2pc, write_credits_big_char, Rom},
-    web::SamusSpriteCategory,
+    patch::{ snes2pc, Rom},
+    //web::SamusSpriteCategory,
 };
 use retiling::apply_retiling;
 use room_palettes::apply_area_themed_palettes;
@@ -84,7 +83,7 @@ fn remove_mother_brain_flashing(rom: &mut Rom) -> Result<()> {
 
     Ok(())
 }
-
+/*
 fn apply_custom_samus_sprite(
     rom: &mut Rom,
     settings: &CustomizeSettings,
@@ -152,13 +151,13 @@ fn apply_custom_samus_sprite(
 
     Ok(())
 }
-
+*/
 pub fn customize_rom(
     rom: &mut Rom,
     seed_patch: &[u8],
     settings: &CustomizeSettings,
     game_data: &GameData,
-    samus_sprite_categories: &[SamusSpriteCategory],
+    //samus_sprite_categories: &[SamusSpriteCategory],
 ) -> Result<()> {
     rom.resize(0x400000);
     let patch = ips::Patch::parse(seed_patch).unwrap();
@@ -179,7 +178,7 @@ pub fn customize_rom(
             // rom.write_u8(snes2pc(0xA0E5FF + 0x39), 0x06)?;
         }
     }
-    apply_custom_samus_sprite(rom, settings, samus_sprite_categories)?;
+    //apply_custom_samus_sprite(rom, settings/* , samus_sprite_categories*/)?;
     match settings.music {
         MusicSettings::Vanilla => {
             override_music(rom)?;

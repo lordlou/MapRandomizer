@@ -1943,7 +1943,7 @@ impl<'a> MapPatcher<'a> {
                 ItemMarkers::ThreeTiered => {
                     if item.is_unique() {
                         Interior::MajorItem
-                    } else if (item != Item::Missile || item != Item::ArchipelagoItem) {
+                    } else if item != Item::Missile || item != Item::ArchipelagoItem {
                         Interior::MediumItem
                     } else {
                         Interior::Item

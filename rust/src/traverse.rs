@@ -51,10 +51,15 @@ impl GlobalState {
 #[pyclass]
 #[derive(Copy, Clone, Debug)]
 pub struct LocalState {
+    #[pyo3(get)]
     pub energy_used: Capacity,
+    #[pyo3(get)]
     pub reserves_used: Capacity,
+    #[pyo3(get)]
     pub missiles_used: Capacity,
+    #[pyo3(get)]
     pub supers_used: Capacity,
+    #[pyo3(get)]
     pub power_bombs_used: Capacity,
 }
 
@@ -989,7 +994,9 @@ pub type LinkIdx = u32;
 #[pyclass]
 #[derive(Clone)]
 pub struct StepTrail {
+    #[pyo3(get)]
     pub prev_trail_id: StepTrailId,
+    #[pyo3(get)]
     pub link_idx: LinkIdx,
 }
 
@@ -1016,6 +1023,7 @@ pub fn traverse(
     reverse: bool,
     difficulty: &DifficultyConfig,
     _game_data: &GameData, // May be used for debugging
+    debug: bool
 ) -> TraverseResult {
     let mut modified_vertices: HashSet<usize> = HashSet::new();
     let mut result: TraverseResult;
@@ -1076,12 +1084,24 @@ pub fn traverse(
                             prev_trail_id: src_trail_id,
                             link_idx: link_idx,
                         };
+                        if debug {
+                            println!("{:?} src: {:?} dst: {:?} link id: {:?} old cost: {:?} new cost: {:?}", reverse, src_id, dst_id, link_idx, dst_old_cost, dst_new_cost);
+                            println!("{:?} link: {:?}", reverse, link);
+                            println!("{:?} local_state: {:?}", reverse, dst_new_local_state);
+                        };
                         let new_trail_id = result.step_trails.len() as StepTrailId;
                         result.step_trails.push(new_step_trail);
                         result.local_states[dst_id] = Some(dst_new_local_state);
                         result.start_trail_ids[dst_id] = Some(new_trail_id);
                         result.cost[dst_id] = dst_new_cost;
                         new_modified_vertices.insert(dst_id);
+                    }
+                    else {
+                        if debug {
+                            println!("{:?} NOT TAKEN src: {:?} dst: {:?} link id: {:?} old cost: {:?} new cost: {:?}", reverse, src_id, dst_id, link_idx, dst_old_cost, dst_new_cost);
+                            //println!("NOT TAKEN link: {:?}", link);
+                            //println!("NOT TAKEN local_state: {:?}", dst_new_local_state);
+                        }
                     }
                 }
             }

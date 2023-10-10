@@ -39,12 +39,14 @@ pub struct FX1Door {
     pub door_index: usize,
 }
 
+#[derive(Clone)]
 pub struct FX1 {
     pub fx1_reference: Option<FX1Reference>,
     pub fx1_door: Option<FX1Door>,
     pub fx1_data: smart_xml::FX1,
 }
 
+#[derive(Clone)]
 pub struct RetiledRoomState {
     pub tileset_idx: u8,
     pub compressed_level_data: Vec<u8>,
@@ -58,6 +60,7 @@ pub struct RetiledRoomState {
     pub main_asm: u16,
 }
 
+#[derive(Clone)]
 pub struct RetiledRoom {
     pub path: String,
     pub area: usize,
@@ -65,23 +68,27 @@ pub struct RetiledRoom {
     pub states: Vec<RetiledRoomState>,
 }
 
+#[derive(Clone)]
 pub struct RetiledCRETileset {
     pub compressed_gfx8x8: Vec<u8>,
     pub compressed_gfx16x16: Vec<u8>,
 }
 
+#[derive(Clone)]
 pub struct RetiledSCETileset {
     pub compressed_palette: Vec<u8>,
     pub compressed_gfx8x8: Vec<u8>,
     pub compressed_gfx16x16: Vec<u8>,
 }
 
+#[derive(Clone)]
 pub struct RetiledTheme {
     pub name: String,
     pub rooms: Vec<RetiledRoom>,
     pub sce_tilesets: HashMap<usize, RetiledSCETileset>,
 }
 
+#[derive(Clone)]
 pub struct RetiledThemeData {
     pub themes: HashMap<String, RetiledTheme>,
     pub cre_tileset: RetiledCRETileset,

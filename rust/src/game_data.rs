@@ -6,8 +6,6 @@ use anyhow::{bail, ensure, Context, Result};
 use crate::customize::room_palettes::decode_palette;
 use hashbrown::{HashMap, HashSet};
 use pyo3::prelude::*;
-use anyhow::{bail, ensure, Context, Result};
-use hashbrown::{HashMap, HashSet};
 use std::collections::hash_map::DefaultHasher;
 use std::hash::BuildHasherDefault;
 use std::io::Read;
@@ -461,6 +459,7 @@ pub struct EnemyVulnerabilities {
     pub power_bomb_damage: i32,
 }
 
+#[derive(Clone)]
 pub struct ThemedPaletteTileset {
     pub palette: [[u8; 3]; 128],
     pub gfx8x8: Vec<u8>,
@@ -2655,11 +2654,11 @@ impl GameData {
     pub fn load(
         sm_json_data_path: &Path,
         room_geometry_path: &Path,
-        palette_theme_path: &Path,
+        _palette_theme_path: &Path,
         escape_timings_path: &Path,
         start_locations_path: &Path,
         hub_locations_path: &Path,
-        mosaic_path: &Path,
+        _mosaic_path: &Path,
         apworld_path: Option<String>
     ) -> Result<GameData> {
         let mut game_data = GameData::default();
@@ -2813,8 +2812,8 @@ impl GameData {
             0x1AD000, // Tourian
         ];
         // game_data.load_palette(palette_path)?;
-        game_data.load_themes(palette_theme_path)?;
-        game_data.retiled_theme_data = Some(themed_retiling::load_theme_data(mosaic_path)?);
+        //game_data.load_themes(palette_theme_path)?;
+        //game_data.retiled_theme_data = Some(themed_retiling::load_theme_data(mosaic_path)?);
 
         Ok(game_data)
     }

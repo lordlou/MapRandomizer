@@ -4,7 +4,7 @@ pub mod escape_timer;
 use crate::{
     game_data::{
         get_effective_runway_length, Capacity, DoorPtrPair, FlagId, HubLocation, Item,
-        ItemLocationId, Link, Map, NodeId, Requirement, RoomId, StartLocation, TechId, VertexId, ItemId, RoomGeometryRoomIdx,
+        ItemLocationId, Link, Map, NodeId, Requirement, RoomId, StartLocation, VertexId, ItemId, RoomGeometryRoomIdx,
     },
     traverse::{
         apply_requirement, get_spoiler_route, is_bireachable, traverse, GlobalState, LinkIdx,
@@ -209,16 +209,10 @@ pub struct DebugData {
     pub reverse: TraverseResult,
 }
 
+#[pyclass]
 #[derive(Clone)]
-struct SaveLocationState {
+pub struct SaveLocationState {
     pub bireachable: bool,
-}
-
-#[derive(Clone)]
-struct DebugData {
-    global_state: GlobalState,
-    forward: TraverseResult,
-    reverse: TraverseResult,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -247,18 +241,18 @@ pub struct RandomizationState {
     pub hub_location: HubLocation,
     pub item_precedence: Vec<Item>, // An ordering of the 21 distinct item names. The game will prioritize placing key items earlier in the list.
     #[pyo3(get)]
-    save_location_state: Vec<SaveLocationState>, // Corresponds to GameData.item_locations (one record for each of 100 item locations)
+    pub save_location_state: Vec<SaveLocationState>, // Corresponds to GameData.item_locations (one record for each of 100 item locations)
     #[pyo3(get)]
-    item_location_state: Vec<ItemLocationState>, // Corresponds to GameData.item_locations (one record for each of 100 item locations)
+    pub item_location_state: Vec<ItemLocationState>, // Corresponds to GameData.item_locations (one record for each of 100 item locations)
     #[pyo3(get)]
-    flag_location_state: Vec<FlagLocationState>, // Corresponds to GameData.flag_locations
-    items_remaining: Vec<usize>, // Corresponds to GameData.items_isv (one count for each of 21 distinct item names)
+    pub flag_location_state: Vec<FlagLocationState>, // Corresponds to GameData.flag_locations
+    pub items_remaining: Vec<usize>, // Corresponds to GameData.items_isv (one count for each of 21 distinct item names)
     #[pyo3(get)]
-    global_state: GlobalState,
+    pub global_state: GlobalState,
     #[pyo3(get)]
-    debug_data: Option<DebugData>,
-    previous_debug_data: Option<DebugData>,
-    key_visited_vertices: HashSet<usize>,
+    pub debug_data: Option<DebugData>,
+    pub previous_debug_data: Option<DebugData>,
+    pub key_visited_vertices: HashSet<usize>,
 }
 
 pub struct Randomization {
@@ -1219,9 +1213,9 @@ impl Randomizer {
                 locked_door_map.insert(door.dst_ptr_pair, i);
             }
         }
-
-        let mut preprocessor = Preprocessor::new(game_data.as_ref(), map.as_ref(), locked_doors, &locked_door_map);
-        let mut links: Vec<Link> = game_data
+        let mut links: Vec<Link> = {
+            let mut preprocessor = Preprocessor::new(game_data.as_ref(), map.as_ref(), &locked_doors, &locked_door_map);
+            game_data
             .links
             .iter()
             .map(|x| preprocessor.preprocess_link(x))
@@ -1256,7 +1250,7 @@ impl Randomizer {
                 src_locked_door_idx,
                 game_data.as_ref(),
                 &mut links,
-                locked_doors,
+                &locked_doors,
             );
             if bidirectional {
                 add_door_links(
@@ -1267,7 +1261,7 @@ impl Randomizer {
                     dst_locked_door_idx,
                     game_data.as_ref(),
                     &mut links,
-                    locked_doors,
+                    &locked_doors,
                 );
             }
         }
@@ -1281,6 +1275,8 @@ impl Randomizer {
         assert!(initial_items_remaining.iter().sum::<usize>() == game_data.item_locations.len());
 
         //let map = Box::new(*map);
+        //let locked_doors = Box::new(*locked_doors);
+        //let game_data = Box::new(*game_data);
         Randomizer {
             map,
             locked_doors,
@@ -1350,6 +1346,7 @@ impl Randomizer {
             false,
             &self.difficulty_tiers[0],
             self.game_data.as_ref(),
+            false
         );
         let reverse = traverse(
             &self.links,
@@ -1361,6 +1358,7 @@ impl Randomizer {
             true,
             &self.difficulty_tiers[0],
             self.game_data.as_ref(),
+            false
         );
         for (i, vertex_ids) in self.game_data.item_vertex_ids.iter().enumerate() {
             // Clear out any previous bireachable markers (because in rare cases a previously bireachable
@@ -1643,6 +1641,7 @@ impl Randomizer {
                 false,
                 difficulty,
                 self.game_data.as_ref(),
+                false
             );
 
             for (i, &item_location_id) in bireachable_locations.iter().enumerate() {
@@ -1773,7 +1772,7 @@ impl Randomizer {
                 .chain(select.other_items.iter())
                 .take(num_unplaced_bireachable),
         ) {
-            new_state.global_state.collect(item, self.game_data);
+            new_state.global_state.collect(item, &self.game_data);
         }
 
         // info!("Trying placing {:?}", key_items_to_place);
@@ -2233,6 +2232,7 @@ impl Randomizer {
                 false,
                 &self.difficulty_tiers[0],
                 &self.game_data,
+                false
             );
             let forward0 = traverse(
                 &self.links,
@@ -2243,7 +2243,8 @@ impl Randomizer {
                 start_vertex_id,
                 false,
                 &self.difficulty_tiers[0],
-                self.game_data,
+                &self.game_data,
+                false
             );
             let reverse = traverse(
                 &self.links,
@@ -2255,6 +2256,7 @@ impl Randomizer {
                 true,
                 &self.difficulty_tiers[0],
                 &self.game_data,
+                false
             );
 
             // We require several conditions for a start location to be valid with a given hub location:
@@ -2265,6 +2267,8 @@ impl Randomizer {
             // (ie. there must be a logical round-trip path from the hub to the starting node and back)
             // 3) Any logical requirements on the hub must be satisfied.
             // 4) The Ship must not be bireachable from the hub.
+            // 5) At least two item can be reachable (added For Archipelago)
+            let mut result = Option::None;
             for hub in &self.game_data.hub_locations {
                 let hub_vertex_id =
                     self.game_data.vertex_isv.index_by_key[&(hub.room_id, hub.node_id, 0)];
@@ -2289,7 +2293,25 @@ impl Randomizer {
                         &self.difficulty_tiers[0],
                     );
                     if local.is_some() {
-                        return Ok((start_loc, hub.clone()));
+                        result = Some(hub.clone());
+                        break;
+                    }
+                }
+            }
+            if result.is_none() {
+                continue 'attempt;
+            }
+            let mut items_reachable = 0;
+            for vertex_ids in self.game_data.item_vertex_ids.iter() {    
+                for &v in vertex_ids {
+                    if is_bireachable(
+                            &global,
+                            &forward.local_states[v],
+                            &reverse.local_states[v]) {
+                        items_reachable += 1;
+                        if items_reachable >= 2 {
+                            return Ok((start_loc, result.unwrap()));
+                        }
                     }
                 }
             }
@@ -2991,6 +3013,7 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
             }
         ],
         resource_multiplier: 1.0,
+        gate_glitch_leniency: 0,
         escape_timer_multiplier: 3.0,
         phantoon_proficiency: 1.0,
         draygon_proficiency: 1.0,
@@ -3004,7 +3027,7 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         mark_map_stations: true,
         transition_letters: false,
         item_markers: ItemMarkers::ThreeTiered,
-        item_dots_disappear: true,
+        item_dot_change: ItemDotChange::Disappear,
         all_items_spawn: true,
         acid_chozo: true,
         fast_elevators: true,
@@ -3012,9 +3035,12 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         fast_pause_menu: true,
         respin: false,
         infinite_space_jump: false,
+        momentum_conservation: false,
         objectives: Objectives::Bosses,
+        doors_mode: DoorsMode::Blue,
         randomized_start: false,
-        save_animals: false,
+        save_animals: SaveAnimals::No,
+        early_save: false,
         disable_walljump: false,
         maps_revealed: true,
         vanilla_map: false,

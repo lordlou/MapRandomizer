@@ -1638,51 +1638,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "maprando"
-version = "0.1.0"
-dependencies = [
- "actix-easy-multipart",
- "actix-files",
- "actix-form-data",
- "actix-web",
- "anyhow",
- "base64",
- "by_address",
- "clap",
- "crypto-hash",
- "env_logger",
- "futures",
- "glob",
- "hashbrown 0.13.2",
- "hashers",
- "image",
- "ips",
- "json",
- "log",
- "ndarray",
- "num_enum",
- "object_store",
- "parse_int",
- "pathfinding",
- "png",
- "pyo3",
- "rand",
- "reqwest",
- "sailfish",
- "serde",
- "serde-xml-rs",
- "serde_derive",
- "serde_json",
- "slice-of-array",
- "strum",
- "strum_macros",
- "url",
- "urlencoding",
- "zip",
- "zstd 0.12.2+zstd.1.5.2",
-]
-
-[[package]]
 name = "matrixmultiply"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2281,6 +2236,7 @@ dependencies = [
  "reqwest",
  "sailfish",
  "serde",
+ "serde-xml-rs",
  "serde_derive",
  "serde_json",
  "slice-of-array",
@@ -3550,15 +3506,6 @@ name = "xml-rs"
 version = "0.8.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47430998a7b5d499ccee752b41567bc3afc57e1327dc855b1a2aa44ce29b5fa1"
-
-[[package]]
-name = "xoroshiro128"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0eeda34baec49c4f1eb2c04d59b761582fd6330010f9330ca696ca1a355dfcd"
-dependencies = [
- "rand 0.4.6",
-]
 
 [[package]]
 name = "zip"
