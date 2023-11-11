@@ -1624,6 +1624,10 @@ impl GameData {
             150, // Golden Torizo Room
             193, // Draygon's Room
             219, // Plasma Room
+            226, // Metroid Room 1
+            227, // Metroid Room 2
+            228, // Metroid Room 3
+            229, // Metroid Room 4
         ];
 
         // Flags for which we want to add an obstacle in the room, to allow progression through (or back out of) the room
