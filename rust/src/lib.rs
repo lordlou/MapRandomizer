@@ -6,6 +6,7 @@ pub mod spoiler_map;
 pub mod seed_repository;
 pub mod customize;
 
+use game_data::{StartLocation, HubLocation};
 use patch::Rom;
 use pyo3::{prelude::*, types::PyDict};
 use rand::{SeedableRng, RngCore};
@@ -301,7 +302,7 @@ pub struct Options {
     #[pyo3(get, set)]
     maps_revealed: bool,
     #[pyo3(get, set)]
-    vanilla_map: bool,
+    map_layout: usize,
     #[pyo3(get, set)]
     ultra_low_qol: bool,
     #[pyo3(get, set)]
@@ -351,7 +352,7 @@ impl Options{
                 momentum_conservation: bool,
                 disable_walljump: bool,
                 maps_revealed: bool,
-                vanilla_map: bool,
+                map_layout: usize,
                 ultra_low_qol: bool,
                 skill_assumptions_preset: String,
                 item_progression_preset: String,
@@ -393,7 +394,7 @@ impl Options{
             momentum_conservation,
             disable_walljump,
             maps_revealed,
-            vanilla_map,
+            map_layout,
             ultra_low_qol,
             skill_assumptions_preset,
             item_progression_preset,
@@ -556,19 +557,10 @@ impl APCollectionState{
             },
         };
         let randomizer = &ap_randomizer.as_ref().unwrap().randomizer;
-        let mut rng = {
-            let mut rng_seed = [0u8; 32];
-            rng_seed[..8].copy_from_slice(&ap_randomizer.as_ref().unwrap().seed.to_le_bytes());
-            rand::rngs::StdRng::from_seed(rng_seed)
-        };
-        let num_attempts_start_location = 350;
-        let (start_location, hub_location) =
-            randomizer.determine_start_location(1, num_attempts_start_location, &mut rng).unwrap();
-        println!("start_location {}", start_location.name);
         let randomization_state = RandomizationState {
             step_num: 1,
-            start_location,
-            hub_location: hub_location,
+            start_location: ap_randomizer.as_ref().unwrap().start_location.clone(),
+            hub_location: ap_randomizer.as_ref().unwrap().hub_location.clone(),
             item_precedence: Vec::new(),
             item_location_state: vec![
                 initial_item_location_state;
@@ -809,7 +801,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         },
         disable_walljump:  options.disable_walljump,
         maps_revealed:  options.maps_revealed,
-        vanilla_map: options.vanilla_map,
+        map_layout: options.map_layout,
         ultra_low_qol:  options.ultra_low_qol,
         skill_assumptions_preset: Some("".to_string()/*options.skill_assumptions_preset*/),
         item_progression_preset: Some("".to_string()/*options.item_progression_preset*/),
@@ -828,7 +820,9 @@ pub struct APRandomizer {
     regions_map: Vec<usize>,
     #[pyo3(get)]
     preset_datas: Vec<PresetData>,
-    seed: usize
+    seed: usize,
+    start_location: StartLocation,
+    hub_location: HubLocation
 }
 
 #[pymethods]
@@ -841,23 +835,29 @@ impl APRandomizer{
         let preset_datas = init_presets(presets, game_data, &ignored_notable_strats, &implicit_tech);
         let difficulty_tiers = vec![get_difficulty_config(&options, &preset_datas, game_data); 1];
 
-        let binding = get_map_repository(game_data, "worlds/sm_map_rando/data/mapRepository.json").unwrap();
+        let (map_repo_filename, map_repo_url) = if difficulty_tiers[0].map_layout == 1 { 
+            ("worlds/sm_map_rando/data/mapRepositoryTame.json",
+            "https://storage.googleapis.com/super-metroid-map-rando/maps/session-2023-06-08T14:55:16.779895.pkl-small-71-subarea-balance-2/")
+        }
+        else {
+            ("worlds/sm_map_rando/data/mapRepositoryWild.json",
+            "https://storage.googleapis.com/super-metroid-map-rando/maps/session-2023-06-08T14:55:16.779895.pkl-small-64-subarea-balance-2/")
+        };
+
+        let binding = get_map_repository(game_data, map_repo_filename).unwrap();
         let map_repository_array = binding.as_slice();
-        
-        let mut map = if difficulty_tiers[0].vanilla_map {
+
+        let mut map = if difficulty_tiers[0].map_layout == 0 {
             get_vanilla_map(game_data).unwrap()
-        } else {
-            // "https://storage.googleapis.com/super-metroid-map-rando/maps/session-2023-06-08T14%3A55%3A16.779895.pkl-bk24-subarea-balance-2/"
-            get_map(Path::new("https://storage.googleapis.com/super-metroid-map-rando/maps/session-2022-06-03T17%3A19%3A29.727911.pkl-bk30-subarea-balance-2/"),
-                            map_repository_array,
-                            TryInto::<usize>::try_into(seed).unwrap()).unwrap()
+        } else {   
+            get_map(Path::new(map_repo_url), map_repository_array, TryInto::<usize>::try_into(seed).unwrap()).unwrap()
         };
         let diff_settings = difficulty_tiers[0].clone();
         let locked_doors = randomize_doors(&game_data, &map, &diff_settings, seed);
 
         let mut randomizer = Randomizer::new(Box::new(map), Box::new(locked_doors.clone()), Box::new(difficulty_tiers.clone()), Box::new(game_data.clone()));
         
-        if !diff_settings.vanilla_map && !diff_settings.randomized_start {
+        if diff_settings.map_layout != 0 && !diff_settings.randomized_start {
             let mut items_reachable = 0;
             let mut rng = {
                 let mut rng_seed = [0u8; 32];
@@ -925,9 +925,7 @@ impl APRandomizer{
                 }
                 if items_reachable < 2 {
                     let new_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
-                    map = get_map(Path::new("https://storage.googleapis.com/super-metroid-map-rando/maps/session-2022-06-03T17%3A19%3A29.727911.pkl-bk30-subarea-balance-2/"),
-                            map_repository_array,
-                            TryInto::<usize>::try_into(new_seed).unwrap()).unwrap();
+                    map = get_map(Path::new(map_repo_url), map_repository_array, TryInto::<usize>::try_into(new_seed).unwrap()).unwrap();
                     randomizer = Randomizer::new(Box::new(map), Box::new(locked_doors.clone()), Box::new(difficulty_tiers.clone()), Box::new(game_data.clone()));
                     println!("Not enough locations reachable from start ({:?}) trying new map.", items_reachable);
                 }
@@ -936,12 +934,24 @@ impl APRandomizer{
 
         let (regions_map, _) = randomizer.game_data.get_regions_map();
 
+        let mut rng = {
+            let mut rng_seed = [0u8; 32];
+            rng_seed[..8].copy_from_slice(&seed.to_le_bytes());
+            rand::rngs::StdRng::from_seed(rng_seed)
+        };
+        let num_attempts_start_location = 350;
+        let (start_location, hub_location) =
+            randomizer.determine_start_location(1, num_attempts_start_location, &mut rng).unwrap();
+        println!("start_location {}", start_location.name);
+
         APRandomizer { 
             randomizer,
             diff_settings,
             regions_map,
             preset_datas,
-            seed
+            seed,
+            start_location,
+            hub_location
         }
     }
 

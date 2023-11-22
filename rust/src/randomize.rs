@@ -144,7 +144,7 @@ pub struct DifficultyConfig {
     pub early_save: bool,
     pub disable_walljump: bool,
     pub maps_revealed: bool,
-    pub vanilla_map: bool,
+    pub map_layout: usize,
     pub ultra_low_qol: bool,
     // Presets:
     #[pyo3(get)]
@@ -3043,7 +3043,7 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         early_save: false,
         disable_walljump: false,
         maps_revealed: true,
-        vanilla_map: false,
+        map_layout: 0,
         ultra_low_qol: false,
         skill_assumptions_preset: Some("None".to_string()),
         item_progression_preset: Some("None".to_string()),

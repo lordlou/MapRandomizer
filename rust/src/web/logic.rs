@@ -330,7 +330,7 @@ fn get_difficulty_config(preset: &PresetData) -> DifficultyConfig {
         early_save: false,
         disable_walljump: false,
         maps_revealed: false,
-        vanilla_map: false,
+        map_layout: 0,
         ultra_low_qol: false,
         skill_assumptions_preset: None,
         item_progression_preset: None,
