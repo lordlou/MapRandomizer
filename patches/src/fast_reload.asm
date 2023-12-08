@@ -76,7 +76,7 @@ hook_main:
     jsl $808338  ; run hi-jacked instruction
     jmp check_reload
 
-
+print "check_reload: ", pc
 check_reload:
     PHP
     REP #$30
