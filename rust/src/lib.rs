@@ -1201,13 +1201,14 @@ fn create_gamedata(apworld_path: Option<String>) -> GameData {
 #[pyfunction]
 fn patch_rom(
     base_rom_path: String,
-    randomizer: &Randomizer,
+    ap_randomizer: &APRandomizer,
     item_placement_ids: Vec<usize>,
     state: &RandomizationState
 ) -> Vec<u8> {
     let rom_path = Path::new(&base_rom_path);
     let base_rom = Rom::load(rom_path).unwrap();
     let item_placement: Vec<Item> = item_placement_ids.iter().map(|v| Item::try_from(*v).unwrap()).collect::<Vec<_>>();
+    let randomizer = &ap_randomizer.randomizer;
 
     let spoiler_escape = escape_timer::compute_escape_data(&randomizer.game_data, &randomizer.map, &randomizer.difficulty_tiers[0]).unwrap();
     let spoiler_log = SpoilerLog {
@@ -1223,8 +1224,8 @@ fn patch_rom(
         locked_doors: randomizer.locked_doors.to_vec(),
         item_placement: item_placement,
         spoiler_log: spoiler_log,
-        seed: 0, //display_seed,
-        display_seed: 0,
+        seed: ap_randomizer.seed,
+        display_seed: ap_randomizer.seed,
         start_location: state.start_location.clone(),
     };
     make_rom(&base_rom, &randomization, &randomizer.game_data).unwrap().data
