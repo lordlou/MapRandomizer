@@ -47,7 +47,7 @@ pub fn apply_retiling(rom: &mut Rom, game_data: &GameData, theme_name: &str) -> 
     ];
     for name in &patch_names {
         let patch_path_str = format!("../patches/ips/{}.ips", name);
-        apply_ips_patch(rom, Path::new(&patch_path_str))?;    
+        apply_ips_patch(rom, Path::new(&patch_path_str), game_data)?;    
     }
 
     let retiled_theme_data = game_data.retiled_theme_data.as_ref().unwrap();
