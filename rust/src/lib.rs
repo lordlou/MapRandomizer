@@ -33,6 +33,7 @@ struct Preset {
     shinespark_tiles: usize,
     resource_multiplier: f32,
     escape_timer_multiplier: f32,
+    gate_glitch_leniency: i32,
     phantoon_proficiency: f32,
     draygon_proficiency: f32,
     ridley_proficiency: f32,
@@ -673,6 +674,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             shinespark_tiles: pd.preset.shinespark_tiles,
             resource_multiplier: pd.preset.resource_multiplier,
             escape_timer_multiplier: pd.preset.escape_timer_multiplier,
+            gate_glitch_leniency: pd.preset.gate_glitch_leniency,
             phantoon_proficiency: pd.preset.phantoon_proficiency,
             draygon_proficiency: pd.preset.draygon_proficiency,
             ridley_proficiency: pd.preset.ridley_proficiency,
@@ -687,6 +689,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             shinespark_tiles: options.shinespark_tiles,
             resource_multiplier: options.resource_multiplier,
             escape_timer_multiplier: options.escape_timer_multiplier,
+            gate_glitch_leniency: options.gate_glitch_leniency,
             phantoon_proficiency: options.phantoon_proficiency,
             draygon_proficiency: options.draygon_proficiency,
             ridley_proficiency: options.ridley_proficiency,
@@ -694,6 +697,14 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             tech: options.techs.clone(),
             notable_strats: options.strats.clone(),
             }
+    }
+
+    let qol_preset;
+    if options.ultra_low_qol {
+        qol_preset = 0;
+    }
+    else {
+        qol_preset = options.quality_of_life_preset;
     }
 
     DifficultyConfig {
@@ -709,7 +720,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             items: game_data.item_isv.keys.clone(),
         }],
         resource_multiplier: preset.resource_multiplier,
-        gate_glitch_leniency: options.gate_glitch_leniency,
+        gate_glitch_leniency: preset.gate_glitch_leniency,
         escape_timer_multiplier: preset.escape_timer_multiplier,
         randomized_start: options.randomized_start,
         save_animals: match options.save_animals {
@@ -721,71 +732,131 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         draygon_proficiency: preset.draygon_proficiency,
         ridley_proficiency: preset.ridley_proficiency,
         botwoon_proficiency: preset.botwoon_proficiency,
-        supers_double: match options.quality_of_life_preset {
+        supers_double: match qol_preset {
             0 => false,
             1 => true,
-            2 => options.supers_double,
-            _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
+            2 => true,
+            3 => true,
+            4 => options.supers_double,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
-        mother_brain_fight: match options.quality_of_life_preset {
+        mother_brain_fight: match qol_preset {
             0 => MotherBrainFight::Vanilla,
-            1 => MotherBrainFight::Skip,
-            2 => unsafe { transmute(options.mother_brain_fight)},
-            _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
+            1 => MotherBrainFight::Short,
+            2 => MotherBrainFight::Short,
+            3 => MotherBrainFight::Skip,
+            4 => unsafe { transmute(options.mother_brain_fight)},
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
-        escape_enemies_cleared: match options.quality_of_life_preset {
+        escape_enemies_cleared: match qol_preset {
+            0 => false,
+            1 => false,
+            2 => true,
+            3 => true,
+            4 => options.escape_enemies_cleared,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
+        escape_refill: match qol_preset {
+            0 => false,
+            1 => false,
+            2 => true,
+            3 => true,
+            4 => options.escape_refill,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
+        escape_movement_items: match qol_preset {
+            0 => false,
+            1 => false,
+            2 => true,
+            3 => true,
+            4 => options.escape_movement_items,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
+        mark_map_stations: match qol_preset {
             0 => false,
             1 => true,
-            2 => options.escape_enemies_cleared,
-            _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
-        },
-        escape_refill: options.escape_refill, 
-        escape_movement_items: match options.quality_of_life_preset {
-            0 => false,
-            1 => true,
-            2 => options.escape_movement_items,
-            _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
-        },
-        mark_map_stations: match options.quality_of_life_preset {
-            0 => false,
-            1 => true,
-            2 => options.mark_map_stations,
-            _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
+            2 => true,
+            3 => true,
+            4 => options.mark_map_stations,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
         transition_letters: options.transition_letters,
-        item_markers: match options.quality_of_life_preset {
+        item_markers: match qol_preset {
             0 => ItemMarkers::Simple,
-            1 => ItemMarkers::ThreeTiered,
-            2 => unsafe { transmute(options.item_markers) },
-            _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
+            1 => ItemMarkers::Uniques,
+            2 => ItemMarkers::ThreeTiered,
+            3 => ItemMarkers::ThreeTiered,
+            4 => unsafe { transmute(options.item_markers) },
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
         item_dot_change: match options.item_dots_disappear {
             false => randomize::ItemDotChange::Fade,
             true => randomize::ItemDotChange::Disappear,
         },
-        all_items_spawn: match options.quality_of_life_preset {
+        all_items_spawn: match qol_preset {
+            0 => false,
+            1 => false,
+            2 => true,
+            3 => true,
+            4 => options.all_items_spawn,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
+        acid_chozo: match qol_preset {
+            0 => false,
+            1 => false,
+            2 => true,
+            3 => true,
+            4 => options.acid_chozo,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
+        fast_elevators: match qol_preset {
             0 => false,
             1 => true,
-            2 => options.all_items_spawn,
-            _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
+            2 => true,
+            3 => true,
+            4 => options.fast_elevators,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
-        acid_chozo: options.acid_chozo,
-        fast_elevators: match options.quality_of_life_preset {
+        fast_doors: match qol_preset {
             0 => false,
             1 => true,
-            2 => options.fast_elevators,
-            _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
+            2 => true,
+            3 => true,
+            4 => options.fast_doors,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
-        fast_doors: match options.quality_of_life_preset {
+        fast_pause_menu: match qol_preset {
             0 => false,
             1 => true,
-            2 => options.fast_doors,
-            _ => panic!("Unrecognized quality_of_life_preset: {}", options.quality_of_life_preset)
+            2 => true,
+            3 => true,
+            4 => options.fast_pause_menu,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
-        fast_pause_menu: options.fast_pause_menu,
-        respin:  options.respin,
-        infinite_space_jump:  options.infinite_space_jump,
-        momentum_conservation: options.momentum_conservation,
+        respin: match qol_preset {
+            0 => false,
+            1 => false,
+            2 => false,
+            3 => true,
+            4 => options.respin,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
+        infinite_space_jump: match qol_preset {
+            0 => false,
+            1 => false,
+            2 => false,
+            3 => true,
+            4 => options.infinite_space_jump,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
+        momentum_conservation: match qol_preset {
+            0 => false,
+            1 => false,
+            2 => false,
+            3 => true,
+            4 => options.momentum_conservation,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
         objectives: match options.objectives {
             0 => randomize::Objectives::Bosses,
             1 => randomize::Objectives::Minibosses,
@@ -799,13 +870,20 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             1 => randomize::DoorsMode::Ammo,
             _ => panic!("Unrecognized doors_mode: {}", options.doors_mode)
         },
-        disable_walljump:  options.disable_walljump,
-        maps_revealed:  options.maps_revealed,
+        disable_walljump: options.disable_walljump,
+        maps_revealed: options.maps_revealed,
         map_layout: options.map_layout,
-        ultra_low_qol:  options.ultra_low_qol,
+        ultra_low_qol: options.ultra_low_qol,
         skill_assumptions_preset: Some("".to_string()/*options.skill_assumptions_preset*/),
         item_progression_preset: Some("".to_string()/*options.item_progression_preset*/),
-        quality_of_life_preset: Some("Default".to_string()/*options.quality_of_life_preset*/),
+        quality_of_life_preset: match qol_preset {
+            0 => Some("Off".to_string()),
+            1 => Some("Low".to_string()),
+            2 => Some("Default".to_string()),
+            3 => Some("Max".to_string()),
+            4 => Some("Custom".to_string()),
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
         debug_options: None,
     }
 }
