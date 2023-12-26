@@ -1,6 +1,6 @@
 pub mod logic;
 
-use hashbrown::HashSet;
+use hashbrown::{HashSet, HashMap};
 use serde_derive::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
@@ -11,7 +11,8 @@ use crate::seed_repository::SeedRepository;
 
 use self::logic::LogicData;
 
-pub const VERSION: usize = 87;
+pub const VERSION: usize = 104;
+pub const HQ_VIDEO_URL_ROOT: &'static str = "https://storage.googleapis.com/super-metroid-map-rando-videos-webm";
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Preset {
@@ -20,6 +21,7 @@ pub struct Preset {
     pub resource_multiplier: f32,
     pub escape_timer_multiplier: f32,
     pub gate_glitch_leniency: usize,
+    pub door_stuck_leniency: usize,
     pub phantoon_proficiency: f32,
     pub draygon_proficiency: f32,
     pub ridley_proficiency: f32,
@@ -55,12 +57,17 @@ pub struct SamusSpriteCategory {
     pub sprites: Vec<SamusSpriteInfo>,
 }
 
+#[derive(Clone)]
+pub struct VersionInfo {
+    pub version: usize,
+    pub dev: bool,
+}
+
 pub struct AppData {
     pub game_data: GameData,
     pub preset_data: Vec<PresetData>,
-    pub ignored_notable_strats: HashSet<String>,
     pub implicit_tech: HashSet<String>,
-    pub map_repository: MapRepository,
+    pub map_repositories: HashMap<String, MapRepository>,
     pub seed_repository: SeedRepository,
     pub visualizer_files: Vec<(String, Vec<u8>)>, // (path, contents)
     pub tech_gif_listing: HashSet<String>,
@@ -69,19 +76,20 @@ pub struct AppData {
     pub logic_data: LogicData,
     // pub samus_customizer: SamusSpriteCustomizer,
     pub debug: bool,
+    pub version_info: VersionInfo,
     pub static_visualizer: bool,
     pub etank_colors: Vec<Vec<String>>,  // colors in HTML hex format, e.g "#ff0000"
     pub parallelism: usize,
 }
 
 impl MapRepository {
-    pub fn new(base_path: &Path) -> Result<Self> {
+    pub fn new(name: &str, base_path: &Path) -> Result<Self> {
         let mut filenames: Vec<String> = Vec::new();
         for path in std::fs::read_dir(base_path)? {
             filenames.push(path?.file_name().into_string().unwrap());
         }
         filenames.sort();
-        info!("{} maps available", filenames.len());
+        info!("{}: {} maps available ({})", name, filenames.len(), base_path.display());
         Ok(MapRepository {
             base_path: base_path.to_owned(),
             filenames,

@@ -3,7 +3,7 @@ use std::path::Path;
 use crate::{game_data::IndexedVec, patch::compress::compress};
 
 use super::{decompress::decompress, pc2snes, snes2pc, PcAddr, Rom};
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use hashbrown::HashMap;
 use image::{io::Reader as ImageReader, Rgb};
 use ndarray::{concatenate, Array2, Array3, Axis};
@@ -14,7 +14,7 @@ pub struct TitlePatcher<'a> {
     next_free_space_pc: usize,
 }
 
-fn read_image(path: &Path) -> Result<Array3<u8>> {
+pub fn read_image(path: &Path) -> Result<Array3<u8>> {
     let img = ImageReader::open(path)
         .with_context(|| format!("Unable to open image: {}", path.display()))?
         .decode()
@@ -39,13 +39,20 @@ fn rgb_to_u16(rgb: (u8, u8, u8)) -> u16 {
     (r as u16) | (g as u16) << 5 | (b as u16) << 10
 }
 
+fn u16_to_rgb(color: u16) -> (u8, u8, u8) {
+    let r = color & 0x1F;
+    let g = (color >> 5) & 0x1F;
+    let b = (color >> 10) & 0x1F;
+    (r as u8, g as u8, b as u8)
+}
+
 struct Graphics {
     palette: Vec<(u8, u8, u8)>,
     tiles: Vec<[[u8; 8]; 8]>, // indices into `palette`
     tilemap: Array2<u8>,      // indices into `tiles`
 }
 
-fn encode_mode7_graphics(image: &Array3<u8>) -> Graphics {
+fn encode_mode7_graphics(image: &Array3<u8>) -> Result<Graphics> {
     let (height, width, _) = image.dim();
 
     let mut tilemap: Array2<u8> = Array2::zeros([height / 8, width / 8]);
@@ -75,7 +82,7 @@ fn encode_mode7_graphics(image: &Array3<u8>) -> Graphics {
             process_tile(tile_y, tile_x);
         }
     }
-    assert!(tile_isv.keys.len() <= 256);
+    ensure!(tile_isv.keys.len() <= 256);
 
     let mut new_tiles: Vec<[[u8; 8]; 8]> = Vec::new();
     let mut color_isv: IndexedVec<(u8, u8, u8)> = IndexedVec::default();
@@ -95,11 +102,11 @@ fn encode_mode7_graphics(image: &Array3<u8>) -> Graphics {
         new_tiles.push(new_tile);
     }
 
-    Graphics {
+    Ok(Graphics {
         palette: color_isv.keys,
         tiles: new_tiles,
         tilemap,
-    }
+    })
 }
 
 fn decode_tile_4bpp(tile: &[u8; 32]) -> [[u8; 8]; 8] {
@@ -202,14 +209,63 @@ impl<'a> TitlePatcher<'a> {
         Ok(())
     }
 
-    pub fn patch_title_background(&mut self) -> Result<()> {
-        let image_path = Path::new("../gfx/title/Title3.png");
+    pub fn patch_title_blue_light(&mut self) -> Result<()> {
+        // If we want to alter the subtractive effect while the camera pans, before zooming out:
+        // self.rom.write_u8(snes2pc(0x8B8675), 0x20 | 0x10)?;  // red value to subtract = 0x10
+        // self.rom.write_u8(snes2pc(0x8B8679), 0x40 | 0x10)?;  // green value to subtract = 0x10
+        // self.rom.write_u8(snes2pc(0x8B867D), 0x80 | 0x00)?;  // blue value to subtract = 0x00
 
-        let img = read_image(image_path)?;
+        // Don't disable the effect for the second camera pan (top right to top left):
+        self.rom.write_n(snes2pc(0x8B9D43), &[0xEA; 3])?;
+
+        Ok(())
+    }
+
+    pub fn patch_title_gradient(&mut self) -> Result<()> {
+        // Make the title gradient gray (vs. blue-tinted) and less extreme
+        for i in 3..16 {
+            let base_addr_snes = self.rom.read_u16(snes2pc(0x8CBC5D + i * 2))? + 0x8c0000;
+            for j in 0..256 {
+                let addr_pc = snes2pc((base_addr_snes + j * 2) as usize);
+                let mut num_lines = self.rom.read_u8(addr_pc)?;
+                let mut c = self.rom.read_u8(addr_pc + 1)?;
+                let mut color_plane_mask = c & 0xE0;
+                let mut intensity = c & 0x1F;
+                if color_plane_mask == 0xE0 {
+                    // Effect applied to all 3 color planes (used for subtractive mode, at top of screen)
+                    // Reduce the effect to avoid too much darkening at the top of the screen:
+                    intensity = intensity / 3;
+                    if intensity > 3 {
+                        intensity = 3;
+                    }
+                    // intensity = 0;
+                } else if color_plane_mask == 0xC0 {
+                    // Effect applied to only blue and green color planes (used for additive mode, at bottom of screen)
+                    // Apply the effect to all 3 color planes, producing a grayscale gradient instead of cyan.
+                    // Reduce the intensity of the effect, to avoid washing out the bottom of the screen.
+                    color_plane_mask = 0xE0;
+                    if intensity > 3 {
+                        // Stretch out the length of each gradient band beyond this point:
+                        num_lines += 3;
+                    }
+                } else if c == 0 {
+                    break;
+                } else {
+                    panic!("Unexpected title screen gradient control: {:x}", c);
+                }
+                c = color_plane_mask | intensity;
+                self.rom.write_u8(addr_pc, num_lines)?;
+                self.rom.write_u8(addr_pc + 1, c)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub fn patch_title_background(&mut self, img: &Array3<u8>) -> Result<()> {
         assert!(img.dim() == (224, 256, 3));
 
         // Compute title background palette, tile GFX, and tilemap:
-        let graphics = encode_mode7_graphics(&img);
+        let graphics = encode_mode7_graphics(&img)?;
         println!(
             "Title background distinct colors: {}",
             graphics.palette.len()

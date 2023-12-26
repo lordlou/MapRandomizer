@@ -8,8 +8,8 @@ get_hyper_beam:
     jsl $91E4AD   ; run the hi-jacked instruction
     lda $09A4
     sta $1F5D   ; take a snapshot of items collected, to use in "rate for collecting items" percentage after credits.
-    lda #$F32F
-    sta $09A2   ; all items equipped
+    lda #$F72F
+    sta $09A2   ; all items equipped (including WallJump = $0400)
     sta $09A4   ; all items collected
 
     ; Clear selected HUD item
@@ -36,7 +36,7 @@ fix_item_percent:
 
     ldx #$0008  ; run hi-jacked instruction
     rts
-warnpc $8BF800
+warnpc $8BF770
 
 org $848902
     jsr escape_collect_item

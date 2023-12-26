@@ -37,7 +37,7 @@ rooms = [
     ),
     Room(
         # TODO: add this to wiki.supermetroid.run/List_of_rooms because it is missing.
-        name='Dachora Energy Refill Room',
+        name='Dachora Energy Refill',
         rom_address=0x7A07B,
         map=[[1]],
         door_ids=[
@@ -231,4 +231,4 @@ rooms = [
 
 for room in rooms:
     room.area = Area.BRINSTAR
-    room.sub_area = SubArea.GREEN_AND_PINK_BRINSTAR
+    room.sub_area = SubArea.PINK_BRINSTAR

@@ -1,12 +1,16 @@
 <script>
 function presetChanged() {
     <% for p in preset_data { 
+        if p.preset.name == "Beyond" {
+            continue;
+        }
         let name_no_space = p.preset.name.replace(" ", ""); %>
         if (document.getElementById("preset<%- name_no_space %>").checked) {
             document.getElementById("shinesparkTiles").value = <%= p.preset.shinespark_tiles %>;
             document.getElementById("resourceMultiplier").value = <%= p.preset.resource_multiplier %>;
             document.getElementById("escapeTimerMultiplier").value = <%= p.preset.escape_timer_multiplier %>;
             document.getElementById("gateGlitchLeniency").value = <%= p.preset.gate_glitch_leniency %>;
+            document.getElementById("doorStuckLeniency").value = <%= p.preset.door_stuck_leniency %>;
             document.getElementById("phantoonProficiency").value = <%= p.preset.phantoon_proficiency %>;
             document.getElementById("draygonProficiency").value = <%= p.preset.draygon_proficiency %>;
             document.getElementById("ridleyProficiency").value = <%= p.preset.ridley_proficiency %>;
@@ -125,8 +129,10 @@ function qualityOfLifePresetChanged() {
         document.getElementById("escapeEnemiesClearedNo").checked = true;
         document.getElementById("markMapStationsNo").checked = true;
         document.getElementById("itemMarkersSimple").checked = true;
+        document.getElementById("earlySaveNo").checked = true;
         document.getElementById("allItemsSpawnNo").checked = true;
         document.getElementById("acidChozoNo").checked = true;
+        document.getElementById("buffedDropsNo").checked = true;
         document.getElementById("fastElevatorsNo").checked = true;
         document.getElementById("fastDoorsNo").checked = true;
         document.getElementById("fastPauseMenuNo").checked = true;
@@ -144,8 +150,10 @@ function qualityOfLifePresetChanged() {
         document.getElementById("escapeEnemiesClearedNo").checked = true;
         document.getElementById("markMapStationsYes").checked = true;
         document.getElementById("itemMarkersUniques").checked = true;
+        document.getElementById("earlySaveNo").checked = true;
         document.getElementById("allItemsSpawnNo").checked = true;
         document.getElementById("acidChozoNo").checked = true;
+        document.getElementById("buffedDropsNo").checked = true;
         document.getElementById("fastElevatorsYes").checked = true;
         document.getElementById("fastDoorsYes").checked = true;
         document.getElementById("fastPauseMenuYes").checked = true;
@@ -161,8 +169,10 @@ function qualityOfLifePresetChanged() {
         document.getElementById("escapeEnemiesClearedYes").checked = true;
         document.getElementById("markMapStationsYes").checked = true;
         document.getElementById("itemMarkersThreeTiered").checked = true;
+        document.getElementById("earlySaveYes").checked = true;
         document.getElementById("allItemsSpawnYes").checked = true;
         document.getElementById("acidChozoYes").checked = true;
+        document.getElementById("buffedDropsYes").checked = true;
         document.getElementById("fastElevatorsYes").checked = true;
         document.getElementById("fastDoorsYes").checked = true;
         document.getElementById("fastPauseMenuYes").checked = true;
@@ -178,8 +188,10 @@ function qualityOfLifePresetChanged() {
         document.getElementById("escapeEnemiesClearedYes").checked = true;
         document.getElementById("markMapStationsYes").checked = true;
         document.getElementById("itemMarkersThreeTiered").checked = true;
+        document.getElementById("earlySaveYes").checked = true;
         document.getElementById("allItemsSpawnYes").checked = true;
         document.getElementById("acidChozoYes").checked = true;
+        document.getElementById("buffedDropsYes").checked = true;
         document.getElementById("fastElevatorsYes").checked = true;
         document.getElementById("fastDoorsYes").checked = true;
         document.getElementById("fastPauseMenuYes").checked = true;
@@ -196,15 +208,16 @@ function qualityOfLifeSettingChanged() {
     qualityOfLifePresetChanged();
 }
 function itemProgressionPresetChanged() {
-    if (document.getElementById("itemProgressionPresetQuick").checked) {
+    if (document.getElementById("itemProgressionPresetNormal").checked) {
         document.getElementById("progressionRateFast").checked = true;
-
         document.getElementById("itemPlacementStyleNeutral").checked = true;
+        document.getElementById("randomTankYes").checked = true;
         <% for item in &prioritizable_items { %>
         document.getElementById("itemPriority<%- item %>Default").checked = true;
         <% } %>
         document.getElementById("itemPriorityETankEarly").checked = true;
         document.getElementById("itemPriorityMorphEarly").checked = true;
+        document.getElementById("itemPrioritySpaceJumpLate").checked = true;
         document.getElementById("itemPriorityScrewAttackLate").checked = true;
         document.getElementById("itemPriorityVariaLate").checked = true;
         document.getElementById("itemPriorityGravityLate").checked = true;
@@ -220,15 +233,15 @@ function itemProgressionPresetChanged() {
         document.getElementById("fillerItemsIceYes").checked = true;
         document.getElementById("fillerItemsWaveYes").checked = true;
         document.getElementById("fillerItemsSpazerYes").checked = true;
-        document.getElementById("fillerItemsPlasmaYes").checked = true;
     }
-    if (document.getElementById("itemProgressionPresetStandard").checked) {
-        document.getElementById("progressionRateNormal").checked = true;
-
+    if (document.getElementById("itemProgressionPresetTricky").checked) {
+        document.getElementById("progressionRateUniform").checked = true;
         document.getElementById("itemPlacementStyleForced").checked = true;
+        document.getElementById("randomTankYes").checked = true;
         <% for item in &prioritizable_items { %>
         document.getElementById("itemPriority<%- item %>Default").checked = true;
         <% } %>
+        document.getElementById("itemPrioritySpaceJumpLate").checked = true;
         document.getElementById("itemPriorityScrewAttackLate").checked = true;
         document.getElementById("itemPriorityVariaLate").checked = true;
         document.getElementById("itemPriorityGravityLate").checked = true;
@@ -243,26 +256,28 @@ function itemProgressionPresetChanged() {
         document.getElementById("fillerItemsIceYes").checked = true;
         document.getElementById("fillerItemsWaveYes").checked = true;
         document.getElementById("fillerItemsSpazerYes").checked = true;
-        document.getElementById("fillerItemsPlasmaYes").checked = true;
     }
     if (document.getElementById("itemProgressionPresetChallenge").checked) {
         document.getElementById("progressionRateSlow").checked = true;
-
         document.getElementById("itemPlacementStyleForced").checked = true;
+        document.getElementById("randomTankYes").checked = true;
         <% for item in &prioritizable_items { %>
         document.getElementById("itemPriority<%- item %>Default").checked = true;
         <% } %>
+        document.getElementById("itemPrioritySpaceJumpLate").checked = true;
         document.getElementById("itemPriorityScrewAttackLate").checked = true;
         document.getElementById("itemPriorityVariaLate").checked = true;
         document.getElementById("itemPriorityGravityLate").checked = true;
         <% for item in &prioritizable_items { %>
         document.getElementById("fillerItems<%- item %>No").checked = true;
         <% } %>
+        document.getElementById("fillerItemsSuperSemi").checked = true;
+        document.getElementById("fillerItemsPowerBombSemi").checked = true;
     }
 }
 function itemProgressionChanged() {
-    document.getElementById("itemProgressionPresetQuick").checked = false;
-    document.getElementById("itemProgressionPresetStandard").checked = false;
+    document.getElementById("itemProgressionPresetNormal").checked = false;
+    document.getElementById("itemProgressionPresetTricky").checked = false;
     document.getElementById("itemProgressionPresetChallenge").checked = false;
 }
 function gameVariationChanged() {
@@ -287,12 +302,14 @@ function initializeSpoilerToken() {
     document.getElementById("spoilerToken").value = localStorage["spoilerToken"];
 }
 function checkOtherOptions() {
-    if (document.getElementById("itemDotChangeDisappear").checked ||
+    if (document.getElementById("wallJumpCollectible").checked ||
+        document.getElementById("wallJumpDisabled").checked ||
+        document.getElementById("etankRefillDisabled").checked ||
+        document.getElementById("etankRefillFull").checked ||
+        document.getElementById("areaAssignmentRandom").checked ||
+        document.getElementById("itemDotChangeDisappear").checked ||
         document.getElementById("transitionLettersYes").checked ||
-        document.getElementById("earlySaveYes").checked ||
-        document.getElementById("disableWallJumpYes").checked ||
         document.getElementById("mapsRevealedYes").checked ||
-        document.getElementById("vanillaMapYes").checked ||
         document.getElementById("ultraLowQoLYes").checked ||
         document.getElementById("raceModeYes").checked) 
     {

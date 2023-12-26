@@ -2,6 +2,7 @@ pub mod retiling;
 pub mod room_palettes;
 pub mod vanilla_music;
 
+use std::cmp::min;
 use anyhow::{bail, Result};
 use std::path::Path;
 
@@ -15,7 +16,7 @@ use retiling::apply_retiling;
 use room_palettes::apply_area_themed_palettes;
 
 struct AllocatorBlock {
-    start_addr: usize,
+    _start_addr: usize,
     end_addr: usize,
     current_addr: usize,
 }
@@ -30,7 +31,7 @@ impl Allocator {
             blocks: blocks
                 .into_iter()
                 .map(|(start, end)| AllocatorBlock {
-                    start_addr: start,
+                    _start_addr: start,
                     end_addr: end,
                     current_addr: start,
                 })
@@ -65,14 +66,51 @@ pub enum AreaTheming {
     Tiles(String),
 }
 
+#[derive(Default, Debug, Copy, Clone)]
+pub enum ControllerButton {
+    #[default]
+    Default,
+    X,
+    Y,
+    A,
+    B,
+    L,
+    R,
+    Select,
+    Start,
+}
+
+#[derive(Default, Debug)]
+pub struct ControllerConfig {
+    pub shot: ControllerButton,
+    pub jump: ControllerButton,
+    pub dash: ControllerButton,
+    pub item_select: ControllerButton,
+    pub item_cancel: ControllerButton,
+    pub angle_up: ControllerButton,
+    pub angle_down: ControllerButton,
+    pub quick_reload_buttons: Vec<ControllerButton>,
+    pub moonwalk: bool,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum ShakingSetting {
+    Vanilla,
+    Reduced,
+    Disabled
+}
+
 #[derive(Debug)]
 pub struct CustomizeSettings {
     pub samus_sprite: Option<String>,
+    pub etank_color: Option<(u8, u8, u8)>,
+    pub reserve_hud_style: bool,
     pub vanilla_screw_attack_animation: bool,
     pub area_theming: AreaTheming,
     pub music: MusicSettings,
     pub disable_beeping: bool,
-    pub etank_color: Option<(u8, u8, u8)>,
+    pub shaking: ShakingSetting,
+    pub controller_config: ControllerConfig,
 }
 
 fn remove_mother_brain_flashing(rom: &mut Rom) -> Result<()> {
@@ -153,6 +191,70 @@ fn apply_custom_samus_sprite(
     Ok(())
 }
 
+pub fn parse_controller_button(s: &str) -> Result<ControllerButton> {
+    Ok(match s {
+        "X" => ControllerButton::X,
+        "Y" => ControllerButton::Y,
+        "A" => ControllerButton::A,
+        "B" => ControllerButton::B,
+        "Select" => ControllerButton::Select,
+        "L" => ControllerButton::L,
+        "R" => ControllerButton::R,
+        _ => bail!("Unexpected controller button: {}", s)
+    })
+}
+
+fn get_button_mask(mut controller_button: ControllerButton, default: ControllerButton) -> isize {
+    if let ControllerButton::Default = controller_button {
+        controller_button = default;
+    }
+    match controller_button {
+        ControllerButton::X => 0x0040,
+        ControllerButton::Y => 0x4000,
+        ControllerButton::A => 0x0080,
+        ControllerButton::B => 0x8000,
+        ControllerButton::L => 0x0020,
+        ControllerButton::R => 0x0010,
+        ControllerButton::Select => 0x2000,
+        ControllerButton::Start => 0x1000,
+        _ => panic!("Unexpected controller button: {:?}", controller_button)
+    }
+}
+
+fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig) -> Result<()> {
+    let control_data = vec![
+        (0x81B325, controller_config.jump, ControllerButton::A),
+        (0x81B32B, controller_config.dash, ControllerButton::B),
+        (0x81B331, controller_config.shot, ControllerButton::X),
+        (0x81B337, controller_config.item_cancel, ControllerButton::Y),
+        (0x81B33D, controller_config.item_select, ControllerButton::Select),
+        (0x81B343, controller_config.angle_up, ControllerButton::R),
+        (0x81B349, controller_config.angle_down, ControllerButton::L),
+    ];
+    for (addr, button, default) in control_data {
+        let mask = get_button_mask(button, default);
+        rom.write_u16(snes2pc(addr), mask)?;
+    }
+    
+    let mut quick_reload_mask = 0x0000;
+    for &button in &controller_config.quick_reload_buttons {
+        quick_reload_mask |= get_button_mask(button, ControllerButton::Default);
+    }
+    if quick_reload_mask == 0x0000 {
+        // The user probably intended to disable quick-reload entirely (rather than having quick reload trigger
+        // when not holding any buttons), so that's what we do, effectively, by requiring all 12 buttons to be pressed:
+        quick_reload_mask = 0xFFFF;
+    }
+    rom.write_u16(snes2pc(0x82FE7E), quick_reload_mask)?;
+
+    if controller_config.moonwalk {
+        apply_ips_patch(rom, Path::new("../patches/ips/enable_moonwalk.ips"))?;
+    }
+    // $82FE7E
+
+    Ok(())
+}
+
 pub fn customize_rom(
     rom: &mut Rom,
     seed_patch: &[u8],
@@ -180,6 +282,23 @@ pub fn customize_rom(
         }
     }
     apply_custom_samus_sprite(rom, settings, samus_sprite_categories)?;
+    if let Some((r, g, b)) = settings.etank_color {
+        let color = (r as isize) | ((g as isize) << 5) | ((b as isize) << 10);
+        rom.write_u16(snes2pc(0x82FFFE), color)?; // Gameplay ETank color
+                                                  // rom.write_u16(snes2pc(0xB6F01A), color)?;
+        rom.write_u16(snes2pc(0x8EE416), color)?; // Main menu
+        rom.write_u16(snes2pc(0xA7CA7B), color)?; // During Phantoon power-on
+    }
+    if settings.reserve_hud_style {
+        apply_ips_patch(rom, Path::new("../patches/ips/reserve_hud.ips"))?;
+        // Make used reserve tiles empty, for when they appear when transitioning to and from Kraid's room
+        // Since the current IPS creation tool doesn't include settings these addresses to zero, it has to be done here instead
+        for i in 0..6 {
+            rom.write_n(snes2pc(0xE20000+(0x10000*i)+0xC330), &[0x00; 0x10])?;
+            rom.write_n(snes2pc(0xE20000+(0x10000*i)+0xC460), &[0x00; 0x10])?;
+            rom.write_n(snes2pc(0xE20000+(0x10000*i)+0xC4C0), &[0x00; 0x20])?;
+        }
+    }
     match settings.music {
         MusicSettings::Vanilla => {
             override_music(rom)?;
@@ -196,12 +315,33 @@ pub fn customize_rom(
         rom.write_n(snes2pc(0x90F33C), &[0xEA; 4])?;
         rom.write_n(snes2pc(0x91E6DA), &[0xEA; 4])?;
     }
-    if let Some((r, g, b)) = settings.etank_color {
-        let color = (r as isize) | ((g as isize) << 5) | ((b as isize) << 10);
-        rom.write_u16(snes2pc(0x82FFFE), color)?; // Gameplay ETank color
-                                                  // rom.write_u16(snes2pc(0xB6F01A), color)?;
-        rom.write_u16(snes2pc(0x8EE416), color)?; // Main menu
-        rom.write_u16(snes2pc(0xA7CA7B), color)?; // During Phantoon power-on
+    match settings.shaking {
+        ShakingSetting::Vanilla => {},
+        ShakingSetting::Reduced => {
+            // Limit BG shaking to 1-pixel displacements:
+            for i in 0..144 {
+                let x = rom.read_u16(snes2pc(0xA0872D + i * 2))?;
+                rom.write_u16(snes2pc(0xA0872D + i * 2), min(x, 1))?;
+            }
+            // (Enemies already only shake up to 1 pixel)
+            // Limit enemy projectile shaking to 1-pixel displacements:
+            for i in 0..72 {
+                let x = rom.read_u16(snes2pc(0x86846B + i * 2))?;
+                rom.write_u16(snes2pc(0x86846B + i * 2), min(x, 1))?;
+            }
+        },
+        ShakingSetting::Disabled => {
+            // Disable BG shaking globally, by setting the shake displacements to zero (this should be timing-neutral?)
+            rom.write_n(snes2pc(0xA0872D), &[0; 288])?;
+            // Disable enemy shaking:
+            rom.write_n(snes2pc(0xA09488), &[0xEA; 5])?;  // 5 * NOP
+            rom.write_n(snes2pc(0xA0948F), &[0xEA; 5])?;  // 5 * NOP
+            // rom.write_u8(snes2pc(0xA08712), 0x60)?;  // RTS
+
+            // Disable enemy projectile shaking, by setting the displacements to zero:
+            rom.write_n(snes2pc(0x86846B), &[0; 144])?;
+        }
     }
+    apply_controller_config(rom, &settings.controller_config)?;
     Ok(())
 }

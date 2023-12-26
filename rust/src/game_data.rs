@@ -1,9 +1,10 @@
-pub mod themed_retiling;
 pub mod smart_xml;
+pub mod themed_retiling;
 
 use anyhow::{bail, ensure, Context, Result};
 // use log::info;
 use crate::customize::room_palettes::decode_palette;
+use crate::patch::title::read_image;
 use hashbrown::{HashMap, HashSet};
 use json::{self, JsonValue};
 use num_enum::TryFromPrimitive;
@@ -15,6 +16,7 @@ use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
+use log::{info, error};
 
 use self::themed_retiling::RetiledThemeData;
 
@@ -44,10 +46,12 @@ pub type ItemLocationId = usize; // Index into GameData.item_locations: 100 node
 pub type ObstacleMask = usize; // Bitmask where `i`th bit (from least significant) indicates `i`th obstacle cleared within a room
 pub type WeaponMask = usize; // Bitmask where `i`th bit indicates availability of (or vulnerability to) `i`th weapon.
 pub type Capacity = i32; // Data type used to represent quantities of energy, ammo, etc.
+pub type ItemPtr = usize; // PC address of item in PLM list
 pub type DoorPtr = usize; // PC address of door data for exiting given door
 pub type DoorPtrPair = (Option<DoorPtr>, Option<DoorPtr>); // PC addresses of door data for exiting & entering given door (from vanilla door connection)
 pub type TilesetIdx = usize; // Tileset index
 pub type AreaIdx = usize; // Area index (0..5)
+pub type LinkIdx = u32;
 
 #[derive(Default, Clone)]
 pub struct IndexedVec<T: Hash + Eq> {
@@ -92,6 +96,7 @@ pub enum Item {
     ScrewAttack,  // 18
     Morph,        // 19
     ReserveTank,  // 20
+    WallJump,     // 21
 }
 
 impl Item {
@@ -116,8 +121,9 @@ pub enum Requirement {
     Item(ItemId),
     Flag(FlagId),
     NotFlag(FlagId),
+    Walljump,
     ShineCharge {
-        used_tiles: f32
+        used_tiles: f32,
     },
     Shinespark {
         shinespark_tech_id: usize,
@@ -146,6 +152,9 @@ pub enum Requirement {
     GateGlitchLeniency {
         green: bool,
         heated: bool,
+    },
+    HeatedDoorStuckLeniency {
+        heat_frames: i32,
     },
     EnergyDrain,
     ReserveTrigger {
@@ -246,6 +255,19 @@ impl Requirement {
             Requirement::Or(out_reqs)
         }
     }
+
+    pub fn make_shinecharge(tiles: f32) -> Requirement {
+        if tiles < 12.0 {
+            // An effective runway length of 12 is the minimum possible length of shortcharge supported in the logic.
+            // Strats requiring shorter runways than this are discarded to save processing time during generation.
+            // Technically it is humanly viable to go as low as about 10.5, but below 12 the precision needed is so much
+            // that it would not be reasonable to require on any settings (especially considering that it could
+            // involve heated rooms so a first try success could be required).
+            Requirement::Never
+        } else {
+            Requirement::ShineCharge { used_tiles: tiles }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -270,7 +292,7 @@ pub struct Jumpway {
     pub requirement: Requirement,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CanLeaveCharged {
     // TODO: add more details like slopes
     pub frames_remaining: i32,
@@ -301,9 +323,13 @@ pub struct Link {
     pub from_vertex_id: VertexId,
     pub to_vertex_id: VertexId,
     pub requirement: Requirement,
+    pub entrance_condition: Option<EntranceCondition>,
+    pub exit_condition: Option<ExitCondition>,
+    pub bypasses_door_shell: bool,
     pub notable_strat_name: Option<String>,
     pub strat_name: String,
     pub strat_notes: Vec<String>,
+    pub sublinks: Vec<Link>,
 }
 
 #[derive(Deserialize, Default, Clone, Debug)]
@@ -445,6 +471,417 @@ pub struct ThemedPaletteTileset {
     pub gfx16x16: Vec<u8>,
 }
 
+#[derive(Clone, Debug)]
+pub struct RunwayGeometry {
+    pub length: f32,
+    pub open_end: f32,
+    pub gentle_up_tiles: f32,
+    pub gentle_down_tiles: f32,
+    pub steep_up_tiles: f32,
+    pub steep_down_tiles: f32,
+    pub starting_down_tiles: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Physics {
+    Air,
+    Water,
+    Lava,
+    Acid,
+}
+
+fn parse_physics(physics: &str) -> Result<Physics> {
+    Ok(match physics {
+        "air" => Physics::Air,
+        "water" => Physics::Water,
+        "lava" => Physics::Lava,
+        "acid" => Physics::Acid,
+        _ => bail!(format!("Unrecognized physics '{}'", physics)),
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum DoorPosition {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+
+fn parse_door_position(door_position: &str) -> Result<DoorPosition> {
+    Ok(match door_position {
+        "left" => DoorPosition::Left,
+        "right" => DoorPosition::Right,
+        "top" => DoorPosition::Top,
+        "bottom" => DoorPosition::Bottom,
+        _ => bail!(format!("Unrecognized door position '{}'", door_position)),
+    })
+}
+
+#[derive(Clone, Debug)]
+pub struct GModeRegainMobility {}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SparkPosition {
+    Top,
+    Bottom,
+    Any,
+}
+
+#[derive(Clone, Debug)]
+pub enum ExitCondition {
+    LeaveWithRunway {
+        effective_length: f32,
+        heated: bool,
+        physics: Option<Physics>,
+    },
+    LeaveShinecharged {
+        frames_remaining: Option<i32>,
+    },
+    LeaveWithSpark {
+        position: SparkPosition,
+    },
+    LeaveWithGModeSetup {
+        knockback: bool,
+    },
+    LeaveWithGMode {
+        morphed: bool,
+    },
+    LeaveWithStoredFallSpeed {
+        fall_speed_in_tiles: i32,
+    },
+    LeaveWithDoorFrameBelow {
+        height: f32,
+        heated: bool,
+    },
+    LeaveWithPlatformBelow {
+        height: f32,
+        left_position: f32,
+        right_position: f32,
+    },
+}
+
+fn parse_spark_position(s: Option<&str>) -> Result<SparkPosition> {
+    Ok(match s {
+        Some("top") => SparkPosition::Top,
+        Some("bottom") => SparkPosition::Bottom,
+        None => SparkPosition::Any,
+        _ => bail!("Unrecognized spark position: {}", s.unwrap())
+    })
+}
+
+fn parse_exit_condition(
+    exit_json: &JsonValue,
+    heated: bool,
+    physics: Option<Physics>,
+) -> Result<ExitCondition> {
+    ensure!(exit_json.is_object());
+    ensure!(exit_json.len() == 1);
+    let (key, value) = exit_json.entries().next().unwrap();
+    ensure!(value.is_object());
+    match key {
+        "leaveWithRunway" => {
+            let runway_geometry = parse_runway_geometry(value)?;
+            let runway_effective_length = compute_runway_effective_length(&runway_geometry);
+            Ok(ExitCondition::LeaveWithRunway {
+                effective_length: runway_effective_length,
+                heated,
+                physics,
+            })
+        }
+        "leaveShinecharged" => Ok(ExitCondition::LeaveShinecharged {
+            frames_remaining: value["framesRemaining"].as_i32()
+        }),
+        "leaveWithSpark" => Ok(ExitCondition::LeaveWithSpark {
+            position: parse_spark_position(value["position"].as_str())?,
+        }),
+        "leaveWithGModeSetup" => Ok(ExitCondition::LeaveWithGModeSetup {
+            knockback: value["knockback"].as_bool().unwrap_or(true),
+        }),
+        "leaveWithGMode" => Ok(ExitCondition::LeaveWithGMode {
+            morphed: value["morphed"]
+                .as_bool()
+                .context("Expecting boolean 'morphed'")?,
+        }),
+        "leaveWithStoredFallSpeed" => Ok(ExitCondition::LeaveWithStoredFallSpeed {
+            fall_speed_in_tiles: value["fallSpeedInTiles"]
+                .as_i32()
+                .context("Expecting integer 'fallSpeedInTiles")?,
+        }),
+        "leaveWithDoorFrameBelow" => Ok(ExitCondition::LeaveWithDoorFrameBelow { 
+            height: value["height"].as_f32().context("Expecting number 'height'")?,
+            heated,
+        }),
+        "leaveWithPlatformBelow" => Ok(ExitCondition::LeaveWithPlatformBelow { 
+            height: value["height"].as_f32().context("Expecting number 'height'")?,
+            left_position: value["leftPosition"].as_f32().context("Expecting number 'leftPosition'")?,
+            right_position: value["rightPosition"].as_f32().context("Expecting number 'rightPosition'")?,
+        }),
+        _ => {
+            bail!(format!("Unrecognized exit condition: {}", key));
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum GModeMode {
+    Direct,
+    Indirect,
+    Any,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum GModeMobility {
+    Mobile,
+    Immobile,
+    Any,
+}
+
+#[derive(Clone, Debug)]
+pub enum EntranceCondition {
+    ComeInRunning {
+        speed_booster: Option<bool>,
+        min_tiles: f32,
+        max_tiles: f32,
+    },
+    ComeInJumping {
+        speed_booster: Option<bool>,
+        min_tiles: f32,
+        max_tiles: f32,
+    },
+    ComeInShinecharging {
+        effective_length: f32,
+        heated: bool,
+    },
+    ComeInShinecharged {
+        frames_required: i32,
+    },
+    ComeInWithSpark {
+        position: SparkPosition,
+    },
+    ComeInStutterShinecharging {
+        min_tiles: f32,
+    },
+    ComeInWithBombBoost {},
+    ComeInWithDoorStuckSetup {
+        heated: bool,
+    },
+    ComeInSpeedballing {
+        effective_runway_length: f32,
+    },
+    ComeInWithRMode {},
+    ComeInWithGMode {
+        mode: GModeMode,
+        morphed: bool,
+        mobility: GModeMobility,
+    },
+    ComeInWithStoredFallSpeed {
+        fall_speed_in_tiles: i32,
+    },
+    ComeInWithWallJumpBelow {
+        min_height: f32,
+    },
+    ComeInWithSpaceJumpBelow {},
+    ComeInWithPlatformBelow {
+        min_height: f32,
+        max_height: f32,
+        max_left_position: f32,
+        min_right_position: f32,
+    },
+}
+
+fn parse_runway_geometry(runway: &JsonValue) -> Result<RunwayGeometry> {
+    Ok(RunwayGeometry {
+        length: runway["length"].as_f32().context("Expecting 'length'")?,
+        open_end: runway["openEnd"].as_f32().context("Expecting 'openEnd'")?,
+        gentle_up_tiles: runway["gentleUpTiles"].as_f32().unwrap_or(0.0),
+        gentle_down_tiles: runway["gentleDownTiles"].as_f32().unwrap_or(0.0),
+        steep_up_tiles: runway["steepUpTiles"].as_f32().unwrap_or(0.0),
+        steep_down_tiles: runway["steepDownTiles"].as_f32().unwrap_or(0.0),
+        starting_down_tiles: runway["startingDownTiles"].as_f32().unwrap_or(0.0),
+    })
+}
+
+fn parse_runway_geometry_shinecharge(runway: &JsonValue) -> Result<RunwayGeometry> {
+    // for some reason "canShinecharge" requirements use "usedTiles" instead of "length":
+    Ok(RunwayGeometry {
+        length: runway["usedTiles"]
+            .as_f32()
+            .context("Expecting 'usedTiles'")?,
+        open_end: runway["openEnd"].as_f32().context("Expecting 'openEnd'")?,
+        gentle_up_tiles: runway["gentleUpTiles"].as_f32().unwrap_or(0.0),
+        gentle_down_tiles: runway["gentleDownTiles"].as_f32().unwrap_or(0.0),
+        steep_up_tiles: runway["steepUpTiles"].as_f32().unwrap_or(0.0),
+        steep_down_tiles: runway["steepDownTiles"].as_f32().unwrap_or(0.0),
+        starting_down_tiles: runway["startingDownTiles"].as_f32().unwrap_or(0.0),
+    })
+}
+
+fn compute_runway_effective_length(geom: &RunwayGeometry) -> f32 {
+    let effective_length =
+        geom.length - geom.starting_down_tiles - 9.0 / 16.0 * (1.0 - geom.open_end)
+            + 1.0 / 3.0 * geom.steep_up_tiles
+            + 1.0 / 7.0 * geom.steep_down_tiles
+            + 5.0 / 27.0 * geom.gentle_up_tiles
+            + 5.0 / 59.0 * geom.gentle_down_tiles;
+    effective_length
+}
+
+fn parse_entrance_condition(entrance_json: &JsonValue, heated: bool) -> Result<EntranceCondition> {
+    ensure!(entrance_json.is_object());
+    ensure!(entrance_json.len() == 1);
+    let (key, value) = entrance_json.entries().next().unwrap();
+    ensure!(value.is_object());
+    match key {
+        "comeInRunning" => Ok(EntranceCondition::ComeInRunning {
+            speed_booster: value["speedBooster"].as_bool(),
+            min_tiles: value["minTiles"]
+                .as_f32()
+                .context("Expecting number 'minTiles'")?,
+            max_tiles: value["maxTiles"].as_f32().unwrap_or(255.0),
+        }),
+        "comeInJumping" => Ok(EntranceCondition::ComeInJumping {
+            speed_booster: value["speedBooster"].as_bool(),
+            min_tiles: value["minTiles"]
+                .as_f32()
+                .context("Expecting number 'minTiles'")?,
+            max_tiles: value["maxTiles"].as_f32().unwrap_or(255.0),
+        }),
+        "comeInShinecharging" => {
+            let runway_geometry = parse_runway_geometry(value)?;
+            // Subtract 0.25 tiles since the door transition skips over approximately that much distance beyond the door shell tile:
+            let runway_effective_length = compute_runway_effective_length(&runway_geometry) - 0.25;
+            Ok(EntranceCondition::ComeInShinecharging {
+                effective_length: runway_effective_length,
+                heated,
+            })
+        }
+        "comeInShinecharged" => Ok(EntranceCondition::ComeInShinecharged {
+            frames_required: value["framesRequired"]
+                .as_i32()
+                .context("Expecting integer 'framesRequired'")?,
+        }),
+        "comeInWithSpark" => Ok(EntranceCondition::ComeInWithSpark {
+            position: parse_spark_position(value["position"].as_str())?,
+        }),
+        "comeInStutterShinecharging" => Ok(EntranceCondition::ComeInStutterShinecharging {
+            min_tiles: value["minTiles"]
+                .as_f32()
+                .context("Expecting number 'minTiles'")?,
+        }),
+        "comeInWithBombBoost" => Ok(EntranceCondition::ComeInWithBombBoost {}),
+        "comeInWithDoorStuckSetup" => Ok(EntranceCondition::ComeInWithDoorStuckSetup { heated }),
+        "comeInSpeedballing" => {
+            let runway_geometry = parse_runway_geometry(&value["runway"])?;
+            let effective_runway_length = compute_runway_effective_length(&runway_geometry);
+            Ok(EntranceCondition::ComeInSpeedballing {
+                effective_runway_length,
+            })
+        }
+        "comeInWithRMode" => Ok(EntranceCondition::ComeInWithRMode {}),
+        "comeInWithGMode" => {
+            let mode = match value["mode"].as_str().context("Expected string 'mode'")? {
+                "direct" => GModeMode::Direct,
+                "indirect" => GModeMode::Indirect,
+                "any" => GModeMode::Any,
+                m => bail!("Unrecognized 'mode': {}", m),
+            };
+            let morphed = value["morphed"]
+                .as_bool()
+                .context("Expected bool 'morphed'")?;
+            let mobility = match value["mobility"].as_str().unwrap_or("any") {
+                "mobile" => GModeMobility::Mobile,
+                "immobile" => GModeMobility::Immobile,
+                "any" => GModeMobility::Any,
+                m => bail!("Unrecognized 'mobility': {}", m),
+            };
+            Ok(EntranceCondition::ComeInWithGMode {
+                mode,
+                morphed,
+                mobility,
+            })
+        }
+        "comeInWithStoredFallSpeed" => Ok(EntranceCondition::ComeInWithStoredFallSpeed {
+            fall_speed_in_tiles: value["fallSpeedInTiles"]
+                .as_i32()
+                .context("Expecting integer 'fallSpeedInTiles")?,
+        }),
+        "comeInWithWallJumpBelow" => Ok(EntranceCondition::ComeInWithWallJumpBelow {
+            min_height: value["minHeight"].as_f32().context("Expecting number 'minHeight'")?,
+        }),
+        "comeInWithSpaceJumpBelow" => Ok(EntranceCondition::ComeInWithSpaceJumpBelow {}),
+        "comeInWithPlatformBelow" => Ok(EntranceCondition::ComeInWithPlatformBelow {
+            min_height: value["minHeight"].as_f32().unwrap_or(0.0),
+            max_height: value["maxHeight"].as_f32().unwrap_or(f32::INFINITY),
+            max_left_position: value["maxLeftPosition"].as_f32().unwrap_or(f32::INFINITY),
+            min_right_position: value["minRightPosition"].as_f32().unwrap_or(f32::NEG_INFINITY),
+        }),
+        _ => {
+            bail!(format!("Unrecognized entrance condition: {}", key));
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct LinksDataGroup {
+    pub links: Vec<Link>,
+    pub links_by_src: Vec<Vec<(LinkIdx, Link)>>,
+    pub links_by_dst: Vec<Vec<(LinkIdx, Link)>>,
+}
+
+impl LinksDataGroup {
+    pub fn new(links: Vec<Link>, num_vertices: usize, start_idx: usize) -> Self {
+        let mut links_by_src: Vec<Vec<(LinkIdx, Link)>> = vec![Vec::new(); num_vertices];
+        let mut links_by_dst: Vec<Vec<(LinkIdx, Link)>> = vec![Vec::new(); num_vertices];
+
+        for (idx, link) in links.iter().enumerate() {
+            let mut reversed_link = link.clone();
+            std::mem::swap(
+                &mut reversed_link.from_vertex_id,
+                &mut reversed_link.to_vertex_id,
+            );
+            links_by_dst[reversed_link.from_vertex_id]
+                .push(((start_idx + idx) as LinkIdx, reversed_link));
+            links_by_src[link.from_vertex_id].push(((start_idx + idx) as LinkIdx, link.clone()));
+        }
+        Self {
+            links,
+            links_by_src,
+            links_by_dst,
+        }
+    }
+}
+
+fn get_ignored_notable_strats() -> HashSet<String> {
+    [
+        "Breaking the Maridia Tube Gravity Jump",
+        "Metroid Room 1 PB Dodge Kill (Left to Right)",
+        "Metroid Room 1 PB Dodge Kill (Right to Left)",
+        "Metroid Room 2 PB Dodge Kill (Bottom to Top)",
+        "Metroid Room 3 PB Dodge Kill (Left to Right)",
+        "Metroid Room 3 PB Dodge Kill (Right to Left)",
+        "Metroid Room 4 Three PB Kill (Top to Bottom)",
+        "Metroid Room 4 Six PB Dodge Kill (Bottom to Top)",
+        "Metroid Room 4 Three PB Dodge Kill (Bottom to Top)",
+        "Partial Covern Ice Clip", // not usable because of canRiskPermanentLossOfAccess
+        "Mickey Mouse Crumble Jump IBJ",  // only useful with CF clip strat, or if we change item progression rules
+        "G-Mode Morph Breaking the Maridia Tube Gravity Jump", // not usable because of canRiskPermanentLossOfAccess
+    ]
+    .iter()
+    .map(|x| x.to_string())
+    .collect()
+}
+
+type TitleScreenImage = ndarray::Array3<u8>;
+
+#[derive(Default)]
+pub struct TitleScreenData {
+    pub top_left: Vec<TitleScreenImage>,
+    pub top_right: Vec<TitleScreenImage>,
+    pub bottom_left: Vec<TitleScreenImage>,
+    pub bottom_right: Vec<TitleScreenImage>,
+    pub map_station: TitleScreenImage,
+}
 
 // TODO: Clean this up, e.g. pull out a separate structure to hold
 // temporary data used only during loading, replace any
@@ -471,6 +908,7 @@ pub struct GameData {
     pub helpers: HashMap<String, Option<Requirement>>,
     pub room_json_map: HashMap<RoomId, JsonValue>,
     pub room_obstacle_idx_map: HashMap<RoomId, HashMap<String, usize>>,
+    pub ignored_notable_strats: HashSet<String>,
     pub node_json_map: HashMap<(RoomId, NodeId), JsonValue>,
     pub node_spawn_at_map: HashMap<(RoomId, NodeId), NodeId>,
     pub node_runways_map: HashMap<(RoomId, NodeId), Vec<Runway>>,
@@ -479,19 +917,28 @@ pub struct GameData {
     pub node_leave_with_gmode_map: HashMap<(RoomId, NodeId), Vec<LeaveWithGMode>>,
     pub node_leave_with_gmode_setup_map: HashMap<(RoomId, NodeId), Vec<LeaveWithGModeSetup>>,
     pub node_gmode_immobile_map: HashMap<(RoomId, NodeId), GModeImmobile>,
+    pub reverse_node_ptr_map: HashMap<NodePtr, (RoomId, NodeId)>,
     pub node_ptr_map: HashMap<(RoomId, NodeId), NodePtr>,
+    pub node_exits: HashMap<(RoomId, NodeId), Vec<Link>>,
+    pub node_gmode_regain_mobility: HashMap<(RoomId, NodeId), Vec<(Link, GModeRegainMobility)>>,
+    pub node_lock_req_json: HashMap<(RoomId, NodeId), JsonValue>,
     pub unlocked_node_map: HashMap<(RoomId, NodeId), NodeId>,
     pub room_num_obstacles: HashMap<RoomId, usize>,
     pub door_ptr_pair_map: HashMap<DoorPtrPair, (RoomId, NodeId)>,
     pub unlocked_door_ptr_pair_map: HashMap<DoorPtrPair, (RoomId, NodeId)>,
     pub reverse_door_ptr_pair_map: HashMap<(RoomId, NodeId), DoorPtrPair>,
+    pub door_position: HashMap<(RoomId, NodeId), DoorPosition>,
     pub vertex_isv: IndexedVec<(RoomId, NodeId, ObstacleMask)>,
     pub item_locations: Vec<(RoomId, NodeId)>,
     pub item_vertex_ids: Vec<Vec<VertexId>>,
     pub flag_locations: Vec<(RoomId, NodeId, FlagId)>,
     pub flag_vertex_ids: Vec<Vec<VertexId>>,
+    pub target_vertices: IndexedVec<VertexId>,
     pub save_locations: Vec<(RoomId, NodeId)>,
     pub links: Vec<Link>,
+    pub base_links: Vec<Link>,
+    pub base_links_data: LinksDataGroup,
+    pub seed_links: Vec<Link>,
     pub room_geometry: Vec<RoomGeometry>,
     pub room_and_door_idxs_by_door_ptr_pair:
         HashMap<DoorPtrPair, (RoomGeometryRoomIdx, RoomGeometryDoorIdx)>,
@@ -501,6 +948,7 @@ pub struct GameData {
     pub room_idx_by_ptr: HashMap<RoomPtr, RoomGeometryRoomIdx>,
     pub room_idx_by_name: HashMap<String, RoomGeometryRoomIdx>,
     pub node_tile_coords: HashMap<(RoomId, NodeId), Vec<(usize, usize)>>,
+    pub node_coords: HashMap<(RoomId, NodeId), (usize, usize)>,
     pub room_shape: HashMap<RoomId, (usize, usize)>,
     pub area_names: Vec<String>,
     pub area_map_ptrs: Vec<isize>,
@@ -515,6 +963,9 @@ pub struct GameData {
     pub escape_timings: Vec<EscapeTimingRoom>,
     pub start_locations: Vec<StartLocation>,
     pub hub_locations: Vec<HubLocation>,
+    pub heat_run_tech_id: TechId, // Cached since it is used frequently in graph traversal, and to avoid needing to store it in every HeatFrames req.
+    pub wall_jump_tech_id: TechId,
+    pub title_screen_data: TitleScreenData,
 }
 
 impl<T: Hash + Eq> IndexedVec<T> {
@@ -577,6 +1028,8 @@ impl GameData {
                 self.load_tech_rec(tech_json)?;
             }
         }
+        self.heat_run_tech_id = *self.tech_isv.index_by_key.get("canHeatRun").unwrap();
+        self.wall_jump_tech_id = *self.tech_isv.index_by_key.get("canWalljump").unwrap();
         Ok(())
     }
 
@@ -661,6 +1114,7 @@ impl GameData {
         for item_name in Item::VARIANTS {
             self.item_isv.add(&item_name.to_string());
         }
+        self.item_isv.add("WallJump");
         ensure!(item_json["gameFlags"].is_array());
         for flag_name in item_json["gameFlags"].members() {
             self.flag_isv.add(flag_name.as_str().unwrap());
@@ -835,6 +1289,8 @@ impl GameData {
             let value = req_json.as_str().unwrap();
             if value == "never" {
                 return Ok(Requirement::Never);
+            } else if value == "canWalljump" {
+                return Ok(Requirement::Walljump);
             } else if value == "i_ammoRefill" {
                 return Ok(Requirement::AmmoStationRefill);
             } else if value == "i_BlueGateGlitchLeniency" {
@@ -947,24 +1403,16 @@ impl GameData {
                 let frames = value["frames"]
                     .as_i32()
                     .expect(&format!("missing/invalid frames in {}", req_json));
-                let excess_frames =
-                    value["excessFrames"].as_i32().unwrap_or(0);
+                let excess_frames = value["excessFrames"].as_i32().unwrap_or(0);
                 return Ok(Requirement::Shinespark {
                     shinespark_tech_id: self.tech_isv.index_by_key["canShinespark"],
                     frames,
                     excess_frames,
-                });    
-            } else if key == "canShineCharge" {
-                let used_tiles = value["usedTiles"]
-                    .as_f32()
-                    .expect(&format!("missing/invalid usedTiles in {}", req_json));
-                let open_end = value["openEnd"]
-                    .as_f32()
-                    .expect(&format!("missing/invalid openEnd in {}", req_json));
-                // TODO: take slopes into account
-                return Ok(Requirement::ShineCharge {
-                    used_tiles: get_effective_runway_length(used_tiles, open_end),
                 });
+            } else if key == "canShineCharge" {
+                let runway_geometry = parse_runway_geometry_shinecharge(value)?;
+                let effective_length = compute_runway_effective_length(&runway_geometry);
+                return Ok(Requirement::make_shinecharge(effective_length));
             } else if key == "heatFrames" {
                 let frames = value
                     .as_i32()
@@ -1384,6 +1832,11 @@ impl GameData {
             } else if key == "itemNotCollectedAtNode" {
                 // TODO: implement this
                 return Ok(Requirement::Free);
+            } else if key == "autoReserveTrigger" {
+                return Ok(Requirement::ReserveTrigger { 
+                    min_reserve_energy: value["minReserveEnergy"].as_i32().unwrap_or(1),
+                    max_reserve_energy:  value["maxReserveEnergy"].as_i32().unwrap_or(400),
+                })
             }
         }
         bail!("Unable to parse requirement: {}", req_json);
@@ -1400,51 +1853,41 @@ impl GameData {
                 if path_str.contains("ceres") || path_str.contains("roomDiagrams") {
                     continue;
                 }
-                self.process_region(&read_json(&path)?)
-                    .with_context(|| format!("Processing {}", path_str))?;
+
+                let room_json = read_json(&path)?;
+                let room_name = room_json["name"].clone();
+                let preprocessed_room_json = self
+                    .preprocess_room(&room_json)
+                    .with_context(|| format!("Preprocessing room {}", room_name))?;
+                self.process_room(&preprocessed_room_json)
+                    .with_context(|| format!("Processing room {}", room_name))?;
             } else {
                 bail!("Error processing region path: {}", entry.err().unwrap());
             }
         }
-        // Add Pants Room in-room transition
-        let from_vertex_id = self.vertex_isv.index_by_key[&(220, 2, 0)]; // Pants Room
-        let to_vertex_id = self.vertex_isv.index_by_key[&(322, 1, 0)]; // East Pants Room
-        self.links.push(Link {
-            from_vertex_id,
-            to_vertex_id,
-            requirement: Requirement::Free,
-            notable_strat_name: None,
-            strat_name: "Pants Room in-room transition".to_string(),
-            strat_notes: vec![],
-        });
-        Ok(())
-    }
 
-    fn process_region(&mut self, region_json: &JsonValue) -> Result<()> {
-        ensure!(region_json["rooms"].is_array());
-        for room_json in region_json["rooms"].members() {
-            let room_name = room_json["name"].clone();
-            let preprocessed_room_json = self
-                .preprocess_room(room_json)
-                .with_context(|| format!("Preprocessing room {}", room_name))?;
-            self.process_room(&preprocessed_room_json)
-                .with_context(|| format!("Processing room {}", room_name))?;
+        let ignored_notable_strats = get_ignored_notable_strats();
+        if !ignored_notable_strats.is_subset(&self.ignored_notable_strats) {
+            let diff: Vec<String> = ignored_notable_strats
+                .difference(&self.ignored_notable_strats)
+                .cloned()
+                .collect();
+            panic!("Unrecognized ignored notable strats: {:?}", diff);
         }
+    
         Ok(())
     }
 
     fn override_morph_ball_room(&mut self, room_json: &mut JsonValue) {
         // Override the Careful Jump strat to get out from Morph Ball location:
         //
-        room_json["links"]
+        room_json["strats"]
             .members_mut()
-            .find(|x| x["from"].as_i32().unwrap() == 4)
-            .unwrap()["to"]
-            .members_mut()
-            .find(|x| x["id"].as_i32().unwrap() == 2)
-            .unwrap()["strats"]
-            .members_mut()
-            .find(|x| x["name"].as_str().unwrap() == "Careful Jump")
+            .find(|x| {
+                x["link"][0].as_i32().unwrap() == 4
+                    && x["link"][1].as_i32().unwrap() == 2
+                    && x["name"].as_str().unwrap() == "Careful Jump"
+            })
             .unwrap()
             .insert(
                 "requires",
@@ -1460,7 +1903,7 @@ impl GameData {
 
     fn override_shaktool_room(&mut self, room_json: &mut JsonValue) {
         for node_json in room_json["nodes"].members_mut() {
-            if node_json["name"] == "f_ShaktoolDoneDigging" {
+            if node_json["id"].as_i32().unwrap() == 3 {
                 // Adding a dummy lock on Shaktool done digging event, so that the code in `preprocess_room`
                 // can pick it up and construct a corresponding obstacle for the flag (as it expects there
                 // to be a lock).
@@ -1484,9 +1927,6 @@ impl GameData {
         let mut found = false;
         for node_json in room_json["nodes"].members_mut() {
             if node_json["id"].as_i32().unwrap() == 2 {
-                // Adding a dummy lock on Shaktool done digging event, so that the code in `preprocess_room`
-                // can pick it up and construct a corresponding obstacle for the flag (as it expects there
-                // to be a lock).
                 found = true;
                 node_json["locks"] = json::array![
                   {
@@ -1521,6 +1961,9 @@ impl GameData {
 
     fn preprocess_room(&mut self, room_json: &JsonValue) -> Result<JsonValue> {
         // We apply some changes to the sm-json-data specific to Map Rando.
+
+        let ignored_notable_strats = get_ignored_notable_strats();
+
         let mut new_room_json = room_json.clone();
         ensure!(room_json["nodes"].is_array());
         let mut next_node_id = room_json["nodes"]
@@ -1530,8 +1973,12 @@ impl GameData {
             .unwrap()
             + 1;
         let mut extra_nodes: Vec<JsonValue> = Vec::new();
-        let mut extra_links: Vec<JsonValue> = Vec::new();
+        let mut extra_strats: Vec<JsonValue> = Vec::new();
         let room_id = room_json["id"].as_usize().unwrap();
+
+        if room_json["name"].as_str().unwrap() == "Upper Tourian Save Room" {
+            new_room_json["name"] = JsonValue::String("Tourian Map Room".to_string());
+        }
 
         // Rooms where we want the logic to take into account the gray door locks (elsewhere the gray doors are changed to blue):
         // Be sure to keep this consistent with patches where the gray doors are actually changed in the ROM, in
@@ -1562,8 +2009,6 @@ impl GameData {
             "f_UsedAcidChozoStatue",
         ];
 
-        let mut obstacle_flag: Option<String> = None;
-
         // TODO: handle overrides in a more structured/robust way
         if room_id == 222 {
             self.override_shaktool_room(&mut new_room_json);
@@ -1575,9 +2020,12 @@ impl GameData {
             self.override_tourian_save_room(&mut new_room_json);
         }
 
+        let mut obstacle_flag: Option<String> = None;
+
         for node_json in new_room_json["nodes"].members_mut() {
             let node_id = node_json["id"].as_usize().unwrap();
 
+            // TODO: get rid of dummy nodes that we're creating here.
             if node_json.has_key("locks")
                 && (!["door", "entrance"].contains(&node_json["nodeType"].as_str().unwrap())
                     || door_lock_allowed_room_ids.contains(&room_id))
@@ -1631,6 +2079,17 @@ impl GameData {
 
                 extra_nodes.push(unlocked_node_json);
 
+                let unlock_reqs = json::object! {
+                    "or": unlock_strats.members()
+                            .map(|x| json::object!{"and": x["requires"].clone()})
+                            .collect::<Vec<JsonValue>>()
+                };
+                if room_id != 12 {
+                    // Exclude lock requirements in Pit Room since with randomizer changes these become free
+                    self.node_lock_req_json
+                        .insert((room_id, node_id), unlock_reqs);
+                }
+
                 if lock.has_key("lock") {
                     ensure!(lock["lock"].is_array());
                     for strat in &mut unlock_strats.members_mut() {
@@ -1640,45 +2099,33 @@ impl GameData {
                     }
                 }
 
-                let mut link_forward = json::object! {
-                    "from": node_id,
-                    "to": [{
-                        "id": next_node_id,
-                        "strats": unlock_strats.clone(),
-                    }]
-                };
-
                 if yields != JsonValue::Null
                     && obstacle_flags.contains(&yields[0].as_str().unwrap())
                 {
-                    obstacle_flag = Some(yields[0].as_str().unwrap().to_string());
-                    for strat in link_forward["to"][0]["strats"].members_mut() {
-                        let mut obstacles = if strat["obstacles"].is_array() {
-                            strat["obstacles"].clone()
-                        } else {
-                            JsonValue::Array(vec![])
-                        };
-                        obstacles.push(json::object! {
-                            "id": obstacle_flag.as_ref().unwrap().to_string(),
-                            "requires": []
-                        })?;
-                        strat["obstacles"] = obstacles;
-                    }
+                    obstacle_flag = Some(yields[0].as_str().unwrap().to_string())
                 }
 
-                let link_backward = json::object! {
-                    "from": next_node_id,
-                    "to": [{
-                        "id": node_id,
-                        "strats": [{
-                            "name": "Base",
-                            "notable": false,
-                            "requires": [],
-                        }],
-                    }]
+                // Strats from locked node to unlocked node
+                for strat in unlock_strats.members() {
+                    let mut new_strat = strat.clone();
+                    new_strat["link"] = json::array![node_id, next_node_id];
+                    if let Some(obs) = &obstacle_flag {
+                        if !new_strat.has_key("clearsObstacles") {
+                            new_strat["clearsObstacles"] = json::array![];
+                        }
+                        new_strat["clearsObstacles"].push(JsonValue::String(obs.clone()))?;
+                    }
+                    extra_strats.push(new_strat);
+                }
+
+                // Strat back from unlocked node to locked node
+                let strat_backward = json::object! {
+                    "link": [next_node_id, node_id],
+                    "name": "Base",
+                    "notable": false,
+                    "requires": [],
                 };
-                extra_links.push(link_forward);
-                extra_links.push(link_backward);
+                extra_strats.push(strat_backward);
 
                 next_node_id += 1;
             }
@@ -1687,8 +2134,8 @@ impl GameData {
         for extra_node in extra_nodes {
             new_room_json["nodes"].push(extra_node).unwrap();
         }
-        for extra_link in extra_links {
-            new_room_json["links"].push(extra_link).unwrap();
+        for strat in extra_strats {
+            new_room_json["strats"].push(strat).unwrap();
         }
 
         if obstacle_flag.is_some() {
@@ -1702,38 +2149,39 @@ impl GameData {
                     "name": obstacle_flag_name.to_string(),
                 })
                 .unwrap();
-            ensure!(new_room_json["links"].is_array());
-            for link in new_room_json["links"].members_mut() {
-                ensure!(link["to"].is_array());
-                for to_json in link["to"].members_mut() {
-                    let mut new_strats: Vec<JsonValue> = Vec::new();
-                    ensure!(to_json["strats"].is_array());
-                    // For each strat requiring one of the "obstacle flags" listed above, create an alternative strat
-                    // depending on the corresponding obstacle instead:
-                    for strat in to_json["strats"].members() {
-                        let json_obstacle_flag_name = JsonValue::String(obstacle_flag_name.clone());
-                        let pos = strat["requires"]
-                            .members()
-                            .position(|x| x == &json_obstacle_flag_name);
-                        if let Some(i) = pos {
-                            let mut new_strat = strat.clone();
-                            if !new_strat.has_key("obstacles") {
-                                new_strat["obstacles"] = json::array![];
-                            }
-                            new_strat["requires"].array_remove(i);
-                            new_strat["obstacles"]
-                                .push(json::object! {
-                                    "id": obstacle_flag_name.to_string(),
-                                    "requires": ["never"]
-                                })
-                                .unwrap();
-                            new_strats.push(new_strat);
-                        }
-                    }
-                    for strat in new_strats {
-                        to_json["strats"].push(strat).unwrap();
+            ensure!(new_room_json["strats"].is_array());
+
+            // For each strat requiring one of the "obstacle flags" listed above, create an alternative strat
+            // depending on the corresponding obstacle instead:
+            let mut new_strats: Vec<JsonValue> = Vec::new();
+            for strat in new_room_json["strats"].members_mut() {
+                let json_obstacle_flag_name = JsonValue::String(obstacle_flag_name.clone());
+                let mut new_strat = strat.clone();
+                let mut found = false;
+                for req in new_strat["requires"].members_mut() {
+                    if req == &json_obstacle_flag_name {
+                        *req = json::object! {
+                            "obstaclesCleared": [obstacle_flag_name.to_string()]
+                        };
+                        found = true;
                     }
                 }
+                if found {
+                    new_strats.push(new_strat);
+                }
+            }
+            for strat in new_strats {
+                new_room_json["strats"].push(strat).unwrap();
+            }
+        }
+
+        for strat_json in new_room_json["strats"].members_mut() {
+            let strat_name = strat_json["name"].as_str().unwrap();
+            if ignored_notable_strats.contains(strat_name) {
+                if strat_json["notable"].as_bool() == Some(true) {
+                    self.ignored_notable_strats.insert(strat_name.to_string());
+                }
+                strat_json["notable"] = JsonValue::Boolean(false);
             }
         }
         Ok(new_room_json)
@@ -1780,6 +2228,13 @@ impl GameData {
                 to_obstacles_bitmask |= 1 << obstacle_idx;
             }
         }
+        if strat_json.has_key("resetsObstacles") {
+            ensure!(strat_json["resetsObstacles"].is_array());
+            for obstacle_id in strat_json["resetsObstacles"].members() {
+                let obstacle_idx = obstacles_idx_map[obstacle_id.as_str().unwrap()];
+                to_obstacles_bitmask &= !(1 << obstacle_idx);
+            }
+        }
         Ok(to_obstacles_bitmask)
     }
 
@@ -1806,6 +2261,10 @@ impl GameData {
     }
 
     fn get_room_heated(&self, room_json: &JsonValue, node_id: NodeId) -> Result<bool> {
+        if !room_json.has_key("roomEnvironments") {
+            // TODO: add roomEnvironments to Toilet Bowl so we don't need to skip this here
+            return Ok(false);
+        }
         ensure!(room_json["roomEnvironments"].is_array());
         for env in room_json["roomEnvironments"].members() {
             if env.has_key("entranceNodes") {
@@ -1821,9 +2280,11 @@ impl GameData {
         bail!("No match for node {} in roomEnvironments", node_id);
     }
 
-    // fn get_origin_node(&self, requirement_json: &JsonValue) -> Option<NodeId> {
-
-    // }
+    pub fn all_links(&self) -> impl Iterator<Item = &Link> {
+        self.links
+            .iter()
+            .chain(self.node_exits.values().flatten())
+    }
 
     fn process_room(&mut self, room_json: &JsonValue) -> Result<()> {
         let room_id = room_json["id"].as_usize().unwrap();
@@ -1875,6 +2336,9 @@ impl GameData {
                     node_ptr = 0x1A7A4;
                 }
                 self.node_ptr_map.insert((room_id, node_id), node_ptr);
+                if (room_id, node_id) != (32, 7) && (room_id, node_id) != (32, 8) {
+                    self.reverse_node_ptr_map.insert(node_ptr, (room_id, node_id));
+                }
             }
             for obstacle_bitmask in 0..(1 << num_obstacles) {
                 self.vertex_isv.add(&(room_id, node_id, obstacle_bitmask));
@@ -1909,7 +2373,7 @@ impl GameData {
                                 length: runway_json["length"].as_i32().unwrap(),
                                 open_end: runway_json["openEnd"].as_i32().unwrap(),
                                 requirement,
-                                physics,
+                                physics: physics.clone(),
                                 heated,
                                 usable_coming_in: runway_json["usableComingIn"]
                                     .as_bool()
@@ -1917,6 +2381,44 @@ impl GameData {
                             };
                             // info!("Runway: {:?}", runway);
                             runway_vec.push(runway);
+
+                            // Temporary while migration is in process -- Create new-style exit-condition strat:
+                            let vertex_id = self.vertex_isv.index_by_key[&(room_id, node_id, 0)];
+                            let lock_req = if let Some(lock_req_json) =
+                                self.node_lock_req_json.get(&(room_id, node_id))
+                            {
+                                // This accounts for requirements to unlock a gray door before performing a cross-room
+                                // strat through it:
+                                self.parse_requirement(&lock_req_json.clone(), &ctx)?
+                            } else {
+                                Requirement::Free
+                            };
+
+                            let runway_geometry = parse_runway_geometry(runway_json)?;
+                            let effective_length =
+                                compute_runway_effective_length(&runway_geometry);
+                            let exit_condition = ExitCondition::LeaveWithRunway {
+                                effective_length,
+                                heated,
+                                physics: Some(parse_physics(&physics)?),
+                            };
+
+                            let link = Link {
+                                from_vertex_id: vertex_id,
+                                to_vertex_id: vertex_id,
+                                requirement: lock_req,
+                                entrance_condition: None,
+                                exit_condition: Some(exit_condition),
+                                bypasses_door_shell: false,
+                                notable_strat_name: None,
+                                strat_name: strat_json["name"].as_str().unwrap().to_string(),
+                                strat_notes: vec![],
+                                sublinks: vec![],
+                            };
+                            self.node_exits
+                                .entry((room_id, node_id))
+                                .or_insert(vec![])
+                                .push(link);
                         } else {
                             // info!("Invalid physics in runway: {} - {}", room_json["name"], runway_json["name"])
                         }
@@ -1990,9 +2492,57 @@ impl GameData {
                             frames_remaining: can_leave_charged_json["framesRemaining"]
                                 .as_i32()
                                 .context("Expecting integer framesRemaining")?,
-                            requirement,
+                            requirement: requirement.clone(),
                         };
-                        can_leave_charged_vec.push(can_leave_charged);
+                        can_leave_charged_vec.push(can_leave_charged.clone());
+
+                        // Temporary while migration is in process -- Create new-style exit-condition strat:
+                        let vertex_id = self.vertex_isv.index_by_key[&(room_id, node_id, 0)];
+                        let effective_length = get_effective_runway_length(
+                            can_leave_charged.used_tiles as f32,
+                            can_leave_charged.open_end as f32,
+                        );
+                        let lock_req = if let Some(lock_req_json) =
+                            self.node_lock_req_json.get(&(room_id, node_id))
+                        {
+                            // This accounts for requirements to unlock a gray door before performing a cross-room
+                            // strat through it:
+                            self.parse_requirement(&lock_req_json.clone(), &ctx)?
+                        } else {
+                            Requirement::Free
+                        };
+                        let req = Requirement::make_and(vec![
+                            requirement,
+                            lock_req,
+                            Requirement::ShineCharge {
+                                used_tiles: effective_length,
+                            },
+                        ]);
+                        let exit_condition = if can_leave_charged.frames_remaining > 0 {
+                            ExitCondition::LeaveShinecharged {
+                                frames_remaining: Some(can_leave_charged.frames_remaining),
+                            }
+                        } else {
+                            ExitCondition::LeaveWithSpark {
+                                position: SparkPosition::Any,
+                            }
+                        };
+                        let link = Link {
+                            from_vertex_id: vertex_id,
+                            to_vertex_id: vertex_id,
+                            requirement: req,
+                            entrance_condition: None,
+                            exit_condition: Some(exit_condition),
+                            bypasses_door_shell: false,
+                            notable_strat_name: None,
+                            strat_name: strat_json["name"].as_str().unwrap().to_string(),
+                            strat_notes: vec![],
+                            sublinks: vec![],
+                        };
+                        self.node_exits
+                            .entry((room_id, node_id))
+                            .or_insert(vec![])
+                            .push(link);
                     }
                 }
                 self.node_can_leave_charged_map
@@ -2022,9 +2572,38 @@ impl GameData {
                             Requirement::make_and(self.parse_requires_list(&requires_json, &ctx)?);
                         let leave_with_gmode_setup = LeaveWithGModeSetup {
                             knockback,
-                            requirement,
+                            requirement: requirement.clone(),
                         };
                         leave_with_gmode_setup_vec.push(leave_with_gmode_setup);
+
+                        // Temporary while migration is in process -- Create new-style exit-condition strat:
+                        let vertex_id = self.vertex_isv.index_by_key[&(room_id, node_id, 0)];
+                        let lock_req = if let Some(lock_req_json) =
+                            self.node_lock_req_json.get(&(room_id, node_id))
+                        {
+                            // This accounts for requirements to unlock a gray door before performing a cross-room
+                            // strat through it:
+                            self.parse_requirement(&lock_req_json.clone(), &ctx)?
+                        } else {
+                            Requirement::Free
+                        };
+                        let exit_condition = ExitCondition::LeaveWithGModeSetup { knockback };
+                        let link = Link {
+                            from_vertex_id: vertex_id,
+                            to_vertex_id: vertex_id,
+                            requirement: Requirement::make_and(vec![requirement, lock_req]),
+                            entrance_condition: None,
+                            exit_condition: Some(exit_condition),
+                            bypasses_door_shell: false,
+                            notable_strat_name: None,
+                            strat_name: strat_json["name"].as_str().unwrap().to_string(),
+                            strat_notes: vec![],
+                            sublinks: vec![],
+                        };
+                        self.node_exits
+                            .entry((room_id, node_id))
+                            .or_insert(vec![])
+                            .push(link);
                     }
                 }
                 self.node_leave_with_gmode_setup_map
@@ -2050,13 +2629,45 @@ impl GameData {
                         ctx.room_id = room_id;
                         let requirement =
                             Requirement::make_and(self.parse_requires_list(&requires_json, &ctx)?);
+                        let artificial_morph = leave_with_gmode_json["leavesWithArtificialMorph"]
+                            .as_bool()
+                            .context("Expecting field leavesWithArtificialMorph")?;
                         let leave_with_gmode = LeaveWithGMode {
-                            artificial_morph: leave_with_gmode_json["leavesWithArtificialMorph"]
-                                .as_bool()
-                                .context("Expecting field leavesWithArtificialMorph")?,
-                            requirement,
+                            artificial_morph,
+                            requirement: requirement.clone(),
                         };
                         leave_with_gmode_vec.push(leave_with_gmode);
+
+                        // Temporary while migration is in process -- Create new-style exit-condition strat:
+                        let vertex_id = self.vertex_isv.index_by_key[&(room_id, node_id, 0)];
+                        let lock_req = if let Some(lock_req_json) =
+                            self.node_lock_req_json.get(&(room_id, node_id))
+                        {
+                            // This accounts for requirements to unlock a gray door before performing a cross-room
+                            // strat through it:
+                            self.parse_requirement(&lock_req_json.clone(), &ctx)?
+                        } else {
+                            Requirement::Free
+                        };
+                        let exit_condition = ExitCondition::LeaveWithGMode {
+                            morphed: artificial_morph,
+                        };
+                        let link = Link {
+                            from_vertex_id: vertex_id,
+                            to_vertex_id: vertex_id,
+                            requirement: Requirement::make_and(vec![requirement, lock_req]),
+                            entrance_condition: None,
+                            exit_condition: Some(exit_condition),
+                            bypasses_door_shell: false,
+                            notable_strat_name: None,
+                            strat_name: strat_json["name"].as_str().unwrap().to_string(),
+                            strat_notes: vec![],
+                            sublinks: vec![],
+                        };
+                        self.node_exits
+                            .entry((room_id, node_id))
+                            .or_insert(vec![])
+                            .push(link);
                     }
                 }
                 self.node_leave_with_gmode_map
@@ -2068,6 +2679,7 @@ impl GameData {
 
             // Implicit leaveWithGMode:
             if !node_json.has_key("spawnAt") && node_json["nodeType"].as_str().unwrap() == "door" {
+                // Old style of cross-room strat:
                 for artificial_morph in [false, true] {
                     self.node_leave_with_gmode_map
                         .get_mut(&(room_id, node_id))
@@ -2083,6 +2695,32 @@ impl GameData {
                             },
                         });
                 }
+
+                // New style of cross-room strat:
+                let vertex_id = self.vertex_isv.index_by_key[&(room_id, node_id, 0)];
+                for morphed in [false, true] {
+                    let exit_condition = ExitCondition::LeaveWithGMode { morphed };
+                    let link = Link {
+                        from_vertex_id: vertex_id,
+                        to_vertex_id: vertex_id,
+                        requirement: Requirement::Free,
+                        entrance_condition: Some(EntranceCondition::ComeInWithGMode {
+                            mode: GModeMode::Direct,
+                            morphed,
+                            mobility: GModeMobility::Any,
+                        }),
+                        exit_condition: Some(exit_condition),
+                        bypasses_door_shell: false,
+                        notable_strat_name: None,
+                        strat_name: "G-Mode Go Back Through Door".to_string(),
+                        strat_notes: vec![],
+                        sublinks: vec![],
+                    };
+                    self.node_exits
+                        .entry((room_id, node_id))
+                        .or_insert(vec![])
+                        .push(link);
+                }
             }
 
             if node_json.has_key("gModeImmobile") {
@@ -2096,9 +2734,30 @@ impl GameData {
                 ctx.room_id = room_id;
                 let requirement =
                     Requirement::make_and(self.parse_requires_list(&requires_json, &ctx)?);
-                let gmode_immobile = GModeImmobile { requirement };
+                let gmode_immobile = GModeImmobile {
+                    requirement: requirement.clone(),
+                };
                 self.node_gmode_immobile_map
                     .insert((room_id, node_id), gmode_immobile);
+
+                // Temporary while migration is in process -- Create new-style strat with gModeRegainMobility:
+                let vertex_id = self.vertex_isv.index_by_key[&(room_id, node_id, 0)];
+                let link = Link {
+                    from_vertex_id: vertex_id,
+                    to_vertex_id: vertex_id,
+                    requirement: requirement,
+                    entrance_condition: None,
+                    exit_condition: None,
+                    bypasses_door_shell: false,
+                    notable_strat_name: None,
+                    strat_name: "G-Mode Immobile".to_string(),
+                    strat_notes: vec![],
+                    sublinks: vec![],
+                };
+                self.node_gmode_regain_mobility
+                    .entry((room_id, node_id))
+                    .or_insert(vec![])
+                    .push((link, GModeRegainMobility {}));
             }
 
             if node_json.has_key("spawnAt") {
@@ -2114,89 +2773,204 @@ impl GameData {
             roomwide_notable.insert(strat["name"].as_str().unwrap().to_string(), strat.clone());
         }
 
-        // Process links:
-        ensure!(room_json["links"].is_array());
-        for link_json in room_json["links"].members() {
-            ensure!(link_json["to"].is_array());
-            for link_to_json in link_json["to"].members() {
-                ensure!(link_to_json["strats"].is_array());
-                for strat_json in link_to_json["strats"].members() {
-                    for from_obstacles_bitmask in 0..(1 << num_obstacles) {
-                        let from_node_id = link_json["from"].as_usize().unwrap();
-                        let to_node_id = link_to_json["id"].as_usize().unwrap();
-                        ensure!(strat_json["requires"].is_array());
-                        let mut requires_json: Vec<JsonValue> = strat_json["requires"]
-                            .members()
-                            .map(|x| x.clone())
-                            .collect();
+        // Process strats:
+        ensure!(room_json["strats"].is_array());
+        for strat_json in room_json["strats"].members() {
+            let from_node_id = strat_json["link"][0].as_usize().unwrap();
+            let to_node_id = strat_json["link"][1].as_usize().unwrap();
+            // TODO: deal with heated room more explicitly for Volcano Room, instead of guessing based on node ID:
+            let from_heated = self.get_room_heated(room_json, from_node_id)?;
 
-                        let to_obstacles_bitmask = self.get_obstacle_data(
-                            strat_json,
-                            room_json,
-                            from_obstacles_bitmask,
-                            &obstacles_idx_map,
-                            &mut requires_json,
-                        )?;
-                        let ctx = RequirementContext {
-                            room_id,
-                            _from_node_id: from_node_id,
-                            from_obstacles_bitmask,
-                            obstacles_idx_map: Some(&obstacles_idx_map),
-                        };
-                        let mut requires_vec = self.parse_requires_list(&requires_json, &ctx)?;
-                        let strat_name = strat_json["name"].as_str().unwrap().to_string();
-                        let strat_notes = self.parse_note(&strat_json["note"]);
-                        let notable = strat_json["notable"].as_bool().unwrap_or(false);
-                        let mut notable_strat_name = strat_name.clone();
-                        if notable {
-                            let mut notable_strat_note: Vec<String> = strat_notes.clone();
-                            if strat_json.has_key("reusableRoomwideNotable") {
-                                notable_strat_name = strat_json["reusableRoomwideNotable"]
-                                    .as_str()
-                                    .unwrap()
-                                    .to_string();
-                                if !roomwide_notable.contains_key(&notable_strat_name) {
-                                    bail!(
-                                        "Unrecognized reusable notable strat name: {}",
-                                        notable_strat_name
-                                    );
-                                }
-                                notable_strat_note =
-                                    self.parse_note(&roomwide_notable[&notable_strat_name]["note"]);
-                            }
-                            let strat_id = self.notable_strat_isv.add(&notable_strat_name);
-                            requires_vec.push(Requirement::Strat(strat_id));
-                            let area = format!(
-                                "{} - {}",
-                                room_json["area"].as_str().unwrap(),
-                                room_json["subarea"].as_str().unwrap()
+            let to_heated = self.get_room_heated(room_json, to_node_id)?;
+            let physics_res = self.get_node_physics(&self.node_json_map[&(room_id, to_node_id)]);
+            let physics: Option<Physics> = if let Ok(physics_str) = &physics_res {
+                Some(parse_physics(&physics_str)?)
+            } else {
+                None
+            };
+
+            let entrance_condition: Option<EntranceCondition> =
+                if strat_json.has_key("entranceCondition") {
+                    ensure!(strat_json["entranceCondition"].is_object());
+                    Some(parse_entrance_condition(
+                        &strat_json["entranceCondition"],
+                        from_heated,
+                    )?)
+                } else {
+                    None
+                };
+            let exit_condition: Option<ExitCondition> = if strat_json.has_key("exitCondition") {
+                ensure!(strat_json["exitCondition"].is_object());
+                Some(parse_exit_condition(
+                    &strat_json["exitCondition"],
+                    to_heated,
+                    physics,
+                )?)
+            } else {
+                None
+            };
+            let gmode_regain_mobility: Option<GModeRegainMobility> =
+                if strat_json.has_key("gModeRegainMobility") {
+                    ensure!(strat_json["gModeRegainMobility"].is_object());
+                    Some(GModeRegainMobility {})
+                } else {
+                    None
+                };
+
+            for from_obstacles_bitmask in 0..(1 << num_obstacles) {
+                if entrance_condition.is_some() && from_obstacles_bitmask != 0 {
+                    continue;
+                }
+                ensure!(strat_json["requires"].is_array());
+                let mut requires_json: Vec<JsonValue> = strat_json["requires"]
+                    .members()
+                    .map(|x| x.clone())
+                    .collect();
+
+                let to_obstacles_bitmask = self.get_obstacle_data(
+                    strat_json,
+                    room_json,
+                    from_obstacles_bitmask,
+                    &obstacles_idx_map,
+                    &mut requires_json,
+                )?;
+                let ctx = RequirementContext {
+                    room_id,
+                    _from_node_id: from_node_id,
+                    from_obstacles_bitmask,
+                    obstacles_idx_map: Some(&obstacles_idx_map),
+                };
+                let mut requires_vec = self.parse_requires_list(&requires_json, &ctx)?;
+                let strat_name = strat_json["name"].as_str().unwrap().to_string();
+                let strat_notes = self.parse_note(&strat_json["note"]);
+                let notable = strat_json["notable"].as_bool().unwrap_or(false);
+                let mut notable_strat_name = strat_name.clone();
+                if notable {
+                    let mut notable_strat_note: Vec<String> = strat_notes.clone();
+                    if strat_json.has_key("reusableRoomwideNotable") {
+                        notable_strat_name = strat_json["reusableRoomwideNotable"]
+                            .as_str()
+                            .unwrap()
+                            .to_string();
+                        if !roomwide_notable.contains_key(&notable_strat_name) {
+                            bail!(
+                                "Unrecognized reusable notable strat name: {}",
+                                notable_strat_name
                             );
-                            self.strat_area.insert(notable_strat_name.clone(), area);
-                            self.strat_room.insert(
-                                notable_strat_name.clone(),
-                                room_json["name"].as_str().unwrap().to_string(),
-                            );
-                            self.strat_description
-                                .insert(notable_strat_name.clone(), notable_strat_note.join(" "));
                         }
-                        let requirement = Requirement::make_and(requires_vec);
-                        let from_vertex_id = self.vertex_isv.index_by_key
-                            [&(room_id, from_node_id, from_obstacles_bitmask)];
-                        let to_vertex_id = self.vertex_isv.index_by_key
-                            [&(room_id, to_node_id, to_obstacles_bitmask)];
-                        let link = Link {
-                            from_vertex_id,
-                            to_vertex_id,
-                            requirement,
-                            notable_strat_name: if notable {
-                                Some(notable_strat_name)
-                            } else {
-                                None
-                            },
-                            strat_name,
-                            strat_notes,
-                        };
-                        self.links.push(link);
+                        notable_strat_note =
+                            self.parse_note(&roomwide_notable[&notable_strat_name]["note"]);
+                    }
+                    let strat_id = self.notable_strat_isv.add(&notable_strat_name);
+                    requires_vec.push(Requirement::Strat(strat_id));
+                    let area = format!(
+                        "{} - {}",
+                        room_json["area"].as_str().unwrap(),
+                        room_json["subarea"].as_str().unwrap()
+                    );
+                    self.strat_area.insert(notable_strat_name.clone(), area);
+                    self.strat_room.insert(
+                        notable_strat_name.clone(),
+                        room_json["name"].as_str().unwrap().to_string(),
+                    );
+                    self.strat_description
+                        .insert(notable_strat_name.clone(), notable_strat_note.join(" "));
+                }
+
+                if exit_condition.is_some() {
+                    if let Some(lock_req_json) = self.node_lock_req_json.get(&(room_id, to_node_id))
+                    {
+                        // This accounts for requirements to unlock a gray door before performing a cross-room
+                        // strat through it:
+                        // TODO: Also consider the possibility of the gray door being open due to having just
+                        // entered
+                        requires_vec.push(self.parse_requirement(&lock_req_json.clone(), &ctx)?);
+                    }
+                }
+
+                let bypasses_door_shell = strat_json["bypassesDoorShell"].as_bool().unwrap_or(false);
+                if bypasses_door_shell {
+                    requires_vec.push(Requirement::Tech(self.tech_isv.index_by_key["canSkipDoorLock"]));
+                }
+
+                let requirement = Requirement::make_and(requires_vec);
+                if let Requirement::Never = requirement {
+                    continue;
+                }
+                let from_vertex_id =
+                    self.vertex_isv.index_by_key[&(room_id, from_node_id, from_obstacles_bitmask)];
+                let to_vertex_id =
+                    self.vertex_isv.index_by_key[&(room_id, to_node_id, to_obstacles_bitmask)];
+                let link = Link {
+                    from_vertex_id,
+                    to_vertex_id,
+                    requirement: requirement.clone(),
+                    entrance_condition: entrance_condition.clone(),
+                    exit_condition: exit_condition.clone(),
+                    bypasses_door_shell,
+                    notable_strat_name: if notable {
+                        Some(notable_strat_name)
+                    } else {
+                        None
+                    },
+                    strat_name: strat_name.clone(),
+                    strat_notes,
+                    sublinks: vec![],
+                };
+                if gmode_regain_mobility.is_some() {
+                    if entrance_condition.is_some() || exit_condition.is_some() {
+                        bail!("gModeRegainMobility combined with entranceCondition or exitCondition is not allowed.");
+                    }
+                    if from_node_id != to_node_id {
+                        bail!("gModeRegainMobility `from` and `to` node must be equal.");
+                    }
+                    self.node_gmode_regain_mobility
+                        .entry((room_id, to_node_id))
+                        .or_insert(vec![])
+                        .push((link, gmode_regain_mobility.clone().unwrap()))
+                } else if exit_condition.is_some() {
+                    self.node_exits
+                        .entry((room_id, to_node_id))
+                        .or_insert(vec![])
+                        .push(link);
+                } else {
+                    self.links.push(link);
+                }
+
+                // Temporary while in the middle of migration -- create old-style runways, etc.:
+                if from_node_id == to_node_id {
+                    match exit_condition {
+                        Some(ExitCondition::LeaveWithRunway {
+                            heated, physics, ..
+                        }) => {
+                            if let Ok(physics_str) = &physics_res {
+                                let mut runway_reqs = vec![requirement];
+                                if physics != Some(Physics::Air) {
+                                    runway_reqs.push(Requirement::Item(Item::Gravity as usize));
+                                }
+                                // println!("{}", strat_json["exitCondition"].pretty(2));
+                                self.node_runways_map
+                                    .entry((room_id, to_node_id))
+                                    .or_insert(vec![])
+                                    .push(Runway {
+                                        name: strat_name,
+                                        length: strat_json["exitCondition"]["leaveWithRunway"]
+                                            ["length"]
+                                            .as_f32()
+                                            .unwrap()
+                                            as i32,
+                                        open_end: strat_json["exitCondition"]["leaveWithRunway"]
+                                            ["openEnd"]
+                                            .as_i32()
+                                            .unwrap(),
+                                        requirement: Requirement::make_and(runway_reqs),
+                                        physics: physics_str.to_string(),
+                                        heated: heated,
+                                        usable_coming_in: false,
+                                    });
+                            }
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -2232,25 +3006,38 @@ impl GameData {
                 connection["nodes"][1]["roomid"].as_usize().unwrap(),
                 connection["nodes"][1]["nodeid"].as_usize().unwrap(),
             );
-            self.add_connection(src_pair, dst_pair);
-            self.add_connection(dst_pair, src_pair);
+            self.add_connection(src_pair, dst_pair, &connection["nodes"][0]);
+            self.add_connection(dst_pair, src_pair, &connection["nodes"][1]);
         }
         Ok(())
     }
 
-    fn add_connection(&mut self, mut src: (RoomId, NodeId), dst: (RoomId, NodeId)) {
+    fn add_connection(
+        &mut self,
+        mut src: (RoomId, NodeId),
+        dst: (RoomId, NodeId),
+        conn: &JsonValue,
+    ) {
         let src_ptr = self.node_ptr_map.get(&src).map(|x| *x);
         let dst_ptr = self.node_ptr_map.get(&dst).map(|x| *x);
+        let is_bridge = src == (32, 7) || src == (32, 8);
         if src_ptr.is_some() || dst_ptr.is_some() {
-            self.door_ptr_pair_map.insert((src_ptr, dst_ptr), src);
-            self.reverse_door_ptr_pair_map
-                .insert(src, (src_ptr, dst_ptr));
+            if !is_bridge {
+                self.door_ptr_pair_map.insert((src_ptr, dst_ptr), src);
+                self.reverse_door_ptr_pair_map
+                    .insert(src, (src_ptr, dst_ptr));    
+            }
+            let pos = parse_door_position(conn["position"].as_str().unwrap()).unwrap();
+            self.door_position.insert(src, pos);
             if self.unlocked_node_map.contains_key(&src) {
                 let src_room_id = src.0;
                 src = (src_room_id, self.unlocked_node_map[&src])
             }
-            self.unlocked_door_ptr_pair_map
-                .insert((src_ptr, dst_ptr), src);
+            if !is_bridge {
+                self.unlocked_door_ptr_pair_map
+                    .insert((src_ptr, dst_ptr), src);
+            }
+            self.door_position.insert(src, pos);
         }
     }
 
@@ -2280,7 +3067,11 @@ impl GameData {
             }
             if node_json.has_key("utility") {
                 if node_json["utility"].members().any(|x| x == "save") {
-                    self.save_locations.push((room_id, node_id));
+                    if room_id != 304 {
+                        // room_id: 304 is the broken save room, which is not a logical save for the purposes of
+                        // guaranteed early save station, which is all this is currently used for.
+                        self.save_locations.push((room_id, node_id));
+                    }
                 }
             }
             if node_json.has_key("yields") {
@@ -2303,6 +3094,7 @@ impl GameData {
             for obstacle_bitmask in 0..(1 << num_obstacles) {
                 let vertex_id = self.vertex_isv.index_by_key[&(room_id, node_id, obstacle_bitmask)];
                 vertex_ids.push(vertex_id);
+                self.target_vertices.add(&vertex_id);
             }
             self.item_vertex_ids.push(vertex_ids);
         }
@@ -2313,9 +3105,16 @@ impl GameData {
             for obstacle_bitmask in 0..(1 << num_obstacles) {
                 let vertex_id = self.vertex_isv.index_by_key[&(room_id, node_id, obstacle_bitmask)];
                 vertex_ids.push(vertex_id);
+                self.target_vertices.add(&vertex_id);
             }
             self.flag_vertex_ids.push(vertex_ids);
         }
+
+        for &(room_id, node_id) in &self.save_locations {
+            let vertex_id = self.vertex_isv.index_by_key[&(room_id, node_id, 0)];
+            self.target_vertices.add(&vertex_id);
+        }
+
         Ok(())
     }
 
@@ -2346,15 +3145,17 @@ impl GameData {
         weapon_mask
     }
 
-    fn load_escape_timings(&mut self, escape_timings_path: &Path) -> Result<()> {
-        let escape_timings_str = std::fs::read_to_string(escape_timings_path)?;
+    fn load_escape_timings(&mut self, path: &Path) -> Result<()> {
+        let escape_timings_str = std::fs::read_to_string(path)
+            .with_context(|| format!("Unable to load escape timings at {}", path.display()))?;
         self.escape_timings = serde_json::from_str(&escape_timings_str)?;
         assert_eq!(self.escape_timings.len(), self.room_geometry.len());
         Ok(())
     }
 
     fn load_start_locations(&mut self, path: &Path) -> Result<()> {
-        let start_locations_str = std::fs::read_to_string(path)?;
+        let start_locations_str = std::fs::read_to_string(path)
+            .with_context(|| format!("Unable to load start locations at {}", path.display()))?;
         let mut start_locations: Vec<StartLocation> = serde_json::from_str(&start_locations_str)?;
         for loc in &mut start_locations {
             if loc.requires.is_none() {
@@ -2371,7 +3172,11 @@ impl GameData {
                 let req_list = self.parse_requires_list(&req_json_list, &ctx)?;
                 loc.requires_parsed = Some(Requirement::make_and(req_list));
             }
-            if !self.vertex_isv.index_by_key.contains_key(&(loc.room_id, loc.node_id, 0)) {
+            if !self
+                .vertex_isv
+                .index_by_key
+                .contains_key(&(loc.room_id, loc.node_id, 0))
+            {
                 panic!("Bad starting location: {:?}", loc);
             }
         }
@@ -2380,7 +3185,8 @@ impl GameData {
     }
 
     fn load_hub_locations(&mut self, path: &Path) -> Result<()> {
-        let hub_locations_str = std::fs::read_to_string(path)?;
+        let hub_locations_str = std::fs::read_to_string(path)
+            .with_context(|| format!("Unable to load hub locations at {}", path.display()))?;
         let mut hub_locations: Vec<HubLocation> = serde_json::from_str(&hub_locations_str)?;
         for loc in &mut hub_locations {
             if loc.requires.is_none() {
@@ -2397,15 +3203,19 @@ impl GameData {
                 let req_list = self.parse_requires_list(&req_json_list, &ctx)?;
                 loc.requires_parsed = Some(Requirement::make_and(req_list));
             }
+            if !self.vertex_isv.index_by_key.contains_key(&(loc.room_id, loc.node_id, 0)) {
+                panic!("Bad hub location: {:?}", loc);
+            }
         }
         self.hub_locations = hub_locations;
         Ok(())
     }
 
-    fn load_room_geometry(&mut self, room_geometry_path: &Path) -> Result<()> {
-        let room_geometry_str = std::fs::read_to_string(room_geometry_path)?;
-        self.room_geometry = serde_json::from_str(&room_geometry_str)?;
-        for (room_idx, room) in self.room_geometry.iter().enumerate() {
+    fn load_room_geometry(&mut self, path: &Path) -> Result<()> {
+        let room_geometry_str = std::fs::read_to_string(path)
+            .with_context(|| format!("Unable to load room geometry at {}", path.display()))?;
+        let room_geometry: Vec<RoomGeometry> = serde_json::from_str(&room_geometry_str)?;
+        for (room_idx, room) in room_geometry.iter().enumerate() {
             self.room_idx_by_name.insert(room.name.clone(), room_idx);
             self.room_idx_by_ptr.insert(room.rom_address, room_idx);
             if let Some(twin_rom_address) = room.twin_rom_address {
@@ -2415,6 +3225,12 @@ impl GameData {
                 let door_ptr_pair = (door.exit_ptr, door.entrance_ptr);
                 self.room_and_door_idxs_by_door_ptr_pair
                     .insert(door_ptr_pair, (room_idx, door_idx));
+                let (room_id, node_id) = self.door_ptr_pair_map[&door_ptr_pair];
+                self.node_coords.insert((room_id, node_id), (door.x, door.y));
+            }
+            for item in &room.items {
+                let (room_id, node_id) = self.reverse_node_ptr_map[&item.addr];
+                self.node_coords.insert((room_id, node_id), (item.x, item.y));
             }
 
             let room_id = self.room_id_by_ptr[&room.rom_address];
@@ -2437,11 +3253,11 @@ impl GameData {
             if let Some(twin_rom_address) = room.twin_rom_address {
                 let room_id = self.raw_room_id_by_ptr[&twin_rom_address];
                 for (node_id, tiles) in room.twin_node_tiles.as_ref().unwrap() {
-                    self.node_tile_coords
-                        .insert((room_id, *node_id), tiles.clone());
+                    self.node_tile_coords.insert((room_id, *node_id), tiles.clone());
                 }
             }
         }
+        self.room_geometry = room_geometry;
         Ok(())
     }
 
@@ -2478,7 +3294,7 @@ impl GameData {
     fn load_themes(&mut self, base_path: &Path) -> Result<()> {
         let ignored_tileset_idxs = vec![
             1, // Red Crateria
-            15, 16, 17, 18, 19, 20  // Ceres
+            15, 16, 17, 18, 19, 20, // Ceres
         ];
         for (_area_idx, area) in [
             "crateria",
@@ -2487,10 +3303,16 @@ impl GameData {
             "wrecked_ship",
             "maridia",
             "tourian",
-        ].into_iter().enumerate() {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let sce_path = base_path.join(area).join("Export/Tileset/SCE");
             let mut pal_map: HashMap<TilesetIdx, ThemedPaletteTileset> = HashMap::new();
-            for tileset_dir in std::fs::read_dir(sce_path)? {
+            let tilesets_it = std::fs::read_dir(&sce_path).with_context(|| {
+                format!("Unable to read Mosaic tilesets at {}", sce_path.display())
+            })?;
+            for tileset_dir in tilesets_it {
                 let tileset_dir = tileset_dir?;
                 let tileset_idx =
                     usize::from_str_radix(tileset_dir.file_name().to_str().unwrap(), 16)?;
@@ -2502,20 +3324,35 @@ impl GameData {
                 }
                 let tileset_path = tileset_dir.path();
                 let palette_path = tileset_path.join("palette.snes");
-                let palette_bytes = std::fs::read(palette_path)?;
+                let palette_bytes = std::fs::read(&palette_path).with_context(|| {
+                    format!(
+                        "Unable to load Mosaic palette at {}",
+                        palette_path.display()
+                    )
+                })?;
                 let palette = decode_palette(&palette_bytes);
 
                 let gfx8x8_path = tileset_path.join("8x8tiles.gfx");
-                let gfx8x8_bytes = std::fs::read(gfx8x8_path)?;
+                let gfx8x8_bytes = std::fs::read(&gfx8x8_path).with_context(|| {
+                    format!("Unable to load Mosaic 8x8 gfx at {}", gfx8x8_path.display())
+                })?;
 
                 let gfx16x16_path = tileset_path.join("16x16tiles.ttb");
-                let gfx16x16_bytes = std::fs::read(gfx16x16_path)?;
-                
-                pal_map.insert(tileset_idx, ThemedPaletteTileset { 
-                    palette,
-                    gfx8x8: gfx8x8_bytes,
-                    gfx16x16: gfx16x16_bytes,
-                });
+                let gfx16x16_bytes = std::fs::read(&gfx16x16_path).with_context(|| {
+                    format!(
+                        "Unable to load Mosaic 16x16 gfx at {}",
+                        gfx16x16_path.display()
+                    )
+                })?;
+
+                pal_map.insert(
+                    tileset_idx,
+                    ThemedPaletteTileset {
+                        palette,
+                        gfx8x8: gfx8x8_bytes,
+                        gfx16x16: gfx16x16_bytes,
+                    },
+                );
             }
             self.tileset_palette_themes.push(pal_map);
         }
@@ -2537,12 +3374,70 @@ impl GameData {
     }
 
     fn extract_all_strat_dependencies(&mut self) -> Result<()> {
-        let links = self.links.clone();
+        let links: Vec<Link> = self.all_links().cloned().collect();
         for link in &links {
             if let Some(notable_strat_name) = link.notable_strat_name.clone() {
                 let deps: HashSet<String> = self.extract_tech_dependencies(&link.requirement);
                 self.strat_dependencies
                     .insert(notable_strat_name.clone(), deps.into_iter().collect());
+            }
+        }
+        Ok(())
+    }
+
+    fn is_base_req(req: &Requirement) -> bool {
+        match req {
+            Requirement::AdjacentRunway { .. } => false,
+            Requirement::AdjacentJumpway { .. } => false,
+            Requirement::CanComeInCharged { .. } => false,
+            Requirement::ComeInWithRMode { .. } => false,
+            Requirement::ComeInWithGMode { .. } => false,
+            Requirement::DoorUnlocked { .. } => false,
+            Requirement::And(and_reqs) => and_reqs.iter().all(|x| Self::is_base_req(x)),
+            Requirement::Or(or_reqs) => or_reqs.iter().all(|x| Self::is_base_req(x)),
+            _ => true,
+        }
+    }
+
+    fn is_base_link(link: &Link) -> bool {
+        if link.entrance_condition.is_some() || link.bypasses_door_shell {
+            return false;
+        }
+        Self::is_base_req(&link.requirement)
+    }
+
+    fn filter_links(&mut self) {
+        for link in &self.links {
+            if Self::is_base_link(link) {
+                self.base_links.push(link.clone());
+            } else {
+                self.seed_links.push(link.clone());
+            }
+        }
+        self.base_links_data =
+            LinksDataGroup::new(self.base_links.clone(), self.vertex_isv.keys.len(), 0);
+    }
+
+    pub fn load_title_screens(&mut self, path: &Path) -> Result<()> {
+        info!("Loading title screens");
+        let file_it = path
+            .read_dir()
+            .with_context(|| format!("Unable to read title screen directory at {}", path.display()))?;
+        for file in file_it {
+            let file = file?;
+            let filename = file.file_name().into_string().unwrap();
+            let img = read_image(&file.path())?;
+
+            if filename.starts_with("TL") {
+                self.title_screen_data.top_left.push(img);
+            } else if filename.starts_with("TR") {
+                self.title_screen_data.top_right.push(img);
+            } else if filename.starts_with("BL") {
+                self.title_screen_data.bottom_left.push(img);
+            } else if filename.starts_with("BR") {
+                self.title_screen_data.bottom_right.push(img);
+            } else if filename == "map.png" {
+                self.title_screen_data.map_station = img;
             }
         }
         Ok(())
@@ -2556,6 +3451,7 @@ impl GameData {
         start_locations_path: &Path,
         hub_locations_path: &Path,
         mosaic_path: &Path,
+        title_screen_path: &Path,
     ) -> Result<GameData> {
         let mut game_data = GameData::default();
         game_data.sm_json_data_path = sm_json_data_path.to_owned();
@@ -2676,6 +3572,7 @@ impl GameData {
         game_data.load_weapons()?;
         game_data.load_enemies()?;
         game_data.load_regions()?;
+        game_data.filter_links();
         game_data.load_connections()?;
         game_data.populate_target_locations()?;
         game_data.extract_all_tech_dependencies()?;
@@ -2709,6 +3606,7 @@ impl GameData {
         // game_data.load_palette(palette_path)?;
         game_data.load_themes(palette_theme_path)?;
         game_data.retiled_theme_data = Some(themed_retiling::load_theme_data(mosaic_path)?);
+        game_data.load_title_screens(title_screen_path)?;
 
         Ok(game_data)
     }

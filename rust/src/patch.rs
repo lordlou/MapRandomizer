@@ -2,19 +2,24 @@ pub mod compress;
 pub mod decompress;
 pub mod ips_write;
 pub mod map_tiles;
-mod title;
+pub mod title;
 
 use std::path::Path;
 
 use crate::{
     customize::vanilla_music::override_music,
     game_data::{DoorPtr, DoorPtrPair, GameData, Item, Map, NodePtr, RoomGeometryDoor, RoomPtr},
-    randomize::{DoorType, LockedDoor, MotherBrainFight, Objectives, Randomization, SaveAnimals},
+    randomize::{DoorType, LockedDoor, MotherBrainFight, Objectives, Randomization, SaveAnimals, AreaAssignment, WallJump, EtankRefill},
 };
 use anyhow::{ensure, Context, Result};
 use hashbrown::{HashMap, HashSet};
 use ips;
+use ndarray::Array3;
+use rand::{Rng, SeedableRng};
+use log::info;
 use std::iter;
+
+use self::map_tiles::write_tile_4bpp;
 
 const NUM_AREAS: usize = 6;
 
@@ -172,8 +177,88 @@ fn xy_to_explored_bit_ptr(x: isize, y: isize) -> (isize, u8) {
 
 fn item_to_plm_type(item: Item, orig_plm_type: isize) -> isize {
     let item_id = item as isize;
-    let old_item_id = ((orig_plm_type - 0xEED7) / 4) % 21;
-    orig_plm_type + (item_id - old_item_id) * 4
+    
+    // Item container: 0 = none, 1 = chozo orb, 2 = shot block (scenery)
+    let item_container = (orig_plm_type - 0xEED7) / 84;
+
+    // let plm_table: [[isize; 22]; 3] = [[0xF608; 22]; 3];
+
+    let plm_table: [[isize; 22]; 3] = [
+        [
+            0xEED7, // Energy tank
+            0xEEDB, // Missile tank
+            0xEEDF, // Super missile tank
+            0xEEE3, // Power bomb tank
+            0xEEE7, // Bombs
+            0xEEEB, // Charge beam
+            0xEEEF, // Ice beam
+            0xEEF3, // Hi-jump
+            0xEEF7, // Speed booster
+            0xEEFB, // Wave beam
+            0xEEFF, // Spazer beam
+            0xEF03, // Spring ball
+            0xEF07, // Varia suit
+            0xEF0B, // Gravity suit
+            0xEF0F, // X-ray scope
+            0xEF13, // Plasma beam
+            0xEF17, // Grapple beam
+            0xEF1B, // Space jump
+            0xEF1F, // Screw attack
+            0xEF23, // Morph ball
+            0xEF27, // Reserve tank   
+            0xF600, // Wall-jump boots         
+        ],
+        [
+            0xEF2B, // Energy tank, chozo orb
+            0xEF2F, // Missile tank, chozo orb
+            0xEF33, // Super missile tank, chozo orb
+            0xEF37, // Power bomb tank, chozo orb
+            0xEF3B, // Bombs, chozo orb
+            0xEF3F, // Charge beam, chozo orb
+            0xEF43, // Ice beam, chozo orb
+            0xEF47, // Hi-jump, chozo orb
+            0xEF4B, // Speed booster, chozo orb
+            0xEF4F, // Wave beam, chozo orb
+            0xEF53, // Spazer beam, chozo orb
+            0xEF57, // Spring ball, chozo orb
+            0xEF5B, // Varia suit, chozo orb
+            0xEF5F, // Gravity suit, chozo orb
+            0xEF63, // X-ray scope, chozo orb
+            0xEF67, // Plasma beam, chozo orb
+            0xEF6B, // Grapple beam, chozo orb
+            0xEF6F, // Space jump, chozo orb
+            0xEF73, // Screw attack, chozo orb
+            0xEF77, // Morph ball, chozo orb
+            0xEF7B, // Reserve tank, chozo orb            
+            0xF604, // Wall-jump boots, chozo orb
+        ],
+        [
+            0xEF7F, // Energy tank, shot block
+            0xEF83, // Missile tank, shot block
+            0xEF87, // Super missile tank, shot block
+            0xEF8B, // Power bomb tank, shot block
+            0xEF8F, // Bombs, shot block
+            0xEF93, // Charge beam, shot block
+            0xEF97, // Ice beam, shot block
+            0xEF9B, // Hi-jump, shot block
+            0xEF9F, // Speed booster, shot block
+            0xEFA3, // Wave beam, shot block
+            0xEFA7, // Spazer beam, shot block
+            0xEFAB, // Spring ball, shot block
+            0xEFAF, // Varia suit, shot block
+            0xEFB3, // Gravity suit, shot block
+            0xEFB7, // X-ray scope, shot block
+            0xEFBB, // Plasma beam, shot block
+            0xEFBF, // Grapple beam, shot block
+            0xEFC3, // Space jump, shot block
+            0xEFC7, // Screw attack, shot block
+            0xEFCB, // Morph ball, shot block
+            0xEFCF, // Reserve tank, shot block            
+            0xF608, // Wall-jump boots, shot block       
+        ]
+    ];
+    
+    plm_table[item_container as usize][item_id as usize]
 }
 
 fn write_credits_big_letter(rom: &mut Rom, letter: char, addr: usize) -> Result<()> {
@@ -253,13 +338,16 @@ fn apply_orig_ips_patches(rom: &mut Rom, randomization: &Randomization) -> Resul
             rom.write_u16(snes2pc(0x83AAD2), 0xEB60)?;
         }
         Objectives::Metroids => {
-            rom.write_u16(snes2pc(0x83AAD2), 0xEBC0)?;
+            rom.write_u16(snes2pc(0x83AAD2), 0xEBB0)?;
         }
         Objectives::Chozos => {
-            rom.write_u16(snes2pc(0x83AAD2), 0xEC20)?;
+            rom.write_u16(snes2pc(0x83AAD2), 0xEC00)?;
         }
         Objectives::Pirates => {
-            rom.write_u16(snes2pc(0x83AAD2), 0xEC80)?;
+            rom.write_u16(snes2pc(0x83AAD2), 0xEC50)?;
+        }
+        Objectives::None => {
+            rom.write_u16(snes2pc(0x83AAD2), 0xECA0)?;
         }
     }
     Ok(())
@@ -296,6 +384,8 @@ impl<'a> Patcher<'a> {
             "hazard_markers",
             "rng_fix",
             "intro_song",
+            "msu1",
+            "escape_timer",
         ];
 
         if self.randomization.difficulty.ultra_low_qol {
@@ -354,8 +444,24 @@ impl<'a> Patcher<'a> {
             patches.push("fast_pause_menu");
         }
 
-        if self.randomization.difficulty.disable_walljump {
-            patches.push("disable_walljump");
+        match self.randomization.difficulty.wall_jump {
+            WallJump::Vanilla => {}
+            WallJump::Collectible => {
+                patches.push("walljump_item");
+            }
+            WallJump::Disabled => {
+                patches.push("disable_walljump");
+            }
+        }
+
+        match self.randomization.difficulty.etank_refill {
+            EtankRefill::Disabled => {
+                patches.push("etank_refill_disabled");
+            }
+            EtankRefill::Vanilla => {}
+            EtankRefill::Full => {
+                patches.push("etank_refill_full");
+            }
         }
 
         if self.randomization.difficulty.respin {
@@ -366,6 +472,10 @@ impl<'a> Patcher<'a> {
             patches.push("momentum_conservation");
         }
 
+        if self.randomization.difficulty.buffed_drops {
+            patches.push("buffed_drops");
+        }
+
         if !self.randomization.difficulty.vanilla_map {
             patches.push("zebes_asleep_music");
         }
@@ -374,6 +484,18 @@ impl<'a> Patcher<'a> {
             let patch_path = patches_dir.join(patch_name.to_string() + ".ips");
             apply_ips_patch(&mut self.rom, &patch_path)?;
         }
+
+        // Write settings flags, e.g. for use by auto-tracking tools:
+        // For now this is just to indicate if walljump-boots exists as an item.
+        let mut settings_flag = 0x0000;
+        if self.randomization.difficulty.wall_jump == WallJump::Collectible {
+            settings_flag |= 0x0001;
+        }
+        if self.randomization.difficulty.wall_jump == WallJump::Disabled {
+            settings_flag |= 0x0002;
+        }
+        self.rom.write_u16(snes2pc(0xdfff05), settings_flag)?;
+
         Ok(())
     }
 
@@ -874,8 +996,14 @@ impl<'a> Patcher<'a> {
     }
 
     fn apply_map_tile_patches(&mut self) -> Result<()> {
-        map_tiles::MapPatcher::new(&mut self.rom, self.game_data, self.map, self.randomization, &self.locked_door_state_indices)
-            .apply_patches()?;
+        map_tiles::MapPatcher::new(
+            &mut self.rom,
+            self.game_data,
+            self.map,
+            self.randomization,
+            &self.locked_door_state_indices,
+        )
+        .apply_patches()?;
         Ok(())
     }
 
@@ -897,6 +1025,7 @@ impl<'a> Patcher<'a> {
         .into_iter()
         .collect();
         let keep_gray_door_room_names: Vec<String> = vec![
+            "Bomb Torizo Room",
             "Kraid Room",
             "Phantoon's Room",
             "Draygon's Room",
@@ -931,7 +1060,12 @@ impl<'a> Patcher<'a> {
                         self.rom.write_u16(ptr + 2, 0)?; // position = (0, 0)
                     } else if gray_door_plm_types.contains_key(&plm_type) {
                         let new_type = gray_door_plm_types[&plm_type];
-                        self.rom.write_u16(ptr, new_type)?;
+
+                        // Don't replace the gray doors in BT Room. In particular we want to leave its escape-state gray door
+                        // vanilla (so that it closes immediately and doesn't unlock until animals are saved).
+                        if room.name != "Bomb Torizo Room" {
+                            self.rom.write_u16(ptr, new_type)?;
+                        }
                     }
                     ptr += 6;
                 }
@@ -948,8 +1082,8 @@ impl<'a> Patcher<'a> {
         let area_music: [[u16; 2]; NUM_AREAS] = [
             [
                 // (0x06, 0x05),   // Empty Crateria
-                0x050C, // Return to Crateria
-                0x0509, // Crateria Space Pirates
+                0x050C, // Return to Crateria (ASM can replace with intro track or storm track)
+                0x0509, // Crateria Space Pirates (ASM can replace with zebes asleep track, with or without storm)
             ],
             [
                 0x050F, // Green Brinstar
@@ -960,8 +1094,8 @@ impl<'a> Patcher<'a> {
                 0x0518, // Lower Norfair
             ],
             [
-                0x0530, // Wrecked Ship (off)
-                0x0630, // Wrecked Ship (on)
+                0x0530, // Wrecked Ship (power off)
+                0x0530, // Wrecked Ship (power off)  (power on version, 0x0630, to be used by ASM)
             ],
             [
                 0x061B, // Outer Maridia
@@ -1185,7 +1319,11 @@ impl<'a> Patcher<'a> {
 
         if self.randomization.difficulty.infinite_space_jump {
             // self.rom.write_n(0x82493, &[0x80, 0x0D])?;  // BRA $0D  (Infinite Space Jump)
-            self.rom.write_n(snes2pc(0x90A493), &[0xEA, 0xEA])?; // NOP : NOP  (Lenient Space Jump)
+            // self.rom.write_n(snes2pc(0x90A493), &[0xEA, 0xEA])?; // NOP : NOP  (old Lenient Space Jump)
+
+            // Lenient Space Jump: Remove check on maximum Y speed for Space Jump to trigger:
+            self.rom.write_n(snes2pc(0x90A4A0), &[0xEA, 0xEA])?;  // NOP : NOP
+            self.rom.write_n(snes2pc(0x90A4AF), &[0xEA, 0xEA])?;  // NOP : NOP
         }
 
         if !self.randomization.difficulty.ultra_low_qol {
@@ -1205,7 +1343,7 @@ impl<'a> Patcher<'a> {
             self.rom.write_u8(snes2pc(0x838CF2), 0x11)?;
         }
 
-        if self.randomization.difficulty.save_animals == SaveAnimals::Yes  {
+        if self.randomization.difficulty.save_animals == SaveAnimals::Yes {
             // Change end-game behavior to require saving the animals. Address here must match escape.asm:
             self.rom.write_u16(snes2pc(0xA1F000), 0xFFFF)?;
         }
@@ -1223,11 +1361,64 @@ impl<'a> Patcher<'a> {
         Ok(())
     }
 
+
+
     fn apply_title_screen_patches(&mut self) -> Result<()> {
-        let mut title_patcher = title::TitlePatcher::new(&mut self.rom);
-        title_patcher.patch_title_background()?;
-        title_patcher.patch_title_foreground()?;
-        Ok(())
+        let mut rng_seed = [0u8; 32];
+        rng_seed[..8].copy_from_slice(&self.randomization.seed.to_le_bytes());
+        let mut rng = rand::rngs::StdRng::from_seed(rng_seed);
+
+        // let image_path = Path::new("../gfx/title/Title3.png");
+        // let img = read_image(image_path)?;
+        let mut img = Array3::<u8>::zeros((224, 256, 3));
+        loop {
+            let top_left_idx = rng.gen_range(0..self.game_data.title_screen_data.top_left.len());
+            let top_right_idx = rng.gen_range(0..self.game_data.title_screen_data.top_right.len());
+            let bottom_left_idx = rng.gen_range(0..self.game_data.title_screen_data.bottom_left.len());
+            let bottom_right_idx =
+                rng.gen_range(0..self.game_data.title_screen_data.bottom_right.len());
+    
+            let top_left_slice = self.game_data.title_screen_data.top_left[top_left_idx]
+                .slice(ndarray::s![32..144, 0..128, ..]);
+            let top_right_slice = self.game_data.title_screen_data.top_right[top_right_idx]
+                .slice(ndarray::s![32..144, 128..256, ..]);
+            let bottom_left_slice = self.game_data.title_screen_data.bottom_left[bottom_left_idx]
+                .slice(ndarray::s![112..224, 0..128, ..]);
+            let bottom_right_slice = self.game_data.title_screen_data.bottom_right[bottom_right_idx]
+                .slice(ndarray::s![112..224, 128..256, ..]);
+    
+            img.slice_mut(ndarray::s![0..112, 0..128, ..])
+                .assign(&top_left_slice);
+            img.slice_mut(ndarray::s![0..112, 128..256, ..])
+                .assign(&top_right_slice);
+            img.slice_mut(ndarray::s![112..224, 0..128, ..])
+                .assign(&bottom_left_slice);
+            img.slice_mut(ndarray::s![112..224, 128..256, ..])
+                .assign(&bottom_right_slice);
+    
+            let map = &self.game_data.title_screen_data.map_station;
+            for y in 0..224 {
+                for x in 0..256 {
+                    if map[(y, x, 0)] == 0 && map[(y, x, 1)] == 0 && map[(y, x, 2)] == 0 {
+                        continue;
+                    }
+                    img[(y, x, 0)] = map[(y, x, 0)];
+                    img[(y, x, 1)] = map[(y, x, 1)];
+                    img[(y, x, 2)] = map[(y, x, 2)];
+                }
+            }
+    
+            let mut title_patcher = title::TitlePatcher::new(&mut self.rom);
+            let bg_result = title_patcher.patch_title_background(&img);
+            if bg_result.is_err() {
+                info!("Failed title screen randomization: {}", bg_result.unwrap_err());
+                continue;
+            }
+            title_patcher.patch_title_foreground()?;
+            title_patcher.patch_title_gradient()?;
+            title_patcher.patch_title_blue_light()?;
+            return Ok(());
+        }
     }
 
     fn setup_reload_cre(&mut self) -> Result<()> {
@@ -1321,6 +1512,10 @@ impl<'a> Patcher<'a> {
             write_credits_big_digit(self.rom, step / 10, base_addr + 2)?;
         }
         write_credits_big_digit(self.rom, step % 10, base_addr + 4)?;
+        
+        // Write colon after step number:
+        self.rom.write_u16(base_addr + 6, 0x5A)?;
+        self.rom.write_u16(base_addr + 6 + 0x40, 0x5A)?;
 
         // Write item text
         for (i, c) in item.chars().enumerate() {
@@ -1347,6 +1542,8 @@ impl<'a> Patcher<'a> {
             stats_table_addr + idx * 8,
             (item_time_addr + 4 * item_idx) as isize,
         )?;
+        // Write stats type (2 = Time):
+        self.rom.write_u16(stats_table_addr + idx * 8 + 6, 2)?;
         Ok(())
     }
 
@@ -1365,21 +1562,21 @@ impl<'a> Patcher<'a> {
     fn apply_credits(&mut self) -> Result<()> {
         // Write randomizer settings to credits tilemap
         self.write_preset(
-            222,
+            224,
             self.randomization
                 .difficulty
                 .skill_assumptions_preset
                 .clone(),
         )?;
         self.write_preset(
-            224,
+            226,
             self.randomization
                 .difficulty
                 .item_progression_preset
                 .clone(),
         )?;
         self.write_preset(
-            226,
+            228,
             self.randomization.difficulty.quality_of_life_preset.clone(),
         )?;
 
@@ -1405,6 +1602,7 @@ impl<'a> Patcher<'a> {
             ("ScrewAttack", "Screw Attack"),
             ("Morph", "Morph Ball"),
             ("ReserveTank", "Reserve Tank"),
+            ("WallJump", "WallJump Boots"),
         ]
         .into_iter()
         .map(|(x, y)| (x.to_string(), y.to_string()))
@@ -1495,6 +1693,10 @@ impl<'a> Patcher<'a> {
             plm_id = 0xF800; // must match address in hazard_markers.asm
             tile_x = door.x * 16 + 15;
             tile_y = door.y * 16 + 6;
+        } else if door.direction == "left" {
+            plm_id = 0xF80C; // must match address in hazard_markers.asm
+            tile_x = door.x * 16;
+            tile_y = door.y * 16 + 6;
         } else if door.direction == "down" {
             if door.offset == Some(0) {
                 plm_id = 0xF808; // hazard marking overlaid on transition tiles
@@ -1512,18 +1714,18 @@ impl<'a> Patcher<'a> {
 
         let mut write_asm = |room_ptr: usize, x: usize, y: usize| {
             self.extra_setup_asm
-            .entry(room_ptr)
-            .or_insert(vec![])
-            .extend(vec![
-                0x22,
-                0xD7,
-                0x83,
-                0x84, // jsl $8483D7
-                x as u8,
-                y as u8, // X and Y coordinates in 16x16 tiles
-                (plm_id & 0x00FF) as u8,
-                (plm_id >> 8) as u8,
-            ]);
+                .entry(room_ptr)
+                .or_insert(vec![])
+                .extend(vec![
+                    0x22,
+                    0xD7,
+                    0x83,
+                    0x84, // jsl $8483D7
+                    x as u8,
+                    y as u8, // X and Y coordinates in 16x16 tiles
+                    (plm_id & 0x00FF) as u8,
+                    (plm_id >> 8) as u8,
+                ]);
         };
 
         if room.rom_address == 0x7D5A7 {
@@ -1538,13 +1740,17 @@ impl<'a> Patcher<'a> {
         }
         if room.rom_address == 0x7D646 && door.x == 1 && door.y == 2 {
             // East Pants Room
-            write_asm(room.twin_rom_address.unwrap(), tile_x % 16, tile_y % 16 + 16);
+            write_asm(
+                room.twin_rom_address.unwrap(),
+                tile_x % 16,
+                tile_y % 16 + 16,
+            );
         }
         Ok(())
     }
 
     fn apply_hazard_markers(&mut self) -> Result<()> {
-        let door_ptr_pairs = vec![
+        let mut door_ptr_pairs = vec![
             (Some(0x1A42C), Some(0x1A474)), // Mt. Everest (top)
             (Some(0x1A678), Some(0x1A600)), // Oasis (top)
             (Some(0x1A3F0), Some(0x1A444)), // Fish Tank (top left)
@@ -1554,6 +1760,13 @@ impl<'a> Patcher<'a> {
             (Some(0x18DDE), Some(0x18E6E)), // Big Pink crumble blocks (left),
             (Some(0x19312), Some(0x1934E)), // Ice Beam Gate Room crumbles (top left)
         ];
+        if self.randomization.difficulty.wall_jump != WallJump::Vanilla {
+            door_ptr_pairs.extend(vec![
+                (Some(0x18A06), Some(0x1A300)),  // West Ocean Gravity Suit door
+                (Some(0x198BE), Some(0x198CA)),  // Ridley's Room top door
+                (Some(0x193EA), Some(0x193D2)),  // Crocomire's Room top door
+            ]);
+        }
         for pair in door_ptr_pairs {
             self.apply_door_hazard_marker(pair)?;
         }
@@ -1591,20 +1804,20 @@ impl<'a> Patcher<'a> {
         // the room PLM list, to add the new door PLMs.
         let mut write_asm = |room_ptr: usize, x: usize, y: usize| {
             self.extra_setup_asm
-            .entry(room_ptr)
-            .or_insert(vec![])
-            .extend(vec![
-                0x22,
-                0x80,
-                0xF3,
-                0x84, // JSL $84F380  (Spawn hard-coded PLM with room argument)
-                x as u8,
-                y as u8, // X and Y coordinates in 16x16 tiles
-                (plm_id & 0x00FF) as u8,
-                (plm_id >> 8) as u8,
-                state_index,
-                0x00, // PLM argument (index for door unlock state)
-            ]);
+                .entry(room_ptr)
+                .or_insert(vec![])
+                .extend(vec![
+                    0x22,
+                    0x80,
+                    0xF3,
+                    0x84, // JSL $84F380  (Spawn hard-coded PLM with room argument)
+                    x as u8,
+                    y as u8, // X and Y coordinates in 16x16 tiles
+                    (plm_id & 0x00FF) as u8,
+                    (plm_id >> 8) as u8,
+                    state_index,
+                    0x00, // PLM argument (index for door unlock state)
+                ]);
         };
         if room.rom_address == 0x7D5A7 {
             // Aqueduct
@@ -1682,6 +1895,53 @@ impl<'a> Patcher<'a> {
 
         Ok(())
     }
+
+    fn write_walljump_item_graphics(&mut self) -> Result<()> {
+        let f = 0xF;
+        let frame_1: [[u8; 16]; 16] = [
+            [0, 0, 0, f, f, f, f, f, f, f, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, f, 4, 4, 5, 6, 6, f, f, f, f, 0, 0, 0],
+            [0, 0, 0, f, 4, 5, 6, 6, f, f, 6, 4, f, 0, 0, 0],
+            [0, 0, 0, f, 5, 6, 6, f, f, 6, 4, 5, f, 0, 0, 0],
+            [0, 0, 0, f, 5, 6, f, f, 6, 4, 5, f, f, 0, 0, 0],
+            [0, 0, 0, f, 6, 6, f, 6, 4, 5, 6, f, 0, 0, 0, 0],
+            [0, 0, f, f, f, f, 6, f, 6, 5, f, 0, 0, 0, 0, 0],
+            [0, 0, f, 5, 6, 6, f, 6, f, 6, f, 0, 0, 0, 0, 0],
+            [0, 0, f, 4, 5, 6, f, 5, 6, f, f, 0, 0, 0, 0, 0],
+            [0, 0, f, f, 6, 5, f, 6, f, f, 0, 0, 0, 0, 0, 0],
+            [0, f, 6, f, f, 5, f, f, f, 6, f, 0, 0, 0, 0, 0],
+            [f, f, 6, 6, f, f, f, 6, 4, 5, f, f, 0, 0, 0, 0],
+            [f, 6, 6, 4, 6, f, 6, 6, 6, 6, 6, 6, f, f, 0, 0],
+            [f, 6, 4, 4, 6, f, 5, 5, 5, 4, 4, 4, 5, 5, f, f],
+            [f, 6, 5, 5, 6, f, f, f, 6, 6, 6, 6, 6, 6, 6, f],
+            [f, f, f, f, f, 0, 0, 0, f, f, f, f, f, f, f, f],
+        ];
+        let frame_2 = frame_1.map(|row| row.map(|x| match x {
+            4 => 0xb,
+            5 => 4,
+            6 => 5,
+            7 => 6,
+            0xf => 7,
+            y => y,
+        }));
+        let frames: [[[u8; 16]; 16]; 2] = [frame_1, frame_2];
+        let mut addr = snes2pc(0x899100);
+        for f in 0..2 {
+            for tile_y in 0..2 {
+                for tile_x in 0..2 {
+                    let mut tile: [[u8; 8]; 8] = [[0; 8]; 8];
+                    for y in 0..8 {
+                        for x in 0..8 {
+                            tile[y][x] = frames[f][tile_y * 8 + y][tile_x * 8 + x];
+                        }
+                    }
+                    write_tile_4bpp(self.rom, addr, tile)?;
+                    addr += 32;
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 fn get_other_door_ptr_pair_map(map: &Map) -> HashMap<DoorPtrPair, DoorPtrPair> {
@@ -1734,7 +1994,7 @@ pub fn make_rom(
     patcher.apply_map_tile_patches()?;
     patcher.write_door_data()?;
     patcher.remove_non_blue_doors()?;
-    if !randomization.difficulty.vanilla_map {
+    if !randomization.difficulty.vanilla_map || randomization.difficulty.area_assignment == AreaAssignment::Random {
         patcher.use_area_based_music()?;
     }
     patcher.setup_door_specific_fx()?;
@@ -1747,6 +2007,7 @@ pub fn make_rom(
     patcher.customize_escape_timer()?;
     patcher.apply_miscellaneous_patches()?;
     patcher.apply_mother_brain_fight_patches()?;
+    patcher.write_walljump_item_graphics()?;
     patcher.apply_seed_hash()?;
     patcher.apply_credits()?;
     patcher.apply_hazard_markers()?;

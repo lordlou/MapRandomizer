@@ -1,12 +1,12 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use maprando::customize::{customize_rom, CustomizeSettings, MusicSettings};
+use maprando::customize::{customize_rom, CustomizeSettings, MusicSettings, ControllerConfig};
 use maprando::game_data::{Item, Map};
 use maprando::patch::ips_write::create_ips_patch;
 use maprando::patch::Rom;
 use maprando::randomize::{
     DebugOptions, ItemMarkers, ItemPlacementStyle, ItemPriorityGroup, MotherBrainFight, Objectives,
-    ProgressionRate, Randomization, Randomizer, ItemDotChange, DoorsMode, randomize_doors, SaveAnimals,
+    ProgressionRate, Randomization, Randomizer, ItemDotChange, DoorsMode, randomize_doors, SaveAnimals, AreaAssignment,
 };
 use maprando::spoiler_map;
 use maprando::web::{SamusSpriteInfo, SamusSpriteCategory};
@@ -117,12 +117,15 @@ fn get_randomization(args: &Args, game_data: &GameData) -> Result<Randomization>
     // let tech = vec![];
 
     let difficulty = DifficultyConfig {
+        name: None,
         tech: game_data.tech_isv.keys.clone(),
         notable_strats: vec![],
         // tech,
         shine_charge_tiles: 16.0,
         // shine_charge_tiles: 32,
         progression_rate: ProgressionRate::Fast,
+        random_tank: true,
+        semi_filler_items: vec![],
         filler_items: vec![Item::Missile],
         early_filler_items: vec![],
         item_placement_style: ItemPlacementStyle::Neutral,
@@ -145,6 +148,7 @@ fn get_randomization(args: &Args, game_data: &GameData) -> Result<Randomization>
         resource_multiplier: 1.0,
         escape_timer_multiplier: 3.0,
         gate_glitch_leniency: 0,
+        door_stuck_leniency: 0,
         phantoon_proficiency: 1.0,
         draygon_proficiency: 1.0,
         ridley_proficiency: 1.0,
@@ -160,6 +164,7 @@ fn get_randomization(args: &Args, game_data: &GameData) -> Result<Randomization>
         item_dot_change: ItemDotChange::Fade,
         all_items_spawn: true,
         acid_chozo: true,
+        buffed_drops: true,
         fast_elevators: true,
         fast_doors: true,
         fast_pause_menu: true,
@@ -171,8 +176,10 @@ fn get_randomization(args: &Args, game_data: &GameData) -> Result<Randomization>
         doors_mode: DoorsMode::Ammo,
         randomized_start: false,
         save_animals: SaveAnimals::No,
+        area_assignment: AreaAssignment::Standard,
         early_save: false,
-        disable_walljump: false,
+        wall_jump: maprando::randomize::WallJump::Collectible,
+        etank_refill: maprando::randomize::EtankRefill::Vanilla,
         maps_revealed: true,
         vanilla_map: false,
         ultra_low_qol: false,
@@ -196,7 +203,8 @@ fn get_randomization(args: &Args, game_data: &GameData) -> Result<Randomization>
             None => attempt_num,
         };
         let locked_doors = randomize_doors(game_data, &map, &difficulty_tiers[0], seed);
-        let randomizer = Randomizer::new(&map, &locked_doors, &difficulty_tiers, &game_data);
+        let randomizer = Randomizer::new(&map, &locked_doors, &difficulty_tiers, &game_data,
+            &game_data.base_links_data, &game_data.seed_links);
         if let Ok(randomization) = randomizer.randomize(attempt_num, seed, 1) {
             return Ok(randomization);
         } else {
@@ -219,6 +227,7 @@ fn main() -> Result<()> {
     let start_locations_path = Path::new("data/start_locations.json");
     let hub_locations_path = Path::new("data/hub_locations.json");
     let mosaic_path = Path::new("../Mosaic");
+    let title_screen_path = Path::new("../TitleScreen/Images");
     let game_data = GameData::load(
         sm_json_data_path,
         room_geometry_path,
@@ -227,12 +236,13 @@ fn main() -> Result<()> {
         start_locations_path,
         hub_locations_path,
         mosaic_path,
+        title_screen_path,
     )?;
 
     // Perform randomization (map selection & item placement):
     let randomization = get_randomization(&args, &game_data)?;
 
-    // // Override start location:
+    // Override start location:
     // randomization.start_location = game_data.start_locations.last().unwrap().clone();
 
     // Generate the patched ROM:
@@ -245,12 +255,15 @@ fn main() -> Result<()> {
     let customize_settings = CustomizeSettings {
         samus_sprite: Some("samus".to_string()),
         // samus_sprite: None,
+        etank_color: None,
+        reserve_hud_style: true,
         vanilla_screw_attack_animation: true,
         area_theming: maprando::customize::AreaTheming::Tiles("OuterCrateria".to_string()),
         music: MusicSettings::AreaThemed,
         // music: MusicSettings::Vanilla,
         disable_beeping: false,
-        etank_color: None,
+        shaking: maprando::customize::ShakingSetting::Vanilla,
+        controller_config: ControllerConfig::default(),        
     };
     customize_rom(&mut output_rom, &ips_patch, &customize_settings, &game_data, &[
         SamusSpriteCategory {

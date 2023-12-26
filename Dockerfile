@@ -12,11 +12,13 @@ COPY rust/Cargo.toml /rust/Cargo.toml
 RUN cargo build --release
 RUN rm /rust/src/*.rs
 
-# Download the map dataset, extraction will occur in-container to reduce image size
+# Download the map datasets, extraction will occur in-container to reduce image size
 WORKDIR /maps
-RUN wget https://storage.googleapis.com/super-metroid-map-rando/maps/session-2023-06-08T14:55:16.779895.pkl-bk24-subarea-balance-2.tgz \
-    -O maps.tar.gz
-RUN tar xfz maps.tar.gz --directory /maps && rm maps.tar.gz
+
+RUN wget https://storage.googleapis.com/super-metroid-map-rando/maps/v93-tame.tgz
+RUN tar xfz v93-tame.tgz --directory /maps && rm v93-tame.tgz
+RUN wget https://storage.googleapis.com/super-metroid-map-rando/maps/v90-wild.tgz
+RUN tar xfz v90-wild.tgz --directory /maps && rm v90-wild.tgz
 
 # Now copy over the source code and build the real binary
 COPY rust /rust
@@ -28,12 +30,14 @@ FROM debian:buster-slim
 RUN apt-get update && apt-get install -y \
     libssl1.1 \
     && rm -rf /var/lib/apt/lists/*
+COPY maps/vanilla /maps/vanilla
 COPY Mosaic /Mosaic
 COPY compressed_data /compressed_data
 COPY patches /patches
 COPY gfx /gfx
 COPY sm-json-data /sm-json-data
 COPY MapRandoSprites /MapRandoSprites
+COPY TitleScreen /TitleScreen
 COPY room_geometry.json /
 COPY palette_smart_exports /palette_smart_exports
 COPY visualizer /visualizer

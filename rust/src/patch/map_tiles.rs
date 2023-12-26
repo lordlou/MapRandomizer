@@ -31,6 +31,18 @@ enum Interior {
     MediumItem,
     MajorItem,
     Elevator,
+    Save,
+    Refill,
+    Objective,
+    MapStation,
+}
+
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+enum LiquidType {
+    None,
+    Water,
+    Lava,
+    Acid,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -42,6 +54,8 @@ struct BasicTile {
     interior: Interior,
     faded: bool,
     heated: bool,
+    liquid_type: LiquidType,
+    liquid_sublevel: isize,
 }
 
 const NUM_AREAS: usize = 6;
@@ -83,6 +97,27 @@ fn find_item_xy(addr: usize, room_items: &[RoomGeometryItem]) -> Result<(isize, 
         }
     }
     bail!("Could not find item in room: {addr:x}");
+}
+
+fn update_tile(tile: &mut [[u8; 8]; 8], value: u8, coords: &[(usize, usize)]) {
+    for &(x, y) in coords {
+        tile[y][x] = value;
+    }
+}
+
+pub fn write_tile_4bpp(rom: &mut Rom, base_addr: usize, data: [[u8; 8]; 8]) -> Result<()> {
+    for y in 0..8 {
+        let addr = base_addr + y * 2;
+        let data_0: u8 = (0..8).map(|x| (data[y][x] & 1) << (7 - x)).sum();
+        let data_1: u8 = (0..8).map(|x| ((data[y][x] >> 1) & 1) << (7 - x)).sum();
+        let data_2: u8 = (0..8).map(|x| ((data[y][x] >> 2) & 1) << (7 - x)).sum();
+        let data_3: u8 = (0..8).map(|x| ((data[y][x] >> 3) & 1) << (7 - x)).sum();
+        rom.write_u8(addr, data_0 as isize)?;
+        rom.write_u8(addr + 1, data_1 as isize)?;
+        rom.write_u8(addr + 16, data_2 as isize)?;
+        rom.write_u8(addr + 17, data_3 as isize)?;
+    }
+    Ok(())
 }
 
 impl<'a> MapPatcher<'a> {
@@ -158,14 +193,18 @@ impl<'a> MapPatcher<'a> {
 
     fn write_map_tiles_area(&mut self, area_idx: usize) -> Result<()> {
         let mut reserved_tiles: HashSet<TilemapWord> = vec![
-            // Used on HUD:
-            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
+            // Used on HUD: (skipping "%", which is unused)
+            0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0B, 0x0C, 0x0D,
             0x0E, 0x0F, 0x1C, 0x1D, 0x1E,
             0x28, // slope tile that triggers tile above Samus to be marked explored
-            0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x3A, 0x3B, 0x3C, 0x3D,
-            0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B,
+            0x30, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x38, 0x39, 0x3A, 0x3B, 
+            // Max ammo display digits: (removed in favor of normal digit graphics)
+            // 0x3C, 0x3D, 0x3E, 0x3F, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 
+            0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D,
             0xA8, // heated slope tile corresponding to 0x28
-                  // Used by max_ammo_display:
+            // Message box letters and punctuation (skipping unused ones: "Q", "->", "'", "-", "!")
+            0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7, 0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
+            0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDD, 0xDE,
         ]
         .into_iter()
         .collect();
@@ -194,7 +233,7 @@ impl<'a> MapPatcher<'a> {
         }
 
         let mut free_tiles: Vec<TilemapWord> = Vec::new();
-        for word in 0..192 {
+        for word in 0..224 {
             if !reserved_tiles.contains(&word) {
                 free_tiles.push(word);
             }
@@ -218,6 +257,14 @@ impl<'a> MapPatcher<'a> {
             self.write_map_tile_4bpp_area(f as usize, data, area_idx)?;
         }
 
+        // Write garbage tiles to remaining "free" tiles, for testing to make sure they're unused:
+        for i in used_tiles.len() .. free_tiles.len() {
+            let data = [[0, 1, 2, 3, 0, 1, 2, 3]; 8];
+            let f = free_tiles[i];
+            self.write_tile_2bpp_area(f as usize, data, Some(area_idx))?;
+            self.write_map_tile_4bpp_area(f as usize, data, area_idx)?;
+        }
+        
         let palette = 0x1800;
         let palette_mask = 0x1C00;
 
@@ -298,18 +345,7 @@ impl<'a> MapPatcher<'a> {
     }
 
     fn write_tile_4bpp(&mut self, base_addr: usize, data: [[u8; 8]; 8]) -> Result<()> {
-        for y in 0..8 {
-            let addr = base_addr + y * 2;
-            let data_0: u8 = (0..8).map(|x| (data[y][x] & 1) << (7 - x)).sum();
-            let data_1: u8 = (0..8).map(|x| ((data[y][x] >> 1) & 1) << (7 - x)).sum();
-            let data_2: u8 = (0..8).map(|x| ((data[y][x] >> 2) & 1) << (7 - x)).sum();
-            let data_3: u8 = (0..8).map(|x| ((data[y][x] >> 3) & 1) << (7 - x)).sum();
-            self.rom.write_u8(addr, data_0 as isize)?;
-            self.rom.write_u8(addr + 1, data_1 as isize)?;
-            self.rom.write_u8(addr + 16, data_2 as isize)?;
-            self.rom.write_u8(addr + 17, data_3 as isize)?;
-        }
-        Ok(())
+        write_tile_4bpp(&mut self.rom, base_addr, data)
     }
 
     fn write_map_tile_4bpp_area(
@@ -356,44 +392,56 @@ impl<'a> MapPatcher<'a> {
         let data = self.render_basic_tile(tile)?;
         self.tile_gfx_map.insert(word, data);
         self.index_basic_tile_case(tile, word);
-        if tile.interior != Interior::Elevator {
-            self.index_basic_tile_case(
-                BasicTile {
-                    left: tile.right,
-                    right: tile.left,
-                    up: tile.up,
-                    down: tile.down,
-                    interior: tile.interior,
-                    faded: tile.faded,
-                    heated: tile.heated,
-                },
-                word | FLIP_X,
-            );
-            self.index_basic_tile_case(
-                BasicTile {
-                    left: tile.left,
-                    right: tile.right,
-                    up: tile.down,
-                    down: tile.up,
-                    interior: tile.interior,
-                    faded: tile.faded,
-                    heated: tile.heated,
-                },
-                word | FLIP_Y,
-            );
-            self.index_basic_tile_case(
-                BasicTile {
-                    left: tile.right,
-                    right: tile.left,
-                    up: tile.down,
-                    down: tile.up,
-                    interior: tile.interior,
-                    faded: tile.faded,
-                    heated: tile.heated,
-                },
-                word | FLIP_X | FLIP_Y,
-            );
+        if tile.interior == Interior::Save || tile.interior == Interior::Elevator {
+            return Ok(());
         }
+        self.index_basic_tile_case(
+            BasicTile {
+                left: tile.right,
+                right: tile.left,
+                up: tile.down,
+                down: tile.up,
+                interior: tile.interior,
+                faded: tile.faded,
+                heated: tile.heated,
+                liquid_type: tile.liquid_type,
+                liquid_sublevel: tile.liquid_sublevel,
+            },
+            word | FLIP_X | FLIP_Y,
+        );
+        if tile.liquid_type != LiquidType::None {
+            // For the checkered water pattern, 180 degree rotation works (i.e., flip in X and Y direction),
+            // but other flips do not.
+            return Ok(());
+        }
+        self.index_basic_tile_case(
+            BasicTile {
+                left: tile.right,
+                right: tile.left,
+                up: tile.up,
+                down: tile.down,
+                interior: tile.interior,
+                faded: tile.faded,
+                heated: tile.heated,
+                liquid_type: tile.liquid_type,
+                liquid_sublevel: tile.liquid_sublevel,
+            },
+            word | FLIP_X,
+        );
+        self.index_basic_tile_case(
+            BasicTile {
+                left: tile.left,
+                right: tile.right,
+                up: tile.down,
+                down: tile.up,
+                interior: tile.interior,
+                faded: tile.faded,
+                heated: tile.heated,
+                liquid_type: tile.liquid_type,
+                liquid_sublevel: tile.liquid_sublevel,
+            },
+            word | FLIP_Y,
+        );
         Ok(())
     }
 
@@ -415,6 +463,8 @@ impl<'a> MapPatcher<'a> {
                 interior,
                 faded: false,
                 heated: false,
+                liquid_type: LiquidType::None,
+                liquid_sublevel: 0,
             },
             word,
         )?;
@@ -452,6 +502,8 @@ impl<'a> MapPatcher<'a> {
         self.index_basic(0x8E, W, E, W, E, I)?; // Item (dot) tile with a wall on top and left
         self.index_basic(0x8F, W, E, W, W, I)?; // Item (dot) tile with a wall on top, left, and bottom
                                                 // Note: there's no item tile with walls on left and right.
+
+        self.index_basic(0x4D, E, E, E, E, Interior::Save)?;  // Save station
         Ok(())
     }
 
@@ -468,6 +520,182 @@ impl<'a> MapPatcher<'a> {
     fn render_basic_tile(&mut self, tile: BasicTile) -> Result<[[u8; 8]; 8]> {
         let bg_color = if tile.heated { 2 } else { 1 };
         let mut data: [[u8; 8]; 8] = [[bg_color; 8]; 8];
+
+        let liquid_color = match (tile.liquid_type, tile.heated) {
+            (LiquidType::None, _) => bg_color,
+            (LiquidType::Water, _) => 0,
+            (LiquidType::Lava | LiquidType::Acid, false) => 2,
+            (LiquidType::Lava | LiquidType::Acid, true) => 1,
+        };
+        // data[1][2] = water_color;
+        // data[1][3] = water_color;
+        // data[1][6] = water_color;
+        // data[1][7] = water_color;
+        // data[3][0] = water_color;
+        // data[3][1] = water_color;
+        // data[3][4] = water_color;
+        // data[3][5] = water_color;
+        // data[5][2] = water_color;
+        // data[5][3] = water_color;
+        // data[5][6] = water_color;
+        // data[5][7] = water_color;
+        // data[7][0] = water_color;
+        // data[7][1] = water_color;
+        // data[7][4] = water_color;
+        // data[7][5] = water_color;
+        if tile.liquid_type != LiquidType::None {
+            for y in tile.liquid_sublevel..8 {
+                for x in 0..8 {
+                    if (x + y) % 2 == 0 {
+                        data[y as usize][x as usize] = liquid_color;
+                    }
+                }
+            }
+
+            // if tile.liquid_sublevel == 0 {
+            //     data[0][1] = liquid_color;
+            //     data[0][5] = liquid_color;
+            //     data[1][3] = liquid_color;
+            //     data[1][7] = liquid_color;
+            // }
+            // if tile.liquid_sublevel <= 1 {
+            //     data[2][1] = liquid_color;
+            //     data[2][5] = liquid_color;
+            //     data[3][3] = liquid_color;
+            //     data[3][7] = liquid_color;
+            // }
+            // if tile.liquid_sublevel <= 2 {
+            //     data[4][1] = liquid_color;
+            //     data[4][5] = liquid_color;
+            //     data[5][3] = liquid_color;
+            //     data[5][7] = liquid_color;
+            // }
+            // if tile.liquid_sublevel <= 3 {
+            //     data[6][1] = liquid_color;
+            //     data[6][5] = liquid_color;
+            //     data[7][3] = liquid_color;
+            //     data[7][7] = liquid_color;
+            // }
+
+            // if tile.liquid_sublevel == 0 {
+            //     data[0][1] = liquid_color;
+            //     data[0][5] = liquid_color;
+            // }
+            // if tile.liquid_sublevel <= 1 {
+            //     data[2][3] = liquid_color;
+            //     data[2][7] = liquid_color;
+            // }
+            // if tile.liquid_sublevel <= 2 {
+            //     data[4][1] = liquid_color;
+            //     data[4][5] = liquid_color;
+            // }
+            // if tile.liquid_sublevel <= 3 {
+            //     data[6][3] = liquid_color;
+            //     data[6][7] = liquid_color;
+            // }
+        }
+    
+        let item_color = if tile.faded {
+            if tile.heated {
+                1
+            } else {
+                2
+            }
+        } else {
+            3
+        };
+        match tile.interior {
+            Interior::Empty => {}
+            Interior::Item => {
+                data[3][3] = item_color;
+                data[3][4] = item_color;
+                data[4][3] = item_color;
+                data[4][4] = item_color;
+            }
+            Interior::MediumItem => {
+                data[2][3] = item_color;
+                data[2][4] = item_color;
+                data[3][2] = item_color;
+                data[3][3] = liquid_color;
+                data[3][4] = liquid_color;
+                data[3][5] = item_color;
+                data[4][2] = item_color;
+                data[4][3] = liquid_color;
+                data[4][4] = liquid_color;
+                data[4][5] = item_color;
+                data[5][3] = item_color;
+                data[5][4] = item_color;
+            }
+            Interior::MajorItem => {
+                data[2][3] = item_color;
+                data[2][4] = item_color;
+                data[3][2] = item_color;
+                data[3][3] = item_color;
+                data[3][4] = item_color;
+                data[3][5] = item_color;
+                data[4][2] = item_color;
+                data[4][3] = item_color;
+                data[4][4] = item_color;
+                data[4][5] = item_color;
+                data[5][3] = item_color;
+                data[5][4] = item_color;
+            }
+            Interior::Elevator => {
+                // Use white instead of red for elevator platform:
+                data[5][3] = 3;
+                data[5][4] = 3;
+            },
+            Interior::Save => {  
+                update_tile(&mut data, 3, &vec![
+                    (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0),
+                    (0, 1), (1, 1), (7, 1),
+                    (0, 2), (4, 2), (5, 2), (6, 2), (7, 2),
+                    (0, 3), (6, 3), (7, 3),
+                    (0, 4), (1, 4), (7, 4),
+                    (0, 5), (1, 5), (2, 5), (3, 5), (7, 5),
+                    (0, 6), (6, 6), (7, 6),
+                    (0, 7), (1, 7), (2, 7), (3, 7), (4, 7), (5, 7), (6, 7), (7, 7),
+                ]);
+            },
+            Interior::Refill => {  
+                update_tile(&mut data, 3, &vec![
+                    (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0),
+                    (0, 1), (1, 1), (2, 1), (5, 1), (6, 1), (7, 1),
+                    (0, 2), (1, 2), (2, 2), (5, 2), (6, 2), (7, 2),
+                    (0, 3), (7, 3),
+                    (0, 4), (7, 4),
+                    (0, 5), (1, 5), (2, 5), (5, 5), (6, 5), (7, 5),
+                    (0, 6), (1, 6), (2, 6), (5, 6), (6, 6), (7, 6),
+                    (0, 7), (1, 7), (2, 7), (3, 7), (4, 7), (5, 7), (6, 7), (7, 7),
+                ]);
+            },
+            Interior::Objective => {  
+                update_tile(&mut data, 3, &vec![
+                    (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0),
+                    (0, 1), (3, 1), (4, 1), (7, 1),
+                    (0, 2), (7, 2),
+                    (0, 3), (1, 3), (6, 3), (7, 3),
+                    (0, 4), (1, 4), (6, 4), (7, 4),
+                    (0, 5), (7, 5),
+                    (0, 6), (3, 6), (4, 6), (7, 6),
+                    (0, 7), (1, 7), (2, 7), (3, 7), (4, 7), (5, 7), (6, 7), (7, 7),
+                ]);
+            },
+            Interior::MapStation => {  
+                update_tile(&mut data, 3, &vec![
+                    (0, 0), (1, 0), (2, 0), (3, 0), (4, 0), (5, 0), (6, 0), (7, 0),
+                    (0, 1), (7, 1),
+                    (0, 2), (2, 2), (3, 2), (4, 2), (5, 2), (7, 2),
+                    (0, 3), (2, 3), (5, 3), (7, 3),
+                    (0, 4), (2, 4), (5, 4), (7, 4),
+                    (0, 5), (2, 5), (3, 5), (4, 5), (5, 5), (7, 5),
+                    (0, 6), (7, 6),
+                    (0, 7), (1, 7), (2, 7), (3, 7), (4, 7), (5, 7), (6, 7), (7, 7),
+                ]);
+            },
+
+        }
+
         let door_edges = [
             Edge::GrayDoor,
             Edge::RedDoor,
@@ -555,50 +783,6 @@ impl<'a> MapPatcher<'a> {
             }
         }
 
-        let item_color = if tile.faded {
-            if tile.heated {
-                1
-            } else {
-                2
-            }
-        } else {
-            3
-        };
-        match tile.interior {
-            Interior::Empty => {}
-            Interior::Item => {
-                data[3][3] = item_color;
-                data[3][4] = item_color;
-                data[4][3] = item_color;
-                data[4][4] = item_color;
-            }
-            Interior::MediumItem => {
-                data[2][3] = item_color;
-                data[2][4] = item_color;
-                data[5][3] = item_color;
-                data[5][4] = item_color;
-                data[3][2] = item_color;
-                data[4][2] = item_color;
-                data[3][5] = item_color;
-                data[4][5] = item_color;
-            }
-            Interior::MajorItem => {
-                for i in 2..6 {
-                    for j in 2..6 {
-                        data[i][j] = item_color;
-                    }
-                }
-                data[2][2] = bg_color;
-                data[5][2] = bg_color;
-                data[2][5] = bg_color;
-                data[5][5] = bg_color;
-            }
-            Interior::Elevator => {
-                // Use white instead of red for elevator platform:
-                data[5][3] = 3;
-                data[5][4] = 3;
-            }
-        }
         Ok(data)
     }
 
@@ -676,6 +860,18 @@ impl<'a> MapPatcher<'a> {
         Ok(())
     }
 
+    fn get_room_basic_tile(&self, room_name: &str, x: isize, y: isize) -> Result<BasicTile> {
+        let room_idx = self.game_data.room_idx_by_name[room_name];
+        let room = &self.game_data.room_geometry[room_idx];
+        let area = self.map.area[room_idx];
+        let x0 = self.rom.read_u8(room.rom_address + 2)? as isize;
+        let y0 = self.rom.read_u8(room.rom_address + 3)? as isize;
+        let base_ptr = self.game_data.area_map_ptrs[area] as usize;
+        let offset = super::xy_to_map_offset(x0 + x, y0 + y) as usize;
+        let word = (self.rom.read_u16(base_ptr + offset)? as TilemapWord) & 0xC3FF;
+        self.reverse_map.get(&word).context("Basic tile not found").map(|x| *x)
+    }
+
     fn patch_room(
         &mut self,
         room_name: &str,
@@ -710,7 +906,9 @@ impl<'a> MapPatcher<'a> {
                 interior,
                 faded: false,
                 heated: false,
-            };
+                liquid_type: LiquidType::None,
+                liquid_sublevel: 0,
+        };
             word_tiles.push((x, y, self.get_basic_tile(basic_tile)?));
         }
         self.patch_room(room_name, word_tiles)?;
@@ -869,61 +1067,46 @@ impl<'a> MapPatcher<'a> {
     }
 
     fn indicate_special_tiles(&mut self) -> Result<()> {
-        let refill_tile = self.create_tile([
-            [3, 3, 3, 3, 3, 3, 3, 3],
-            [3, 3, 3, 1, 1, 3, 3, 3],
-            [3, 3, 3, 1, 1, 3, 3, 3],
-            [3, 1, 1, 1, 1, 1, 1, 3],
-            [3, 1, 1, 1, 1, 1, 1, 3],
-            [3, 3, 3, 1, 1, 3, 3, 3],
-            [3, 3, 3, 1, 1, 3, 3, 3],
-            [3, 3, 3, 3, 3, 3, 3, 3],
-        ])?;
-        let map_tile = self.create_tile([
-            [3, 3, 3, 3, 3, 3, 3, 3],
-            [3, 1, 1, 1, 1, 1, 1, 3],
-            [3, 1, 3, 3, 3, 3, 1, 3],
-            [3, 1, 3, 1, 1, 3, 1, 3],
-            [3, 1, 3, 1, 1, 3, 1, 3],
-            [3, 1, 3, 3, 3, 3, 1, 3],
-            [3, 1, 1, 1, 1, 1, 1, 3],
-            [3, 3, 3, 3, 3, 3, 3, 3],
-        ])?;
-        let boss_tile = self.create_tile([
-            [3, 3, 3, 3, 3, 3, 3, 3],
-            [3, 1, 1, 3, 3, 1, 1, 3],
-            [3, 1, 1, 1, 1, 1, 1, 3],
-            [3, 3, 1, 1, 1, 1, 3, 3],
-            [3, 3, 1, 1, 1, 1, 3, 3],
-            [3, 1, 1, 1, 1, 1, 1, 3],
-            [3, 1, 1, 3, 3, 1, 1, 3],
-            [3, 3, 3, 3, 3, 3, 3, 3],
-        ])?;
-        let heated_boss_tile = self.create_tile([
-            [3, 3, 3, 3, 3, 3, 3, 3],
-            [3, 2, 2, 3, 3, 2, 2, 3],
-            [3, 2, 2, 2, 2, 2, 2, 3],
-            [3, 3, 2, 2, 2, 2, 3, 3],
-            [3, 3, 2, 2, 2, 2, 3, 3],
-            [3, 2, 2, 2, 2, 2, 2, 3],
-            [3, 2, 2, 3, 3, 2, 2, 3],
-            [3, 3, 3, 3, 3, 3, 3, 3],
-        ])?;
-
-        self.patch_room("Landing Site", vec![(4, 4, refill_tile)])?;
+        let refill_tile_desc = vec![(0, 0, E, E, E, E, Interior::Refill)];
+        let map_tile_desc = vec![(0, 0, E, E, E, E, Interior::MapStation)];
+        self.patch_room_basic("Landing Site", vec![(4, 4, E, E, E, E, Interior::Refill)])?;
         for room in &self.game_data.room_geometry {
             if room.name.contains("Refill") || room.name.contains("Recharge") {
-                self.patch_room(&room.name, vec![(0, 0, refill_tile)])?;
+                self.patch_room_basic(&room.name, refill_tile_desc.clone())?;
             }
         }
 
         for room in &self.game_data.room_geometry {
             if room.name.contains(" Map Room") {
-                self.patch_room(&room.name, vec![(0, 0, map_tile)])?;
+                self.patch_room_basic(&room.name, map_tile_desc.clone())?;
             }
         }
 
+        let boss_tile = self.get_basic_tile(BasicTile { 
+            left: E, 
+            right: E, 
+            up: E, 
+            down: E, 
+            interior: Interior::Objective,
+            faded: false,
+            heated: false,
+            liquid_type: LiquidType::None,
+            liquid_sublevel: 0 
+        })?;
+        let heated_boss_tile = self.get_basic_tile(BasicTile { 
+            left: E, 
+            right: E, 
+            up: E, 
+            down: E, 
+            interior: Interior::Objective,
+            faded: false,
+            heated: true,
+            liquid_type: LiquidType::None,
+            liquid_sublevel: 0 
+        })?;
+
         match self.randomization.difficulty.objectives {
+            Objectives::None => {}
             Objectives::Bosses => {
                 self.indicate_boss_tiles(boss_tile, heated_boss_tile)?;
             }
@@ -941,13 +1124,13 @@ impl<'a> MapPatcher<'a> {
             }
         }
 
-        self.patch_room(
+        self.patch_room_basic(
             "Mother Brain Room",
             vec![
-                (0, 0, boss_tile),
-                (1, 0, boss_tile),
-                (2, 0, boss_tile),
-                (3, 0, boss_tile),
+                (0, 0, E, E, E, E, Interior::Objective),
+                (1, 0, E, E, E, E, Interior::Objective),
+                (2, 0, E, E, E, E, Interior::Objective),
+                (3, 0, E, E, E, E, Interior::Objective),
             ],
         )?;
 
@@ -1033,6 +1216,9 @@ impl<'a> MapPatcher<'a> {
                 let basic_tile_opt = self.reverse_map.get(&word);
                 if let Some(basic_tile) = basic_tile_opt {
                     let mut new_tile = basic_tile.clone();
+                    if [Interior::Save, Interior::Refill, Interior::Objective, Interior::MapStation].contains(&basic_tile.interior) {
+                        continue;
+                    }
                     for &i in idxs {
                         let dir = &room.doors[i].direction;
                         if dir == "left" {
@@ -1137,7 +1323,7 @@ impl<'a> MapPatcher<'a> {
         )?;
         self.patch_room_basic("Crateria Super Room", vec![(3, 0, E, W, W, P, I)])?;
         self.patch_room_basic("Landing Site", vec![(2, 2, P, E, E, E, O)])?;
-        self.patch_room_basic("Parlor and Alcatraz", vec![(1, 0, P, E, W, E, O)])?;
+        self.patch_room_basic("Parlor And Alcatraz", vec![(1, 0, P, E, W, E, O)])?;
         self.patch_room_basic(
             "Pit Room",
             vec![(0, 0, D, E, W, P, O), (0, 1, W, W, E, W, I)],
@@ -1261,6 +1447,7 @@ impl<'a> MapPatcher<'a> {
 
         // Wrecked Ship:
         self.patch_room_basic("Basement", vec![(3, 0, E, P, W, W, O)])?;
+        // self.patch_room_basic("Sponge Bath", vec![(1, 0, P, D, W, W, O)])?;
         self.patch_room_basic("Electric Death Room", vec![(0, 1, W, D, P, E, O)])?;
         self.patch_room_basic("Wrecked Ship East Super Room", vec![(3, 0, P, W, W, W, I)])?;
         self.patch_room_basic(
@@ -1303,7 +1490,7 @@ impl<'a> MapPatcher<'a> {
         self.patch_room_basic("Pseudo Plasma Spark Room", vec![(1, 2, E, P, E, W, O)])?;
         self.patch_room_basic("Watering Hole", vec![(0, 1, W, W, E, P, O)])?;
         self.patch_room_basic(
-            "East Tunnel",
+            "Boyon Gate Hall",
             vec![(0, 0, W, E, W, P, O), (0, 1, D, D, E, W, O)],
         )?;
         self.patch_room_basic("Crab Tunnel", vec![(0, 0, D, P, W, W, O)])?;
@@ -1503,6 +1690,142 @@ impl<'a> MapPatcher<'a> {
         Ok(())
     }
 
+    fn indicate_liquid_room(&mut self, room_name: &str, liquid_type: LiquidType, liquid_level: isize, liquid_sublevel: isize) -> Result<()> {
+        let room_idx = *self.game_data.room_idx_by_name.get(room_name).with_context(|| format!("Room not found: {}", room_name))?;
+        let room = &self.game_data.room_geometry[room_idx];
+        let height = room.map.len() as isize;
+        let width = room.map[0].len() as isize;
+        for y in liquid_level..height {
+            for x in 0..width {
+                if room.map[y as usize][x as usize] != 0 {
+                    match self.get_room_basic_tile(room_name, x, y) {
+                        Ok(mut basic_tile) => {
+                            basic_tile.liquid_type = liquid_type;
+                            if y == liquid_level {
+                                basic_tile.liquid_sublevel = liquid_sublevel;
+                            } else {
+                                basic_tile.liquid_sublevel = 0;
+                            }
+                            let tile = self.get_basic_tile(basic_tile)?;
+                            self.patch_room(room_name, vec![(x, y, tile)])?;    
+                        }
+                        Err(e) => {
+                            // println!("{} {} {:?}", x, y, e);
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn indicate_liquid(&mut self) -> Result<()> {
+        // Crateria:
+        self.indicate_liquid_room("The Moat", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("West Ocean", LiquidType::Water, 5, 0)?;
+        self.indicate_liquid_room("East Ocean", LiquidType::Water, 5, 0)?;
+        // self.indicate_liquid_room("Bowling Alley Path", LiquidType::Water, 0, 5)?;
+        // self.indicate_liquid_room("Crab Maze", LiquidType::Water, 1, 5)?;
+        self.indicate_liquid_room("Statues Room", LiquidType::Water, 1, 0)?;
+        // self.indicate_liquid_room("Gauntlet Entrance", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Gauntlet Energy Tank Room", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Crateria Power Bomb Room", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Crateria Super Room", LiquidType::Acid, 7, 5)?;
+
+        // Brinstar:
+        // self.indicate_liquid_room("Blue Brinstar Boulder Room", LiquidType::Water, 0, 5)?;
+        // self.indicate_liquid_room("Waterway Energy Tank Room", LiquidType::Water, 0, 5)?;
+        // self.indicate_liquid_room("Bat Room", LiquidType::Water, 0, 5)?;
+        // self.indicate_liquid_room("Below Spazer", LiquidType::Water, 1, 5)?;
+        
+        // Norfair:
+        // self.indicate_liquid_room("Ice Beam Tutorial Room", LiquidType::Lava, 0, 5)?;
+        // self.indicate_liquid_room("Ice Beam Acid Room", LiquidType::Lava, 0, 5)?;
+        // self.indicate_liquid_room("Crocomire Escape", LiquidType::Lava, 1, 5)?;
+        // self.indicate_liquid_room("Crocomire's Room", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Post Crocomire Missile Room", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Post Crocomire Jump Room", LiquidType::Acid, 2, 5)?;
+        self.indicate_liquid_room("Grapple Tutorial Room 1", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("Grapple Tutorial Room 3", LiquidType::Water, 1, 0)?;        
+        // self.indicate_liquid_room("Acid Snakes Tunnel", LiquidType::Lava, 0, 5)?;
+        // self.indicate_liquid_room("Spiky Acid Snakes Tunnel", LiquidType::Lava, 0, 5)?;
+        // self.indicate_liquid_room("Magdollite Tunnel", LiquidType::Lava, 0, 5)?;
+        // self.indicate_liquid_room("Cathedral", LiquidType::Lava, 1, 5)?;
+        // self.indicate_liquid_room("Rising Tide", LiquidType::Lava, 0, 5)?;
+        // self.indicate_liquid_room("Bat Cave", LiquidType::Lava, 1, 5)?;
+        // self.indicate_liquid_room("Volcano Room", LiquidType::Lava, 2, 5)?;
+        // self.indicate_liquid_room("Spiky Platforms Tunnel", LiquidType::Lava, 0, 5)?;
+        // self.indicate_liquid_room("Lava Dive Room", LiquidType::Lava, 1, 0)?;
+        // self.indicate_liquid_room("Main Hall", LiquidType::Acid, 2, 5)?;
+        // self.indicate_liquid_room("Acid Statue Room", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Fast Ripper Room", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Pillar Room", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Amphitheatre", LiquidType::Acid, 1, 0)?;
+
+        // Wrecked Ship:
+        // self.indicate_liquid_room("Sponge Bath", LiquidType::Water, 0, 5)?;
+        // self.indicate_liquid_room("Spiky Death Room", LiquidType::Water, 0, 5)?;
+        // self.indicate_liquid_room("Electric Death Room", LiquidType::Water, 2, 5)?;
+        self.indicate_liquid_room("Wrecked Ship Energy Tank Room", LiquidType::Water, 1, 0)?;
+
+        // Maridia:
+        self.indicate_liquid_room("Glass Tunnel", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Glass Tunnel Save Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Main Street", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Mt. Everest", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Fish Tank", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Mama Turtle Room", LiquidType::Water, 2, 0)?;
+        self.indicate_liquid_room("Red Fish Room", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("Crab Shaft", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Pseudo Plasma Spark Room", LiquidType::Water, 2, 0)?;
+        // self.indicate_liquid_room("Northwest Maridia Bug Room", LiquidType::Water, 1, 5)?;
+        self.indicate_liquid_room("Watering Hole", LiquidType::Water, 2, 0)?;
+        self.indicate_liquid_room("Plasma Spark Room", LiquidType::Water, 4, 0)?;
+        // self.indicate_liquid_room("Maridia Elevator Room", LiquidType::Water, 5, 5)?;
+        // self.indicate_liquid_room("Thread The Needle Room", LiquidType::Water, 0, 5)?;
+        self.indicate_liquid_room("Bug Sand Hole", LiquidType::Water, 0, 5)?;
+        self.indicate_liquid_room("Plasma Beach Quicksand Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Butterfly Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("West Cactus Alley Room", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("East Cactus Alley Room", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("Aqueduct", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Aqueduct Save Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Botwoon Hallway", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Botwoon's Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Botwoon Energy Tank Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Botwoon Quicksand Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Below Botwoon Energy Tank", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Halfie Climb Room", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("Maridia Missile Refill Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Colosseum", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("The Precious Room", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("Draygon's Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Space Jump Room", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("Crab Tunnel", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Crab Hole", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Maridia Map Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("West Sand Hall Tunnel", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("West Sand Hall", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("East Sand Hall", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("West Sand Hole", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("East Sand Hole", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("West Aqueduct Quicksand Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("East Aqueduct Quicksand Room", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Oasis", LiquidType::Water, 0, 0)?;
+        self.indicate_liquid_room("Pants Room", LiquidType::Water, 2, 0)?;
+        // self.indicate_liquid_room("Shaktool Room", LiquidType::Water, 0, 5)?;
+        self.indicate_liquid_room("Spring Ball Room", LiquidType::Water, 1, 0)?;
+
+        // Tourian:
+        // self.indicate_liquid_room("Tourian First Room", LiquidType::Acid, 3, 5)?;
+        // self.indicate_liquid_room("Metroid Room 1", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Metroid Room 3", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Mother Brain Room", LiquidType::Acid, 0, 5)?;
+        // self.indicate_liquid_room("Tourian Escape Room 4", LiquidType::Acid, 3, 5)?;
+
+        Ok(())
+    }
+
     fn indicate_sand(&mut self) -> Result<()> {
         // Indicate sand transitions with a passage (4-pixel) on top and door (2-pixel) on bottom,
         // so it appears a bit like a funnel:
@@ -1612,15 +1935,15 @@ impl<'a> MapPatcher<'a> {
             (14, rgb(0, 24, 0)),   // Brinstar green
             (10, rgb(29, 0, 0)),   // Norfair red
             (8, rgb(4, 13, 31)),   // Maridia blue
-            (9, rgb(24, 22, 6)),   // Wrecked Ship yellow
-            (11, rgb(18, 3, 31)),  // Crateria purple
+            (9, rgb(23, 24, 9)),   // Wrecked Ship yellow
+            (11, rgb(20, 3, 31)),  // Crateria purple
             (6, rgb(29, 15, 0)),   // Tourian,
             (15, rgb(18, 12, 14)), // Gray door
             (7, rgb(27, 7, 18)),   // Red (pink) door
         ];
         // Dotted grid lines
         let i = 12;
-        let color = rgb(6, 6, 6);
+        let color = rgb(8, 8, 8);
         self.rom
             .write_u16(snes2pc(0xB6F000) + 2 * (0x40 + i), color as isize)?;
 
@@ -2362,6 +2685,7 @@ impl<'a> MapPatcher<'a> {
         self.indicate_sand()?;
         self.indicate_heat()?;
         self.indicate_special_tiles()?;
+        self.indicate_liquid()?;
         self.indicate_locked_doors()?;
         self.add_cross_area_arrows()?;
         self.set_map_stations_explored()?;

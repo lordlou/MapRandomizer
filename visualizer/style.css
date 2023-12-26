@@ -4,6 +4,9 @@ body {
 	margin: 0;
 	overflow: hidden;
 }
+a {
+	color: white;	
+}
 #map {
 	position: absolute;
 	width: 1776px;
@@ -43,10 +46,10 @@ body {
 	left: 0;
 	z-index: 2;
 }
-.popup, #room-info, #sidebar-info {
+.popup, #room-info, #sidebar-info, #sidebar-route {
 	position: relative;
 	color: #eee;
-	background-color: #222222aa;
+	background-color: #222222e0;
 	z-index: 3;
 	border: 2px solid #222;
 	border-radius: 2px;
@@ -56,8 +59,8 @@ body {
 }
 #sidebar-info {
 	position: fixed;
-	max-height: 300px;
-	overflow-y: scroll;
+	max-height: 500px;
+	overflow-y: auto;
 	pointer-events: auto;
 	top: 16px;
 	left: 16px;
@@ -65,10 +68,40 @@ body {
 .sidebar-title {
 	font-size: x-large;
 }
+.sidebar-item-name {
+	font-size: x-large;
+	margin-top: 12px;
+}
+.item-list {
+	width: 440px;
+}
 .category {
 	font-size: small;
 	font-weight: bold;
 	margin-top: 8px;
+}
+.step-panel {
+	padding: 3px;
+	display: flex;
+	align-items: center;
+}
+.step-panel:hover {
+	background-color: #333333e0;
+}
+.step-panel.selected {
+	background-color: #444480e0;
+}
+.step-number {
+	font-size: small;
+	font-weight: bold;
+	text-align: right;
+	width: 16px;
+	height: 16px;
+	margin-right: 8px;
+}
+.step-whole-map {
+	font-size: small;
+	font-weight: bold;
 }
 .hidden {
 	display: none;
@@ -81,7 +114,7 @@ body {
 	display: block;
 	width: auto;
 }
-.icon, .ui-icon {
+.icon, .ui-icon, .ui-icon-hoverable {
 	background-image: url("items.png");
 	width: 16px;
 	height: 16px;
@@ -92,12 +125,23 @@ body {
 .icon {
 	position: absolute;
 }
-.ui-icon {
+.ui-icon, .ui-icon-hoverable {
 	display: inline-block;
+	margin-top: 1px;
+	margin-bottom: 1px;
+	margin-left: 1px;
+	margin-right: 1px;
 }
 .icon:hover {
 	transform: scale(2);
 	z-index: 2;
+}
+.ui-icon-hoverable:hover {
+	transform: scale(2);
+	z-index: 2;
+}
+.ui-icon-hoverable.selected {
+	transform: scale(1.5);
 }
 .button {
 	background-color: #36f;
@@ -117,7 +161,7 @@ body {
 	background: #222;
 	color: #eee;
 	background-color: #222;
-	z-index: 2;
+	z-index: 3;
 	border-radius: 2px;
 	padding: 8px;
 }

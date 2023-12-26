@@ -15,9 +15,10 @@ lorom
 
 !backup_area = $1F62
 !map_switch_direction = $1F66
-;!unexplored_gray = #$2108
-!unexplored_gray = #$18c6
-!unexplored_light_gray = #$35ad
+!unexplored_gray = #$294a
+;!unexplored_gray = #$18c6
+;!unexplored_light_gray = #$35ad
+!unexplored_light_gray = #$4631
 !area_explored_mask = $702600
 
 ;;; Hijack map usages of area ($079F) with new area ($1F5B)
@@ -82,7 +83,8 @@ org $82DE80
 warnpc $82DE89
 
 ;org $828D08
-org $828D4B
+;org $828D4B
+org $828D44
     jsr pause_start_hook
 
 org $82936A
@@ -276,7 +278,8 @@ pause_start_hook:
     ;jsr remove_samus_hud_indicator
     jsl $8085C6  ; save current map explored bits
     ;jsr $8D51  ; run hi-jacked instruction
-    inc $0998  ; run hi-jacked instruction
+    ;inc $0998  ; run hi-jacked instruction
+    stz $05FF  ; run hi-jacked instruction
     rts
 
 pause_end_hook:
@@ -401,21 +404,20 @@ update_pause_map_palette:
 
 
 area_palettes_explored:
-    dw $5c2e  ; Crateria
-    dw $0200  ; Brinstar
-    dw $0014  ; Norfair
-    dw $0210  ; Wrecked Ship
-    dw $6163  ; Maridia
-    dw $0174  ; Tourian
+    dw $6c12  ; Crateria
+    dw $0240  ; Brinstar
+    dw $0017  ; Norfair
+    dw $0230  ; Wrecked Ship
+    dw $7583  ; Maridia
+    dw $0195  ; Tourian
 
 area_palettes_explored_light:
-    dw $7d35  ; Crateria
-    dw $2308  ; Brinstar
-    dw $1cdd  ; Norfair
-    dw $22d8  ; Wrecked Ship
-    dw $7E48  ; Maridia
-    dw $01fd  ; Tourian
-
+    dw $7dfb  ; Crateria
+    dw $332c  ; Brinstar
+    dw $319f  ; Norfair
+    dw $2ef7  ; Wrecked Ship
+    dw $7e8c  ; Maridia
+    dw $323d  ; Tourian
 
 next_area:
     lda $1F5B
