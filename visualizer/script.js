@@ -1,77 +1,77 @@
 const offsets = {
-	"Power Bomb (blue Brinstar) (unlocked)": [2,2],
-	"Morphing Ball": [4,2],
-	"Missile (lava room)": [2,1],
-	"Missile (Draygon)": [1,0],
-	"Missile (green Maridia tatori)": [2,1],
-	"Energy Tank, Mama turtle": [1,0],
-	"Missile (green Brinstar behind reserve tank)": [0.75,0],
-	"Missile (green Brinstar behind missile)": [1.25,0],
-	"Reserve Tank, Brinstar": [0,0],
-	"Energy Tank, Firefleas": [2,5],
-	"Super Missile (green Maridia)": [1,2],
-	"Missile (green Maridia shinespark)": [0,3],
-	"Energy Tank, Gauntlet": [5,0],
-	"Missile (Wrecked Ship middle)": [0,5],
-	"Missile (yellow Maridia false wall)": [2,2],
-	"Missile (Wrecked Ship top) (unlocked)": [2,0],
-	"Missile (Kraid)": [2,0],
-	"Missile (blue Brinstar top)": [0.25,0],
-	"Missile (blue Brinstar behind missile)": [-0.25,0],
-	"Missile (Norfair Reserve Tank)": [0.5,0],
-	"Missile (green Brinstar pipe)": [3,1],
-	"Energy Tank, Crocomire": [7,0],
-	"Energy Tank, Brinstar Ceiling": [1,2],
-	"Missile (blue Brinstar middle)": [2,2],
-	"Missile (lower Norfair near Wave Beam)": [0,2],
-	"Power Bomb (red Brinstar spike room)": [1,0],
-	"Missile (red Brinstar spike room)": [0,0],
-	"Super Missile (pink Maridia)": [5,4],
-	"Missile (pink Maridia)": [4,4],
-	"Screw Attack": [0,2],
-	"Missile (bubble Norfair)": [1,3],
-	"Missile (yellow Maridia super missile)": [-0.25,2],
-	"Super Missile (yellow Maridia)": [0.25,2],
-	"Missile (Speed Booster)": [11,1],
-	"Reserve Tank, Maridia": [0.25,0],
-	"Missile (left Maridia sand pit room)": [-0.25,0],
-	"Missile (right Maridia sand pit room)": [0,0],
-	"Power Bomb (right Maridia sand pit room)": [1,1],
-	"Missile (below Crocomire)": [3,0],
-	"Missile (Wave Beam)": [1,0],
-	"Power Bomb (red Brinstar sidehopper room)": [0,1],
-	"Missile (outside Wrecked Ship bottom)": [0,5],
-	"Missile (outside Wrecked Ship middle)": [0,2],
-	"Missile (outside Wrecked Ship top)": [1,0],
-	"Missile (green Brinstar below super missile)": [1,1],
-	"Super Missile (green Brinstar top)": [0,0],
-	"Plasma Beam": [1,2],
-	"Missile (Crateria gauntlet left)": [-0.25,1],
-	"Missile (Crateria gauntlet right)": [0.25,1],
-	"Spring Ball": [1,1],
-	"Power Bomb (pink Brinstar)": [0,1],
-	"Missile (Crateria bottom) (unlocked)": [0,1],
-	"Missile (Mickey Mouse Room)": [2,1],
-	"Grapple Beam": [0,2],
-	"Super Missile (Golden Torizo)": [1,0],
-	"Missile (Golden Torizo)": [0,0],
-	"Right Super, Wrecked Ship (unlocked)": [3,0],
-	"Energy Tank, Botwoon": [3,0],
-	"Energy Tank, Terminator": [0,2],
-	"Missile (Grapple Beam)": [4,0],
-	"Missile (bubble Norfair green door)": [1,0],
-	"Missile (lower Norfair above fire flea room)": [2,0],
-	"Power Bomb (Crateria surface)": [1,0],
-	"Power Bomb (green Brinstar bottom)": [3,7],
-	"Super Missile (Crateria)": [3,0],
-	"Super Missile (pink Brinstar)": [1,8],
-	"Energy Tank (Hi-Jump Boots)": [1,0],
-	"Missile (Hi-Jump Boots)": [0,0],
-	"Missile (pink Brinstar top)": [2,3],
-	"Missile (pink Brinstar bottom)": [2,6],
-	"Charge Beam": [2,7],
-	"Missile (Gravity Suit) (unlocked)": [3,2],
-	"Reserve Tank, Wrecked Ship (unlocked)": [5,0],
+	"Morph Ball Room: Left Item (unlocked)": [2,2],
+	"Morph Ball Room: Right Item": [4,2],
+	"Cathedral: Hidden Item": [2,1],
+	"The Precious Room: Top Right Hidden Item": [1,0],
+	"Mama Turtle Room: Hidden Right Item": [2,1],
+	"Mama Turtle Room: Top Item": [1,0],
+	"Brinstar Reserve Tank Room: Middle Visible Item": [0.75,0],
+	"Brinstar Reserve Tank Room: Right Hidden Item": [1.25,0],
+	"Brinstar Reserve Tank Room: Chozo Item": [0,0],
+	"Lower Norfair Fireflea Room: Firefleas Item": [2,5],
+	"Main Street: Morph Tunnel Item": [1,2],
+	"Main Street: Speed Blocked Item": [0,3],
+	"Gauntlet Energy Tank Room: Item": [5,0],
+	"Wrecked Ship Main Shaft: Item": [0,5],
+	"Pseudo Plasma Spark Room: Hidden Item": [2,2],
+	"Assembly Line: Item (unlocked)": [2,0],
+	"Warehouse Kihunter Room: Hidden Item": [2,0],
+	"Billy Mays Room: Pedestal Item": [0.25,0],
+	"Billy Mays Room: Hidden Item": [-0.25,0],
+	"Norfair Reserve Tank Room: Hidden Platform Item": [0.5,0],
+	"Green Hill Zone: Item (Through the Pipe)": [3,1],
+	"Crocomire's Room: Item": [7,0],
+	"Blue Brinstar Energy Tank Room: Hidden Ceiling Item": [1,2],
+	"Blue Brinstar Energy Tank Room: Right Item": [2,2],
+	"Three Musketeers' Room: Hidden Item": [0,2],
+	"Alpha Power Bomb Room: Chozo Item": [1,0],
+	"Alpha Power Bomb Room: Hidden Left Item": [0,0],
+	"Aqueduct: Top Right Right Item": [5,4],
+	"Aqueduct: Top Right Left Item": [4,4],
+	"Screw Attack Room: Item": [0,2],
+	"Bubble Mountain: Bottom Right Item": [1,3],
+	"Watering Hole: Left Item": [-0.25,2],
+	"Watering Hole: Right Item": [0.25,2],
+	"Speed Booster Hall: Hidden Item": [11,1],
+	"West Sand Hole: Top Left Right Item": [0.25,0],
+	"West Sand Hole: Top Left Left Item": [-0.25,0],
+	"East Sand Hole: Top Left Item": [0,0],
+	"East Sand Hole: Right Item": [1,1],
+	"Post Crocomire Missile Room: Item": [3,0],
+	"Double Chamber: Item": [1,0],
+	"Beta Power Bomb Room: Item": [0,1],
+	"West Ocean: Bottom Left Underwater Item": [0,5],
+	"West Ocean: Left Morph Maze Item": [0,2],
+	"West Ocean: Top Hidden Item (Above Trippers)": [1,0],
+	"Early Supers Room: Lower Item": [1,1],
+	"Early Supers Room: Top Left Item": [0,0],
+	"Plasma Room: Item": [1,2],
+	"Green Pirates Shaft: Left Item": [-0.25,1],
+	"Green Pirates Shaft: Right Item": [0.25,1],
+	"Spring Ball Room: Item": [1,1],
+	"Pink Brinstar Power Bomb Room: Item": [0,1],
+	"Pit Room: Item (unlocked)": [0,1],
+	"Mickey Mouse Room: Item": [2,1],
+	"Grapple Beam Room: Item": [0,2],
+	"Golden Torizo's Room: Hidden Right Item": [1,0],
+	"Golden Torizo's Room: Top Left Item": [0,0],
+	"Wrecked Ship East Super Room: Item (Behind the Bomb Wall) (unlocked)": [3,0],
+	"Botwoon Energy Tank Room: Item": [3,0],
+	"Terminator Room: Item": [0,2],
+	"Post Crocomire Jump Room: Item": [4,0],
+	"Green Bubbles Missile Room: Item": [1,0],
+	"Lower Norfair Spring Ball Maze Room: Item": [2,0],
+	"Crateria Power Bomb Room: Item": [1,0],
+	"Green Brinstar Main Shaft: Right Etecoon Shaft - Item": [3,7],
+	"Crateria Super Room: Item": [3,0],
+	"Spore Spawn Super Room: Item": [1,8],
+	"Hi Jump Energy Tank Room: Top Right Item": [1,0],
+	"Hi Jump Energy Tank Room: Top Left Item": [0,0],
+	"Big Pink: Top Item (Above Hopper Pit)": [2,3],
+	"Big Pink: Middle Item": [2,6],
+	"Big Pink: Bottom Chozo Item": [2,7],
+	"Bowling Alley: Bottom Chozo Item (unlocked)": [3,2],
+	"Bowling Alley: Top Right Item (unlocked)": [5,0],
 };
 let item_plm = {
 	"ETank": 0,
@@ -94,23 +94,42 @@ let item_plm = {
 	"SpaceJump": 17,
 	"ScrewAttack": 18,
 	"Morph": 19,
-	"ReserveTank": 20
+	"ReserveTank": 20,
+	"WallJump": 21,
 };
-let change_item = (old_plm,id) => {
-	let old_id = ((old_plm - 0xEED7) / 4) % 21;
-	return old_plm + (id - old_id) * 4;
+let item_rank = {
+	"Varia": 1,
+	"Gravity": 2,
+	"Morph": 3,
+	"SpaceJump": 4,
+	"ScrewAttack": 5,
+	"WallJump": 6,
+	"Bombs": 7,
+	"HiJump": 8,
+	"SpeedBooster": 9,
+	"SpringBall": 10,
+	"Grapple": 11,
+	"XRayScope": 12,
+	"Charge": 13,
+	"Ice": 14,
+	"Wave": 15,
+	"Spazer": 16,
+	"Plasma": 17,
+	"ETank": 18,
+	"ReserveTank": 19,
+	"Super": 20,
+	"PowerBomb": 21,
+	"Missile": 22,
 }
-let item_addrs;
-fetch(`item_addrs.json`).then(c => c.json()).then(c => {
-	item_addrs = c;
-})
-let plando_changes = {};
-let doors;
-fetch(`doors.json`).then(c => c.json()).then(c => {
-	doors = c;
-}).then(_ => fetch(`../spoiler.json`)).then(c => c.json()).then(c => {
+
+function lookupOffset(room, node) {
+	key = room + ": " + node
+	return offsets[key];
+}
+
+fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 	// generate map
-	let map = new Array(72*72);
+	let map = new Array(72*72).fill(-1);
 	for (let i in c.all_rooms) {
 		let v = c.all_rooms[i];
 		for (let y = 0; y < v.map.length; y++) {
@@ -122,12 +141,108 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 		}
 	}
 	let step_limit = null;
+	let icon = id => {
+		let el = document.createElement("span");
+		el.className = "ui-icon";
+		el.style.backgroundPositionX = `-${id * 16}px`;
+		return el;
+	}
+	let update_selected = () => {
+		if (document.getElementById(`step-null`) !== null) {
+			document.getElementById(`step-null`).classList.remove("selected");
+			for (let i of c.summary) {
+				document.getElementById(`step-${i.step}`).classList.remove("selected");
+			}
+			document.getElementById(`step-${step_limit}`).classList.add("selected");	
+		}
+	}
+	let show_overview = () => {
+		let si = document.getElementById("sidebar-info");
+		si.innerHTML = "";
+		let seen = new Set();
+		for (let i in c.summary) {
+			let step_div = document.createElement("div");
+			step_div.id = `step-${c.summary[i].step}`;
+			step_div.className = "step-panel";
+			step_div.onclick = () => {
+				gen_obscurity(c.summary[i].step);
+			}
+			
+			let step_number = document.createElement("span");
+			step_number.className = "step-number";
+			step_number.innerHTML = `${c.summary[i].step}`;
+			step_div.appendChild(step_number);
+
+			let items = c.details[i].items;
+			let sortedItemIdxs = Array.from(items.keys()).sort((a, b) => item_rank[items[a].item] - item_rank[items[b].item]);
+			let first = true;
+			for (item_idx of sortedItemIdxs) {
+				let j = items[item_idx];
+				if (!seen.has(j.item)) {
+					let el = icon(item_plm[j.item]);
+					el.className = "ui-icon-hoverable";
+					el.onclick = ev => {
+						show_item_details(j.item, j.location, i, j);
+					}
+					step_div.appendChild(el);
+
+					if (first) {
+						step_div.ondblclick = () => {
+							show_item_details(j.item, j.location, i, j);
+						}
+					}
+					first=false;
+
+					seen.add(j.item);
+				}
+			}
+			if (first && sortedItemIdxs.length > 0) {
+				let j = items[sortedItemIdxs[0]];
+				step_div.ondblclick = () => {
+					show_item_details(j.item, j.location, i, j);
+				}
+			}
+			si.appendChild(step_div);
+		}
+
+		step_div = document.createElement("div");
+		step_div.id = `step-null`;
+		step_div.className = "step-panel";
+		step_div.onclick = () => gen_obscurity(null);
+		
+		step_number = document.createElement("span");
+		step_number.className = "step-whole-map";
+		step_number.innerHTML = 'WHOLE MAP';
+		help_button = document.createElement("i");
+		help_button.className = "bi bi-question-circle-fill help-button";
+		help_button.setAttribute("data-bs-theme", "dark");
+		help_button.style = "margin-left:auto;";
+		help_button.onclick = (e) => {
+			document.getElementById("msg-wrap").style.display = "flex";
+			e.stopPropagation();
+		}
+		// help_button.onmouseup = () => {
+		// 	return true;
+		// }
+		// help_button.onclick = () => {
+		// 	return false;
+		// }
+		step_div.appendChild(step_number);
+		step_div.appendChild(help_button);
+
+		si.appendChild(step_div);
+		update_selected();
+	}
+	show_overview();
 	window.gen_obscurity = (sl) => {
 		step_limit = sl;
+		update_selected();
+
 		// generate obscurity overlay
 		let ov = document.getElementById("obscure-overlay");
 		let ctx = ov.getContext("2d");
 		let img = ctx.createImageData(72,72);
+
 		if (step_limit === null) {
 			ctx.putImageData(img, 0, 0);
 			return;
@@ -152,16 +267,17 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 			}
 		}
 		ctx.putImageData(img, 0, 0);
-		// TODO: hide items and unfuck overlay
 	}
 	gen_obscurity(null);
 	let el = document.getElementById("room-info");
 	let dragging = false;
+	let dragged = false;
 	document.getElementById("map").ondragstart = ev => {
 		return false;
 	}
 	document.body.onmousedown = ev => {
 		dragging = true;
+		dragged = false;
 	}
 	document.body.onmouseup = ev => {
 		dragging = false;
@@ -174,6 +290,7 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 	let page_y = 0;
 	document.body.onmousemove = ev => {
 		if (dragging) {
+			dragged = true;
 			page_x += ev.movementX
 			page_y += ev.movementY;
 			document.body.style.setProperty("--tx", page_x + "px");
@@ -183,8 +300,9 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 			let y = ((ev.offsetY / 24)|0) - 1;
 			if (x >= 0 && x < 72 && y >= 0 && y < 72) {
 				let tile = map[y*72+x];
-				if (tile > 0) {
+				if (tile >= 0) {
 					el.innerText = c.all_rooms[tile].room;
+					el.dataset.shortName = c.all_rooms[tile].short_name;
 					el.style.left = ev.offsetX + 16 + "px";
 					el.style.top = ev.offsetY + "px";
 					el.classList.remove("hidden");
@@ -194,59 +312,6 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 			el.classList.add("hidden")
 		}
 	}
-	window.generate_rom = async () => {
-		const rom_data = await localforage.getItem("baseRomData") ?? await localforage.getItem("vanillaRomData");
-		if (!rom_data) {
-			alert("Please set the ROM on the previous page.");
-			return;
-		}
-		const form = new FormData();
-		form.append("room_palettes", "vanilla");
-		const rom = new Blob([rom_data], { type: "" });
-		form.append("rom", rom);
-		let c = await fetch("../../customize", { body: form, method: "post" });
-		let blob = await c.blob();
-		// change up the item locations
-		let ab = await blob.arrayBuffer();
-		let bytes = new Uint8Array(ab);
-		for (let i in plando_changes) {
-			let offset = +item_addrs[i];
-			console.log(offset, item_addrs[i]);
-			let value = item_plm[plando_changes[i]];
-			let orig = bytes[offset] | (bytes[offset+1]<<8)
-			let n = change_item(orig, value);
-			console.log(orig, value, n);
-			bytes[offset] = n;
-			bytes[offset+1] = n>>8;
-			console.log(bytes[offset] | (bytes[offset+1]<<8));
-		}
-		blob = new Blob([ab]);
-		let a = document.createElement("a");
-		a.href = URL.createObjectURL(blob);
-		a.setAttribute("download", "plando.sfc");
-		a.click();
-	}
-	let icon = id => `<div class="ui-icon" style="background-position-x: -${id*16}px"></div>`;
-	let print_route = () => {
-		let si = document.getElementById("sidebar-info");
-		let out = "";
-		let seen = new Set();
-		for (let i of c.summary) {
-			out += `<div onclick="gen_obscurity(${i.step})">`;
-			out += `<div class="category">STEP ${i.step}</div>`;
-			for (let j of i.items) {
-				if (!seen.has(j.item)) {
-					out += icon(item_plm[j.item]);
-					seen.add(j.item);
-				}
-			}
-			out += `</div>`;
-		}
-		out += `<div onclick="gen_obscurity(null)"><div class="category">OTHER ITEMS</div></div>`;
-		out += `<button onclick="generate_rom()">Download ROM</button>`;
-		si.innerHTML = out;
-	}
-	print_route();
 	document.getElementById("map").onclick = ev => {
 		if (el.innerText == "Mother Brain Room") {
 			let path = "";
@@ -256,9 +321,10 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 					let xl = r.coords[0];
 					let yl = r.coords[1];
 					let o = doors.find(c => c.name == k.node);
-					if (offsets[k.node]) {
-						xl += offsets[k.node][0];
-						yl += offsets[k.node][1];
+					let os = lookupOffset(k.room, k.node);
+					if (os) {
+						xl += os[0];
+						yl += os[1];
 					} else if (o && o.nodeAddress) {
 						if (o.x !== undefined && o.y !== undefined) {
 							xl += o.x; yl += o.y;
@@ -275,9 +341,10 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 					let xl = r.coords[0];
 					let yl = r.coords[1];
 					let o = doors.find(c => c.name == k.node);
-					if (offsets[k.node]) {
-						xl += offsets[k.node][0];
-						yl += offsets[k.node][1];
+					let os = lookupOffset(k.room, k.node);
+					if (os) {
+						xl += os[0];
+						yl += os[1];
 					} else if (o && o.nodeAddress) {
 						if (o.x !== undefined && o.y !== undefined) {
 							xl += o.x; yl += o.y;
@@ -291,23 +358,193 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 			document.getElementById("path-overlay").innerHTML = `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
 			document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="cyan" fill="none" stroke-linejoin="round" stroke-width="2"/>`
 		} else {
-			// deselect
-			print_route();
+			if (!dragged) {
+				// deselect
+				show_overview();
+				document.getElementById("path-overlay").innerHTML = ""
+			}
 		}
 	}
 	document.getElementById("map").ondblclick = ev => {
 		if (!el.classList.contains("hidden")) {
-			window.open("https://wiki.supermetroid.run/" + encodeURIComponent(el.innerText), "_blank")
+			window.open("/logic/room/" + el.dataset.shortName.replace(/\s+/g, ''))
 		}
 	}
+	let show_item_details = (item_name, loc, i, j) => {
+		if (j !== null) {
+			let path = "";
+			for (let k of j.return_route) {
+				if (k.coords) {
+					let x = k.coords[0] * 24 + 24 + 12;
+					let y = k.coords[1] * 24 + 24 + 12;
+					path += `${path == "" ? "M" : "L"}${x} ${y} `;			
+				}
+			}
+			document.getElementById("path-overlay").innerHTML = `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
+			document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="yellow" fill="none" stroke-linejoin="round" stroke-width="2"/>`
+			path = "";
+			for (let k of j.obtain_route) {
+				if (k.coords) {
+					let x = k.coords[0] * 24 + 24 + 12;
+					let y = k.coords[1] * 24 + 24 + 12;
+					path += `${path == "" ? "M" : "L"}${x} ${y} `;
+				}
+			}
+			document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
+			document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="white" fill="none" stroke-linejoin="round" stroke-width="2"/>`
+		}
+		let si = document.getElementById("sidebar-info");
+		si.innerHTML = "";
+		if (j !== null) {
+			step_limit = c.details[i].step;
+			let title = document.createElement("div");
+			title.className = "sidebar-title";
+			title.innerHTML = `STEP ${step_limit}`;
+			si.appendChild(title);
+		}
+
+		if (j !== null) {
+			gen_obscurity(step_limit);
+
+			let previous_header = document.createElement("div");
+			previous_header.className = "category";
+			previous_header.innerHTML = "PREVIOUSLY COLLECTIBLE";
+			si.appendChild(previous_header);
+
+			let ss = c.details[i].start_state;
+			let s = [ss.max_missiles, ss.max_supers, ss.max_power_bombs, Math.floor(ss.max_energy / 100), ss.max_reserves / 100];
+			let ic = [1, 2, 3, 0, 20];
+			for (let i in s) {
+				if (s[i] > 0) {
+					si.appendChild(icon(ic[i]));
+					let count = document.createElement("span");
+					count.innerHTML = s[i] + " ";
+					si.appendChild(count);
+				}
+			}
+			for (let i of ss.items) {
+				if (!ic.includes(item_plm[i])) {
+					si.appendChild(icon(item_plm[i]));
+				}
+			}
+
+			let collectible_header = document.createElement("div");
+			collectible_header.className = "category";
+			collectible_header.innerHTML = "COLLECTIBLE ON THIS STEP";
+			si.appendChild(collectible_header);
+
+			let item_list = document.createElement("div");
+			item_list.className = "item-list";
+			let items = c.details[i].items;
+			sortedItemIdxs = Array.from(items.keys()).sort((a, b) => item_rank[items[a].item] - item_rank[items[b].item]);
+			for (item_idx of sortedItemIdxs) {
+				let item = items[item_idx];
+				let icon_el = icon(item_plm[item.item]);
+				icon_el.className = "ui-icon-hoverable";
+				icon_el.onclick = ev => {
+					show_item_details(item.item, item.location, i, item);
+				}
+				if (item == j) {
+					icon_el.classList.add("selected")
+				}
+				item_list.appendChild(icon_el);
+			}
+			si.appendChild(item_list);
+		}
+
+		let item_info = document.createElement("div");
+		let item_difficulty = "";
+		if (j.difficulty !== null) {
+			item_difficulty = ` (${j.difficulty})`
+		}
+		item_info.innerHTML += `<div class="sidebar-item-name">${item_name}${item_difficulty}</div><div class="category">LOCATION</div>${loc.room}: ${loc.node}<br><small>${loc.area}</small>`;
+		if (j !== null) {
+			let ss = c.details[i].start_state;
+			item_info.innerHTML += `<div class="category">OBTAIN ROUTE</div>`;
+			for (let k of j.obtain_route) {
+				item_info.innerHTML += `${k.room}: ${k.node}<br>`;
+				let out = "";
+				if (k.strat_name != "Base" && k.strat_name != "(Door transition)") {
+					let strat_url = `/logic/room/${k.short_room}/${k.from_node_id}/${k.to_node_id}/${k.short_strat_name}`;
+					if (k.strat_notes) {
+						let title = "";
+						for (let i of k.strat_notes) {
+							title += `${i} `;
+						}
+						out += `Strat: <a href=${strat_url}><abbr title="${title}">${k.strat_name}</abbr></a><br>`;
+					} else {
+						out += `Strat: <a href=${strat_url}>${k.strat_name}</a><br>`;
+					}
+				}
+				if (k.energy_used !== undefined) {
+					out += `Energy remaining: ${ss.max_energy - k.energy_used}<br>`;
+				}
+				if (k.reserves_used !== undefined) {
+					out += `Reserves remaining: ${ss.max_reserves - k.reserves_used}<br>`;
+				}
+				if (k.missiles_used !== undefined) {
+					out += `Missiles remaining: ${ss.max_missiles - k.missiles_used}<br>`;
+				}
+				if (k.supers_used !== undefined) {
+					out += `Supers remaining: ${ss.max_supers - k.supers_used}<br>`;
+				}
+				if (k.power_bombs_used !== undefined) {
+					out += `PBs remaining: ${ss.max_power_bombs - k.power_bombs_used}<br>`;
+				}
+				if (out != "") {
+					item_info.innerHTML += `<small>${out}</small>`;
+				}
+			}
+			item_info.innerHTML += `<div class="category">RETURN ROUTE</div>`;
+			for (let k of j.return_route) {
+				let out = "";
+				if (k.energy_used !== undefined) {
+					out += `Energy needed: ${k.energy_used + 1}<br>`;
+				}
+				if (k.reserves_used !== undefined) {
+					out += `Reserves needed: ${k.reserves_used}<br>`;
+				}
+				if (k.missiles_used !== undefined) {
+					out += `Missiles needed: ${k.missiles_used}<br>`;
+				}
+				if (k.supers_used !== undefined) {
+					out += `Supers needed: ${k.supers_used}<br>`;
+				}
+				if (k.power_bombs_used !== undefined) {
+					out += `PBs needed: ${k.power_bombs_used}<br>`;
+				}
+				if (out != "") {
+					item_info.innerHTML += `<small>${out}</small>`;
+				}
+				item_info.innerHTML += `${k.room}: ${k.node}<br>`;
+				out = "";
+				if (k.strat_name != "Base" && k.strat_name != "(Door transition)") {
+					let strat_url = `/logic/room/${k.short_room}/${k.from_node_id}/${k.to_node_id}/${k.short_strat_name}`;
+					if (k.strat_notes) {
+						let title = "";
+						for (let i of k.strat_notes) {
+							title += `${i} `;
+						}
+						out += `Strat: <a href=${strat_url}><abbr title="${title}">${k.strat_name}</abbr></a><br>`;
+					} else {
+						out += `Strat: <a href=${strat_url}>${k.strat_name}</a><br>`;
+					}
+				}
+				if (out != "") {
+					item_info.innerHTML += `<small>${out}</small>`;
+				}
+			}
+		}
+		si.appendChild(item_info);
+	}
 	items: for (let v of c.all_items) {
-		if (v.location.node in offsets) {
-			v.location.coords[0] += offsets[v.location.node][0];
-			v.location.coords[1] += offsets[v.location.node][1];
+		let os = lookupOffset(v.location.room, v.location.node);
+		if (os) {
+			v.location.coords[0] += os[0];
+			v.location.coords[1] += os[1];
 		}
 		let el = document.createElement("div");
 		el.className = "icon";
-		//console.log(v);
 		el.style.left = v.location.coords[0] * 24 + 24 + 4 + "px";
 		el.style.top = v.location.coords[1] * 24 + 24 + 4 + "px";
 		el.style.backgroundPositionX = `-${item_plm[v.item] * 16}px`;
@@ -315,128 +552,15 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 		let j = null;
 		for (let l in c.details) {
 			for (let k of c.details[l].items) {
-				if (k.location.node == v.location.node) {
+				if (k.location.room == v.location.room && k.location.node == v.location.node) {
 					i = l;
 					j = k;
 					break;
 				}
 			}
 		}
-		let icon_el = el;
 		el.onclick = ev => {
-			if (j) {
-				let path = "";
-				for (let k of j.return_route) {
-					let xl = k.coords[0];
-					let yl = k.coords[1];
-					let o = doors.find(c => c.name == k.node);
-					if (offsets[k.node]) {
-						xl += offsets[k.node][0];
-						yl += offsets[k.node][1];
-					} else if (o && o.nodeAddress) {
-						if (o.x !== undefined && o.y !== undefined) {
-							xl += o.x; yl += o.y;
-						}
-					} else { continue; }
-					let x = xl * 24 + 24 + 12;
-					let y = yl * 24 + 24 + 12;
-					path += `${path == "" ? "M" : "L"}${x} ${y} `;
-				}
-				document.getElementById("path-overlay").innerHTML = `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
-				document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="yellow" fill="none" stroke-linejoin="round" stroke-width="2"/>`
-				path = "";
-				for (let k of j.obtain_route) {
-					let xl = k.coords[0];
-					let yl = k.coords[1];
-					let o = doors.find(c => c.name == k.node);
-					if (offsets[k.node]) {
-						xl += offsets[k.node][0];
-						yl += offsets[k.node][1];
-					} else if (o && o.nodeAddress) {
-						if (o.x !== undefined && o.y !== undefined) {
-							xl += o.x; yl += o.y;
-						}
-					} else { continue; }
-					let x = xl * 24 + 24 + 12;
-					let y = yl * 24 + 24 + 12;
-					path += `${path == "" ? "M" : "L"}${x} ${y} `;
-				}
-				document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
-				document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="white" fill="none" stroke-linejoin="round" stroke-width="2"/>`
-			}
-			let si = document.getElementById("sidebar-info");
-			si.innerHTML = `<div class="sidebar-title">${v.item}</div><div class="category">LOCATION</div>${v.location.room}<br><small>${v.location.node}</small>`;
-			if (j) {
-				si.innerHTML += `<div class="category">PREREQUISITES</div>`;
-				let ss = c.details[i].start_state;
-				let s = [ss.max_missiles, ss.max_supers, ss.max_power_bombs, ss.max_energy, ss.max_reserves];
-				let ic = [1, 2, 3, 0, 20];
-				for (let i in s) {
-					if (s[i] > 0) {
-						si.innerHTML += icon(ic[i]);
-						si.innerHTML += s[i] + " ";
-					}
-				}
-				for (let i of ss.items) {
-					if (!ic.includes(item_plm[i])) {
-						si.innerHTML += icon(item_plm[i]);
-					}
-				}
-				si.innerHTML += `<div class="category">OBTAIN ROUTE</div>`;
-				let f = k => {
-					si.innerHTML += `${k.node}<br>`;
-					let out = "";
-					if (k.strat_name != "Base" && k.strat_name != "(Door transition)") {
-						if (k.strat_notes) {
-							let title = "";
-							for (let i of k.strat_notes) {
-								title += `${i} `;
-							}
-							out += `Strat: <abbr title="${title}">${k.strat_name}</abbr><br>`;
-						} else {
-							out += `Strat: ${k.strat_name}<br>`;
-						}
-					}
-					if (k.energy_remaining) {
-						out += `Energy remaining: ${k.energy_remaining}<br>`;
-					}
-					if (k.reserves_remaining) {
-						out += `Reserves remaining: ${k.reserves_remaining}<br>`;
-					}
-					if (k.missiles_remaining) {
-						out += `Missiles remaining: ${k.missiles_remaining}<br>`;
-					}
-					if (k.supers_remaining) {
-						out += `Supers remaining: ${k.supers_remaining}<br>`;
-					}
-					if (k.power_bombs_remaining) {
-						out += `PBs remaining: ${k.power_bombs_remaining}<br>`;
-					}
-					if (out != "") {
-						si.innerHTML += `<small>${out}</small>`;
-					}
-				};
-				for (let k of j.obtain_route) {
-					f(k);
-				}
-				si.innerHTML += `<div class="category">RETURN ROUTE</div>`;
-				for (let k of j.return_route) {
-					f(k);
-				}
-			}
-			si.innerHTML += `<div class="category">CHANGE ITEM</div>`;
-			let out = "";
-			out += `<select onchange="changeItem(this)">`;
-			for (let i of Object.keys(item_plm)) {
-				out += `<option ${i == v.item ? "selected" : ""}>${i}</option>`
-			}
-			out += `</select>`;
-			window.changeItem = sel => {
-				v.item = sel.value;
-				icon_el.style.backgroundPositionX = `-${item_plm[sel.value] * 16}px`;
-				plando_changes[v.location.node] = sel.value;
-			}
-			si.innerHTML += out;
+			show_item_details(v.item, v.location, i, j);
 		};
 		document.getElementById("overlay").appendChild(el);
 		el = document.createElement("div");
@@ -446,30 +570,8 @@ fetch(`doors.json`).then(c => c.json()).then(c => {
 		out:
 		for (let i in c.details) {
 			for (let j of c.details[i].items) {
-				if (j.location.node == v.location.node) {
+				if (j.location.room == v.location.room && j.location.node == v.location.node) {
 					el.innerHTML += `Step: ${c.details[i].step}<br>`;
-					let strats = new Set();
-					let energy = null;
-					let reserves = null;
-					for (let k of j.obtain_route) {
-						if (k.strat_name != "Base" && k.strat_name != "(Door transition)") {
-							strats.add(k.strat_name);
-						}
-						if (k.energy_remaining) {
-							energy = k.energy_remaining;
-							reserves = k.reserves_remaining;
-						}
-					}
-					if (energy) {
-						let en = c.details[i].start_state.max_energy - energy;
-						if (reserves) {
-							en += c.details[i].start_state.max_reserves - reserves;
-						}
-						el.innerHTML += `Energy used: ${en}<br>`;
-					}
-					/*if (strats.size != 0) {
-						el.innerHTML += `Strats: <br><small>${[...strats].join("<br>")}</small>`;
-					}*/
 					fin = true;
 					break out;
 				}

@@ -88,13 +88,13 @@ start_game:
     sta $09C8   ; max missiles
     lda #$0032
     sta $09CA   ; supers
-    sta $09CC   ; max supers
+    sta $09CC   ; max supers    
     sta $09CE   ; power bombs
     sta $09D0   ; max power bombs
 
-    lda #$0101     ; set G4 bosses defeated
-    sta $7ED829
-    sta $7ED82B
+;    lda #$0101     ; set G4 bosses defeated
+;    sta $7ED829
+;    sta $7ED82B
 
     ; If there are no existing save files, then perform global initialization:
     lda $0954
@@ -130,6 +130,7 @@ start_game:
     ; Unlock Tourian statues room (to avoid camera glitching when entering from bottom, and also to ensure game is
     ; beatable since we don't take it into account as an obstacle in the item randomization logic)
     lda #$0004
+;    lda #$0044   ; set escape flag
     sta $7ED821
 
     lda #$0006  ; Start in game state 6 (Loading game data) instead of 0 (Intro) or 5 (File select map)

@@ -1,5 +1,48 @@
 <div class="form-group row">
     <div class="col-lg-4 col-md-6 my-2">
+        <% include!("help/variations/walljump.stpl"); %>
+        <label for="wall_jump">Wall jump</label>
+    </div>
+    <div class="col-4 btn-group my-2" role="group">
+        <input type="radio" class="btn-check" name="wall_jump" id="wallJumpVanilla" value="Vanilla" checked>
+        <label class="btn btn-outline-primary" for="wallJumpVanilla">Vanilla</label>
+        <input type="radio" class="btn-check" name="wall_jump" id="wallJumpCollectible" value="Collectible">
+        <label class="btn btn-outline-primary" for="wallJumpCollectible">Collectible</label>
+        <input type="radio" class="btn-check" name="wall_jump" id="wallJumpDisabled" value="Disabled">
+        <label class="btn btn-outline-primary" for="wallJumpDisabled">Disabled</label>
+    </div>
+</div>
+
+<div class="form-group row">
+    <div class="col-lg-4 col-md-6 my-2">
+        <% include!("help/variations/etank_refill.stpl"); %>
+        <label for="etank_refill">E-Tank energy refill</label>
+    </div>
+    <div class="col-4 btn-group my-2" role="group">
+        <input type="radio" class="btn-check" name="etank_refill" id="etankRefillDisabled" value="Disabled">
+        <label class="btn btn-outline-primary" for="etankRefillDisabled">Disabled</label>
+        <input type="radio" class="btn-check" name="etank_refill" id="etankRefillVanilla" value="Vanilla" checked>
+        <label class="btn btn-outline-primary" for="etankRefillVanilla">Vanilla</label>
+        <input type="radio" class="btn-check" name="etank_refill" id="etankRefillFull" value="Full">
+        <label class="btn btn-outline-primary" for="etankRefillFull">Full</label>
+    </div>
+</div>
+
+<div class="form-group row">
+    <div class="col-lg-4 col-md-6 my-2">
+        <% include!("help/variations/area_assignment.stpl"); %>
+        <label for="preset">Area assignment</label>
+    </div>
+    <div class="col-3 btn-group my-2" role="group">
+        <input type="radio" class="btn-check" name="area_assignment" id="areaAssignmentStandard" value="Standard" checked>
+        <label class="btn btn-outline-primary" for="areaAssignmentStandard">Standard</label>
+        <input type="radio" class="btn-check" name="area_assignment" id="areaAssignmentRandom" value="Random">
+        <label class="btn btn-outline-primary" for="areaAssignmentRandom">Random</label>
+    </div>
+</div>
+
+<div class="form-group row">
+    <div class="col-lg-4 col-md-6 my-2">
         <% include!("help/variations/item_dot_change.stpl"); %>
         <label for="preset">Item dots after collection</label>
     </div>
@@ -26,32 +69,6 @@
 
 <div class="form-group row">
     <div class="col-lg-4 col-md-6 my-2">
-        <% include!("help/variations/early_save.stpl"); %>
-        <label for="early_save">Guaranteed early save station</label>
-    </div>
-    <div class="col-2 btn-group my-2" role="group">
-        <input type="radio" class="btn-check" name="early_save" id="earlySaveNo" value="false" checked>
-        <label class="btn btn-outline-primary" for="earlySaveNo">No</label>
-        <input type="radio" class="btn-check" name="early_save" id="earlySaveYes" value="true">
-        <label class="btn btn-outline-primary" for="earlySaveYes">Yes</label>
-    </div>
-</div>
-
-<div class="form-group row">
-    <div class="col-lg-4 col-md-6 my-2">
-        <% include!("help/variations/disable_walljump.stpl"); %>
-        <label for="disable_walljump">Disable wall jumps</label>
-    </div>
-    <div class="col-2 btn-group my-2" role="group">
-        <input type="radio" class="btn-check" name="disable_walljump" id="disableWallJumpNo" value="false" checked>
-        <label class="btn btn-outline-primary" for="disableWallJumpNo">No</label>
-        <input type="radio" class="btn-check" name="disable_walljump" id="disableWallJumpYes" value="true">
-        <label class="btn btn-outline-primary" for="disableWallJumpYes">Yes</label>
-    </div>
-</div>
-
-<div class="form-group row">
-    <div class="col-lg-4 col-md-6 my-2">
         <% include!("help/variations/maps_revealed.stpl"); %>
         <label for="maps_revealed">Maps revealed from start</label>
     </div>
@@ -60,19 +77,6 @@
         <label class="btn btn-outline-primary" for="mapsRevealedNo">No</label>
         <input type="radio" class="btn-check" name="maps_revealed" id="mapsRevealedYes" value="true">
         <label class="btn btn-outline-primary" for="mapsRevealedYes">Yes</label>
-    </div>
-</div>
-
-<div class="form-group row">
-    <div class="col-lg-4 col-md-6 my-2">
-        <% include!("help/variations/vanilla_map.stpl"); %>
-        <label for="vanilla_map">Vanilla map</label>
-    </div>
-    <div class="col-2 btn-group my-2" role="group">
-        <input type="radio" class="btn-check" name="vanilla_map" id="vanillaMapNo" value="false" checked>
-        <label class="btn btn-outline-primary" for="vanillaMapNo">No</label>
-        <input type="radio" class="btn-check" name="vanilla_map" id="vanillaMapYes" value="true">
-        <label class="btn btn-outline-primary" for="vanillaMapYes">Yes</label>
     </div>
 </div>
 

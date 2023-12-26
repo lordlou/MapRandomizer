@@ -4,7 +4,7 @@ use maprando::{
     game_data::{GameData, Item, Requirement},
     randomize::{
         DifficultyConfig, ItemMarkers, ItemPlacementStyle, ItemPriorityGroup, MotherBrainFight,
-        Objectives, ProgressionRate, ItemDotChange, DoorsMode, SaveAnimals,
+        Objectives, ProgressionRate, ItemDotChange, DoorsMode, SaveAnimals, AreaAssignment, WallJump,
     },
     traverse::{apply_requirement, GlobalState, LocalState},
 };
@@ -32,6 +32,7 @@ fn main() -> Result<()> {
     let start_locations_path = Path::new("data/start_locations.json");
     let hub_locations_path = Path::new("data/hub_locations.json");
     let mosaic_path = Path::new("../Mosaic");
+    let title_screen_path = Path::new("../TitleScreen/Images");
 
     let game_data = GameData::load(
         sm_json_data_path,
@@ -41,6 +42,7 @@ fn main() -> Result<()> {
         start_locations_path,
         hub_locations_path,
         mosaic_path,
+        title_screen_path,
     )?;
 
     // let vertex_id_src = game_data.vertex_isv.index_by_key[&(77, 1, 0)];
@@ -90,10 +92,13 @@ fn main() -> Result<()> {
         power_bombs_used: 0,
     };
     let difficulty = DifficultyConfig {
+        name: None,
         tech: vec![],
         notable_strats: vec![],
         shine_charge_tiles: 16.0,
-        progression_rate: ProgressionRate::Normal,
+        progression_rate: ProgressionRate::Uniform,
+        random_tank: true,
+        semi_filler_items: vec![],
         filler_items: vec![Item::Missile],
         early_filler_items: vec![],
         item_placement_style: ItemPlacementStyle::Neutral,
@@ -104,6 +109,7 @@ fn main() -> Result<()> {
         resource_multiplier: 1.0,
         escape_timer_multiplier: 1.0,
         gate_glitch_leniency: 0,
+        door_stuck_leniency: 0,
         phantoon_proficiency: 0.0,
         draygon_proficiency: 1.0,
         ridley_proficiency: 0.0,
@@ -119,6 +125,7 @@ fn main() -> Result<()> {
         item_dot_change: ItemDotChange::Fade,
         all_items_spawn: true,
         acid_chozo: true,
+        buffed_drops: true,
         fast_elevators: true,
         fast_doors: true,
         fast_pause_menu: true,
@@ -130,7 +137,9 @@ fn main() -> Result<()> {
         randomized_start: false,
         save_animals: SaveAnimals::No,
         early_save: false,
-        disable_walljump: false,
+        area_assignment: AreaAssignment::Standard,
+        wall_jump: WallJump::Vanilla,
+        etank_refill: maprando::randomize::EtankRefill::Vanilla,
         maps_revealed: false,
         vanilla_map: false,
         ultra_low_qol: false,
@@ -144,7 +153,7 @@ fn main() -> Result<()> {
 
     println!(
         "{:?}",
-        apply_requirement(&Requirement::PhantoonFight {  }, &global_state, local_state, false, &difficulty)
+        apply_requirement(&Requirement::PhantoonFight {  }, &global_state, local_state, false, &difficulty, &game_data)
     );
 
     // println!(
