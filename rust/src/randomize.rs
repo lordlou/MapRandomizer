@@ -12,7 +12,7 @@ use crate::{
         apply_requirement, get_bireachable_idxs, get_spoiler_route, traverse, GlobalState,
         LocalState, TraverseResult, IMPOSSIBLE_LOCAL_STATE, NUM_COST_METRICS,
     },
-    web::logic::strip_name,
+    //web::logic::strip_name,
 };
 use anyhow::{bail, Context, Result};
 use by_address::ByAddress;
@@ -22,7 +22,7 @@ use rand::SeedableRng;
 use rand::{seq::SliceRandom, Rng};
 use serde_derive::{Deserialize, Serialize};
 use std::{
-    cmp::{max, min},
+    cmp::{min},
     convert::TryFrom,
     iter,
 };
@@ -36,6 +36,19 @@ use self::escape_timer::SpoilerEscape;
 // placed as quickly as possible.
 const KEY_ITEM_FINISH_THRESHOLD: usize = 20;
 
+pub fn strip_name(s: &str) -> String {
+    let mut out = String::new();
+    for word in s.split_inclusive(|x: char| !x.is_ascii_alphabetic()) {
+        let capitalized_word = word[0..1].to_ascii_uppercase() + &word[1..];
+        let stripped_word: String = capitalized_word
+            .chars()
+            .filter(|x| x.is_ascii_alphanumeric())
+            .collect();
+        out += &stripped_word;
+    }
+    out
+    // s.chars().filter(|x| x.is_ascii_alphanumeric()).collect()
+}
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum ProgressionRate {
@@ -206,9 +219,9 @@ pub struct Randomizer {
     pub game_data: Box<GameData>,
     pub difficulty_tiers: Box<Vec<DifficultyConfig>>,
     #[pyo3(get)]
-    pub base_links_data: &'a LinksDataGroup,
+    pub base_links_data: Box<LinksDataGroup>,
     #[pyo3(get)]
-    pub seed_links_data: LinksDataGroup,
+    pub seed_links_data: Box<LinksDataGroup>,
     #[pyo3(get)]
     pub initial_items_remaining: Vec<usize>, // Corresponds to GameData.items_isv (one count per distinct item name)
 }
@@ -270,7 +283,6 @@ pub struct LockedDoor {
     pub bidirectional: bool, // if true, the door is locked on both sides, with a shared state
 }
 
-#[derive(Clone)]
 // State that changes over the course of item placement attempts
 #[pyclass]
 #[derive(Clone)]
@@ -500,7 +512,7 @@ impl<'a> Preprocessor<'a> {
     ) -> Self {
         let mut door_map: HashMap<(RoomId, NodeId), (RoomId, NodeId)> = HashMap::new();
         let mut locked_node_map: HashMap<(RoomId, NodeId), usize> = HashMap::new();
-        for &((src_exit_ptr, src_entrance_ptr), (dst_exit_ptr, dst_entrance_ptr), bidirectional) in
+        for &((src_exit_ptr, src_entrance_ptr), (dst_exit_ptr, dst_entrance_ptr), _bidirectional) in
             &map.doors
         {
             let (src_room_id, src_node_id) =
@@ -2221,8 +2233,8 @@ impl Randomizer {
         locked_doors: Box<Vec<LockedDoor>>,
         difficulty_tiers: Box<Vec<DifficultyConfig>>,
         game_data: Box<GameData>,
-        base_links_data: &'r LinksDataGroup,
-        seed_links: &'r [Link],
+        base_links_data: Box<LinksDataGroup>,
+        seed_links: Box<Vec<Link>>,
     ) -> Randomizer {
         let mut locked_door_map: HashMap<DoorPtrPair, usize> = HashMap::new();
         for (i, door) in locked_doors.iter().enumerate() {
@@ -2231,13 +2243,14 @@ impl Randomizer {
                 locked_door_map.insert(door.dst_ptr_pair, i);
             }
         }
-
-        let mut preprocessor = Preprocessor::new(game_data, map, locked_doors, &locked_door_map);
-        let mut preprocessed_seed_links: Vec<Link> = seed_links
+        let mut preprocessed_seed_links: Vec<Link> = {
+            let mut preprocessor = Preprocessor::new(game_data.as_ref(), map.as_ref(), &locked_doors, &locked_door_map);
+            seed_links
             .iter()
             .map(|x| preprocessor.preprocess_link(x))
             .flatten()
-            .collect();
+            .collect()
+        };
         for door in &map.doors {
             let src_exit_ptr = door.0 .0;
             let src_entrance_ptr = door.0 .1;
@@ -2305,9 +2318,9 @@ impl Randomizer {
                         dst_room_id,
                         dst_node_id,
                         locked_door_idx,
-                        game_data,
+                        game_data.as_ref(),
                         &mut preprocessed_seed_links,
-                        locked_doors,
+                        &locked_doors,
                     );
     
                 } else if (dst_room_id, unlocked_dst_node_id) == main_node_src {
@@ -2321,9 +2334,9 @@ impl Randomizer {
                         src_room_id,
                         src_node_id,
                         locked_door_idx,
-                        game_data,
+                        game_data.as_ref(),
                         &mut preprocessed_seed_links,
-                        locked_doors,
+                        &locked_doors,
                     );
                 }
             }
@@ -2345,17 +2358,19 @@ impl Randomizer {
         //let map = Box::new(*map);
         //let locked_doors = Box::new(*locked_doors);
         //let game_data = Box::new(*game_data);
+        let base_link_data_len = base_links_data.links.len();
+        let vertex_keys_len = game_data.vertex_isv.keys.len();
         Randomizer {
             map,
             locked_doors,
             initial_items_remaining,
             game_data,
             base_links_data,
-            seed_links_data: LinksDataGroup::new(
+            seed_links_data: Box::new(LinksDataGroup::new(
                 preprocessed_seed_links,
-                game_data.vertex_isv.keys.len(),
-                base_links_data.links.len(),
-            ),
+                vertex_keys_len,
+                base_link_data_len,
+            )),
             difficulty_tiers,
         }
     }
@@ -2454,7 +2469,7 @@ impl Randomizer {
                 if forward.cost[v].iter().any(|&x| f32::is_finite(x)) {
                     state.item_location_state[i].reachable = true;
                     if !state.item_location_state[i].bireachable
-                        && get_bireachable_idxs(&state.global_state, v, &mut forward, &mut reverse)
+                        && get_bireachable_idxs(&state.global_state, v, &forward, &reverse)
                             .is_some()
                     {
                         state.item_location_state[i].bireachable = true;
@@ -2676,9 +2691,9 @@ impl Randomizer {
             let mut out = init.clone();
             for v in 0..init.local_states.len() {
                 if !state.key_visited_vertices.contains(&v) {
-                    out.local_states[v] = [IMPOSSIBLE_LOCAL_STATE; NUM_COST_METRICS];
+                    out.local_states[v] = [Some(IMPOSSIBLE_LOCAL_STATE); NUM_COST_METRICS];
                     out.cost[v] = [f32::INFINITY; NUM_COST_METRICS];
-                    out.start_trail_ids[v] = [-1; NUM_COST_METRICS];
+                    out.start_trail_ids[v] = [Some(-1); NUM_COST_METRICS];
                 }
             }
             Some(out)
@@ -2964,7 +2979,7 @@ impl Randomizer {
             previous_debug_data: None,
             key_visited_vertices: HashSet::new(),
         };
-        let selected_filler_items_len = selected_filler_items.len();
+        //let selected_filler_items_len = selected_filler_items.len();
         // println!("filler items len={selected_filler_items_len}");
         for &item in &selected_filler_items {
             new_state_filler.items_remaining[item as usize] -= 1;
@@ -3239,7 +3254,7 @@ impl Randomizer {
             .enumerate()
             .zip(self.game_data.room_geometry.iter())
             .map(|((room_idx, c), g)| {
-                let room = self.game_data.room_id_by_ptr[&g.rom_address];
+                //let room = self.game_data.room_id_by_ptr[&g.rom_address];
                 // let room = self.game_data.room_json_map[&room]["name"]
                 //     .as_str()
                 //     .unwrap()
@@ -3380,7 +3395,7 @@ impl Randomizer {
                 LocalState::new(),
                 false,
                 &self.difficulty_tiers[0],
-                self.game_data,
+                &self.game_data,
             );
             if local.is_none() {
                 continue;
@@ -3455,7 +3470,7 @@ impl Randomizer {
                         LocalState::new(),
                         false,
                         &self.difficulty_tiers[0],
-                        self.game_data,
+                        &self.game_data,
                     );
                     if local.is_some() {
                         result = Some(hub.clone());
@@ -3469,10 +3484,7 @@ impl Randomizer {
             let mut items_reachable = 0;
             for vertex_ids in self.game_data.item_vertex_ids.iter() {    
                 for &v in vertex_ids {
-                    if is_bireachable(
-                            &global,
-                            &forward.local_states[v],
-                            &reverse.local_states[v]) {
+                    if get_bireachable_idxs(&global, v, &forward, &reverse).is_some() {
                         items_reachable += 1;
                         if items_reachable >= 2 {
                             return Ok((start_loc, result.unwrap()));
@@ -3850,7 +3862,7 @@ impl Randomizer {
                 local_state,
                 reverse,
                 difficulty,
-                self.game_data,
+                &self.game_data,
             );
             let new_local_state = new_local_state_opt.unwrap();
             let sublinks_ordered: Vec<&Link> = if reverse {
@@ -4136,12 +4148,15 @@ impl Randomizer {
 
 pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
     let difficulty = DifficultyConfig {
+        name: None,
         tech: game_data.tech_isv.keys.clone(),
         notable_strats: vec![],
         // tech,
         shine_charge_tiles: 16.0,
         // shine_charge_tiles: 32,
         progression_rate: ProgressionRate::Slow,
+        random_tank: true,
+        semi_filler_items: vec![],
         filler_items: vec![Item::Missile],
         early_filler_items: vec![],
         item_placement_style: ItemPlacementStyle::Neutral,
@@ -4157,6 +4172,7 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         ],
         resource_multiplier: 1.0,
         gate_glitch_leniency: 0,
+        door_stuck_leniency: 0,
         escape_timer_multiplier: 3.0,
         phantoon_proficiency: 1.0,
         draygon_proficiency: 1.0,
@@ -4172,6 +4188,7 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         item_markers: ItemMarkers::ThreeTiered,
         item_dot_change: ItemDotChange::Disappear,
         all_items_spawn: true,
+        buffed_drops: true,
         acid_chozo: true,
         fast_elevators: true,
         fast_doors: true,
@@ -4184,7 +4201,9 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         randomized_start: false,
         save_animals: SaveAnimals::No,
         early_save: false,
-        disable_walljump: false,
+        area_assignment: AreaAssignment::Standard,
+        wall_jump: WallJump::Collectible,
+        etank_refill: EtankRefill::Vanilla,
         maps_revealed: true,
         map_layout: 0,
         ultra_low_qol: false,

@@ -394,7 +394,7 @@ impl<'a> Patcher<'a> {
             patches.push("buffed_drops");
         }
 
-        if !self.randomization.difficulty.vanilla_map {
+        if !self.randomization.difficulty.map_layout != 0 {
             patches.push("zebes_asleep_music");
         }
 
@@ -1912,7 +1912,7 @@ pub fn make_rom(
     patcher.apply_map_tile_patches()?;
     patcher.write_door_data()?;
     patcher.remove_non_blue_doors()?;
-    if !randomization.difficulty.vanilla_map || randomization.difficulty.area_assignment == AreaAssignment::Random {
+    if randomization.difficulty.map_layout != 0 || randomization.difficulty.area_assignment == AreaAssignment::Random {
         patcher.use_area_based_music()?;
     }
     patcher.setup_door_specific_fx()?;

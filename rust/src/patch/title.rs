@@ -14,7 +14,7 @@ pub struct TitlePatcher<'a> {
     next_free_space_pc: usize,
 }
 
-fn read_image(path: &Path, game_data: &GameData) -> Result<Array3<u8>> {
+pub fn read_image(path: &Path, game_data: &GameData) -> Result<Array3<u8>> {
     let img = ImageReader::new(Cursor::new(game_data.read_to_bytes(path).unwrap()))
         .with_guessed_format()?
         .decode()
@@ -261,7 +261,7 @@ impl<'a> TitlePatcher<'a> {
         Ok(())
     }
 
-    pub fn patch_title_background(&mut self, img: &Array3<u8>, game_data: &GameData) -> Result<()> {
+    pub fn patch_title_background(&mut self, img: &Array3<u8>, _game_data: &GameData) -> Result<()> {
         assert!(img.dim() == (224, 256, 3));
 
         // Compute title background palette, tile GFX, and tilemap:

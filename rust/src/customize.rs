@@ -281,8 +281,8 @@ pub fn customize_rom(
             // rom.write_u8(snes2pc(0xA0E5FF + 0x39), 0x06)?;
         }
     }
-    apply_custom_samus_sprite(rom, settings, samus_sprite_categories)?;
-    if let Some((r, g, b)) = settings.etank_color {
+    //apply_custom_samus_sprite(rom, settings, samus_sprite_categories)?;
+    /*if let Some((r, g, b)) = settings.etank_color {
         let color = (r as isize) | ((g as isize) << 5) | ((b as isize) << 10);
         rom.write_u16(snes2pc(0x82FFFE), color)?; // Gameplay ETank color
                                                   // rom.write_u16(snes2pc(0xB6F01A), color)?;
@@ -298,7 +298,7 @@ pub fn customize_rom(
             rom.write_n(snes2pc(0xE20000+(0x10000*i)+0xC460), &[0x00; 0x10])?;
             rom.write_n(snes2pc(0xE20000+(0x10000*i)+0xC4C0), &[0x00; 0x20])?;
         }
-    }
+    }*/
     match settings.music {
         MusicSettings::Vanilla => {
             override_music(rom)?;
@@ -342,6 +342,6 @@ pub fn customize_rom(
             rom.write_n(snes2pc(0x86846B), &[0; 144])?;
         }
     }
-    apply_controller_config(rom, &settings.controller_config)?;
+    //apply_controller_config(rom, &settings.controller_config)?;
     Ok(())
 }

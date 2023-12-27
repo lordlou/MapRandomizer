@@ -1709,7 +1709,7 @@ impl<'a> MapPatcher<'a> {
                             let tile = self.get_basic_tile(basic_tile)?;
                             self.patch_room(room_name, vec![(x, y, tile)])?;    
                         }
-                        Err(e) => {
+                        Err(_e) => {
                             // println!("{} {} {:?}", x, y, e);
                         }
                     }

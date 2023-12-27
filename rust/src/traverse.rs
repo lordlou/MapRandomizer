@@ -2,10 +2,9 @@ use pyo3::prelude::*;
 
 use std::{
     cmp::{max, min},
-    mem::swap,
 };
 
-use hashbrown::{HashMap, HashSet};
+use hashbrown::{HashMap};
 
 use crate::{
     game_data::{
@@ -1055,8 +1054,8 @@ pub fn get_bireachable_idxs(
 ) -> Option<(usize, usize)> {
     for forward_cost_idx in 0..NUM_COST_METRICS {
         for reverse_cost_idx in 0..NUM_COST_METRICS {
-            let forward_state = forward.local_states[vertex_id][forward_cost_idx];
-            let reverse_state = reverse.local_states[vertex_id][reverse_cost_idx];
+            let forward_state = forward.local_states[vertex_id][forward_cost_idx].unwrap();
+            let reverse_state = reverse.local_states[vertex_id][reverse_cost_idx].unwrap();
             if is_bireachable_state(global, forward_state, reverse_state) {
                 // A valid combination of forward & return routes has been found.
                 return Some((forward_cost_idx, reverse_cost_idx));
@@ -1116,18 +1115,18 @@ pub fn traverse(
         result = init;
     } else {
         result = TraverseResult {
-            local_states: vec![[IMPOSSIBLE_LOCAL_STATE; NUM_COST_METRICS]; num_vertices],
+            local_states: vec![[Some(IMPOSSIBLE_LOCAL_STATE); NUM_COST_METRICS]; num_vertices],
             cost: vec![[f32::INFINITY; NUM_COST_METRICS]; num_vertices],
             step_trails: Vec::with_capacity(num_vertices * 10),
-            start_trail_ids: vec![[-1; NUM_COST_METRICS]; num_vertices],
+            start_trail_ids: vec![[Some(-1); NUM_COST_METRICS]; num_vertices],
         };
         let first_metric = {
             let mut x = [false; NUM_COST_METRICS];
             x[0] = true;
             x
         };
-        result.local_states[start_vertex_id] = [init_local; NUM_COST_METRICS];
-        result.start_trail_ids[start_vertex_id] = [-1; NUM_COST_METRICS];
+        result.local_states[start_vertex_id] = [Some(init_local); NUM_COST_METRICS];
+        result.start_trail_ids[start_vertex_id] = [Some(-1); NUM_COST_METRICS];
         result.cost[start_vertex_id] = compute_cost(init_local, global);
         modified_vertices.insert(start_vertex_id, first_metric);
     }
@@ -1164,8 +1163,8 @@ pub fn traverse(
                 if !modified_costs[src_cost_idx] {
                     continue;
                 }
-                let src_trail_id = src_trail_id_arr[src_cost_idx];
-                let src_local_state = src_local_state_arr[src_cost_idx];
+                let src_trail_id = src_trail_id_arr[src_cost_idx].unwrap();
+                let src_local_state = src_local_state_arr[src_cost_idx].unwrap();
                 let all_src_links = base_links_by_src[src_id]
                     .iter()
                     .chain(seed_links_by_src[src_id].iter());
@@ -1194,11 +1193,11 @@ pub fn traverse(
                             prev_trail_id: src_trail_id,
                             link_idx,
                         };
-                        if debug {
-                            println!("{:?} src: {:?} dst: {:?} link id: {:?} old cost: {:?} new cost: {:?}", reverse, src_id, dst_id, link_idx, dst_old_cost, dst_new_cost);
-                            println!("{:?} link: {:?}", reverse, link);
-                            println!("{:?} local_state: {:?}", reverse, dst_new_local_state);
-                        };
+                        //if debug {
+                        //    println!("{:?} src: {:?} dst: {:?} link id: {:?} old cost: {:?} new cost: {:?}", reverse, src_id, dst_id, link_idx, dst_old_cost, dst_new_cost);
+                        //    println!("{:?} link: {:?}", reverse, link);
+                        //    println!("{:?} local_state: {:?}", reverse, dst_new_local_state);
+                        //};
                         let new_trail_id = result.step_trails.len() as StepTrailId;
                         let mut any_improvement: bool = false;
                         let mut improved_arr: [bool; NUM_COST_METRICS] = new_modified_vertices
@@ -1207,8 +1206,8 @@ pub fn traverse(
                             .unwrap_or([false; NUM_COST_METRICS]);
                         for dst_cost_idx in 0..NUM_COST_METRICS {
                             if dst_new_cost_arr[dst_cost_idx] < dst_old_cost_arr[dst_cost_idx] {
-                                result.local_states[dst_id][dst_cost_idx] = dst_new_local_state;
-                                result.start_trail_ids[dst_id][dst_cost_idx] = new_trail_id;
+                                result.local_states[dst_id][dst_cost_idx] = Some(dst_new_local_state);
+                                result.start_trail_ids[dst_id][dst_cost_idx] = Some(new_trail_id);
                                 result.cost[dst_id][dst_cost_idx] = dst_new_cost_arr[dst_cost_idx];
                                 improved_arr[dst_cost_idx] = true;
                                 any_improvement = true;
@@ -1221,7 +1220,7 @@ pub fn traverse(
                     }
                     else {
                         if debug {
-                            println!("{:?} NOT TAKEN src: {:?} dst: {:?} link id: {:?} old cost: {:?} new cost: {:?}", reverse, src_id, dst_id, link_idx, dst_old_cost, dst_new_cost);
+                            //println!("{:?} NOT TAKEN src: {:?} dst: {:?} link id: {:?} old cost: {:?} new cost: {:?}", reverse, src_id, dst_id, link_idx, dst_old_cost, dst_new_cost);
                             //println!("NOT TAKEN link: {:?}", link);
                             //println!("NOT TAKEN local_state: {:?}", dst_new_local_state);
                         }
@@ -1265,7 +1264,7 @@ impl GlobalState {
 }
 
 pub fn get_spoiler_route(traverse_result: &TraverseResult, vertex_id: usize, cost_idx: usize) -> Vec<LinkIdx> {
-    let mut trail_id = traverse_result.start_trail_ids[vertex_id][cost_idx];
+    let mut trail_id = traverse_result.start_trail_ids[vertex_id][cost_idx].unwrap();
     let mut steps: Vec<LinkIdx> = Vec::new();
     while trail_id != -1 {
         let step_trail = &traverse_result.step_trails[trail_id as usize];

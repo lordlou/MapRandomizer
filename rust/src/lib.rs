@@ -6,7 +6,7 @@ pub mod spoiler_map;
 pub mod seed_repository;
 pub mod customize;
 
-use game_data::{StartLocation, HubLocation};
+use game_data::{StartLocation, HubLocation, LinksDataGroup};
 use patch::Rom;
 use pyo3::{prelude::*, types::PyDict};
 use rand::{SeedableRng, RngCore};
@@ -15,7 +15,7 @@ use traverse::TraverseResult;
 use crate::{
     game_data::{GameData, Map, IndexedVec, Item, NodeId, RoomId, ObstacleMask},
     randomize::{Randomizer, DifficultyConfig, VertexInfo, SaveAnimals},
-    traverse::{GlobalState, LocalState, traverse, is_bireachable},
+    traverse::{GlobalState, LocalState, traverse, get_bireachable_idxs},
     patch::make_rom,
 };
 use std::{path::{Path, PathBuf}, mem::transmute};
@@ -34,6 +34,7 @@ struct Preset {
     resource_multiplier: f32,
     escape_timer_multiplier: f32,
     gate_glitch_leniency: i32,
+    door_stuck_leniency: i32,
     phantoon_proficiency: f32,
     draygon_proficiency: f32,
     ridley_proficiency: f32,
@@ -243,6 +244,8 @@ pub struct Options {
     #[pyo3(get, set)]
     gate_glitch_leniency: i32,
     #[pyo3(get, set)]
+    door_stuck_leniency: i32,
+    #[pyo3(get, set)]
     phantoon_proficiency: f32,
     #[pyo3(get, set)]
     draygon_proficiency: f32,
@@ -262,6 +265,8 @@ pub struct Options {
     objectives: u8,
     #[pyo3(get, set)]
     doors_mode: u8,
+    #[pyo3(get, set)]
+    area_assignment: bool,
     #[pyo3(get, set)]
     filler_items: String,
     #[pyo3(get, set)]
@@ -285,6 +290,8 @@ pub struct Options {
     #[pyo3(get, set)]
     all_items_spawn: bool,
     #[pyo3(get, set)]
+    buffed_drops: bool,
+    #[pyo3(get, set)]
     acid_chozo: bool,
     #[pyo3(get, set)]
     fast_elevators: bool,
@@ -299,7 +306,9 @@ pub struct Options {
     #[pyo3(get, set)]
     momentum_conservation: bool,
     #[pyo3(get, set)]
-    disable_walljump: bool,
+    wall_jump: usize,
+    #[pyo3(get, set)]
+    etank_refill: usize,
     #[pyo3(get, set)]
     maps_revealed: bool,
     #[pyo3(get, set)]
@@ -323,6 +332,7 @@ impl Options{
                 shinespark_tiles: usize,
                 resource_multiplier: f32,
                 gate_glitch_leniency: i32,
+                door_stuck_leniency: i32,
                 phantoon_proficiency: f32,
                 draygon_proficiency: f32,
                 ridley_proficiency: f32,
@@ -333,6 +343,7 @@ impl Options{
                 early_save: bool,
                 objectives: u8,
                 doors_mode: u8,
+                area_assignment: bool,
                 filler_items: String,
                 supers_double: bool,
                 mother_brain_fight: u8,
@@ -344,6 +355,7 @@ impl Options{
                 item_markers: u8,
                 item_dots_disappear: bool,
                 all_items_spawn: bool,
+                buffed_drops: bool,
                 acid_chozo: bool,
                 fast_elevators: bool,
                 fast_doors: bool,
@@ -351,7 +363,8 @@ impl Options{
                 respin: bool,
                 infinite_space_jump: bool,
                 momentum_conservation: bool,
-                disable_walljump: bool,
+                wall_jump: usize,
+                etank_refill: usize,
                 maps_revealed: bool,
                 map_layout: usize,
                 ultra_low_qol: bool,
@@ -365,6 +378,7 @@ impl Options{
             shinespark_tiles,
             resource_multiplier,
             gate_glitch_leniency,
+            door_stuck_leniency,
             phantoon_proficiency,
             draygon_proficiency,
             ridley_proficiency,
@@ -375,6 +389,7 @@ impl Options{
             early_save,
             objectives,
             doors_mode,
+            area_assignment,
             filler_items,
             supers_double,
             mother_brain_fight,
@@ -386,6 +401,7 @@ impl Options{
             item_markers,
             item_dots_disappear,
             all_items_spawn,
+            buffed_drops,
             acid_chozo,
             fast_elevators,
             fast_doors,
@@ -393,7 +409,8 @@ impl Options{
             respin,
             infinite_space_jump,
             momentum_conservation,
-            disable_walljump,
+            wall_jump,
+            etank_refill,
             maps_revealed,
             map_layout,
             ultra_low_qol,
@@ -518,6 +535,7 @@ impl APCollectionState{
             reachable: false,
             bireachable: false,
             bireachable_vertex_id: None,
+            difficulty_tier: None,
         };
         let initial_flag_location_state = FlagLocationState {
             bireachable: false,
@@ -675,6 +693,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             resource_multiplier: pd.preset.resource_multiplier,
             escape_timer_multiplier: pd.preset.escape_timer_multiplier,
             gate_glitch_leniency: pd.preset.gate_glitch_leniency,
+            door_stuck_leniency: pd.preset.door_stuck_leniency,
             phantoon_proficiency: pd.preset.phantoon_proficiency,
             draygon_proficiency: pd.preset.draygon_proficiency,
             ridley_proficiency: pd.preset.ridley_proficiency,
@@ -690,6 +709,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             resource_multiplier: options.resource_multiplier,
             escape_timer_multiplier: options.escape_timer_multiplier,
             gate_glitch_leniency: options.gate_glitch_leniency,
+            door_stuck_leniency: options.door_stuck_leniency,
             phantoon_proficiency: options.phantoon_proficiency,
             draygon_proficiency: options.draygon_proficiency,
             ridley_proficiency: options.ridley_proficiency,
@@ -708,10 +728,13 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
     }
 
     DifficultyConfig {
+        name: Some(preset.name),
         tech: preset.tech,
         notable_strats: preset.notable_strats,
         shine_charge_tiles: preset.shinespark_tiles as f32,
-        progression_rate: randomize::ProgressionRate::Normal,
+        progression_rate: randomize::ProgressionRate::Uniform,
+        random_tank: true,
+        semi_filler_items: vec![],
         filler_items: vec![Item::Missile],
         early_filler_items: vec![],
         item_placement_style: ItemPlacementStyle::Neutral,
@@ -721,6 +744,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         }],
         resource_multiplier: preset.resource_multiplier,
         gate_glitch_leniency: preset.gate_glitch_leniency,
+        door_stuck_leniency: preset.door_stuck_leniency,
         escape_timer_multiplier: preset.escape_timer_multiplier,
         randomized_start: options.randomized_start,
         save_animals: match options.save_animals {
@@ -801,6 +825,14 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             4 => options.all_items_spawn,
             _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
+        buffed_drops: match qol_preset {
+            0 => false,
+            1 => false,
+            2 => true,
+            3 => true,
+            4 => options.buffed_drops,
+            _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
+        },
         acid_chozo: match qol_preset {
             0 => false,
             1 => false,
@@ -870,7 +902,22 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             1 => randomize::DoorsMode::Ammo,
             _ => panic!("Unrecognized doors_mode: {}", options.doors_mode)
         },
-        disable_walljump: options.disable_walljump,
+        area_assignment: match options.area_assignment {
+            false => randomize::AreaAssignment::Standard,
+            true => randomize::AreaAssignment::Random,
+        },
+        wall_jump: match options.wall_jump {
+            0 => randomize::WallJump::Vanilla,
+            1 => randomize::WallJump::Collectible,
+            2 => randomize::WallJump::Disabled,
+            _ => panic!("Unrecognized doors_mode: {}", options.doors_mode)
+        },
+        etank_refill: match options.etank_refill {
+            0 => randomize::EtankRefill::Disabled,
+            1 => randomize::EtankRefill::Vanilla,
+            2 => randomize::EtankRefill::Full,
+            _ => panic!("Unrecognized doors_mode: {}", options.doors_mode)
+        },
         maps_revealed: options.maps_revealed,
         map_layout: options.map_layout,
         ultra_low_qol: options.ultra_low_qol,
@@ -933,7 +980,7 @@ impl APRandomizer{
         let diff_settings = difficulty_tiers[0].clone();
         let locked_doors = randomize_doors(&game_data, &map, &diff_settings, seed);
 
-        let mut randomizer = Randomizer::new(Box::new(map), Box::new(locked_doors.clone()), Box::new(difficulty_tiers.clone()), Box::new(game_data.clone()));
+        let mut randomizer = Randomizer::new(Box::new(map), Box::new(locked_doors.clone()), Box::new(difficulty_tiers.clone()), Box::new(game_data.clone()), Box::new(game_data.base_links_data.clone()), Box::new(game_data.seed_links.clone()));
         
         if diff_settings.map_layout != 0 && !diff_settings.randomized_start {
             let mut items_reachable = 0;
@@ -961,7 +1008,8 @@ impl APRandomizer{
                     shine_charge_tiles: randomizer.difficulty_tiers[0].shine_charge_tiles,
                 };
                 let forward = traverse(
-                    &randomizer.links,
+                    &randomizer.base_links_data,
+                    &randomizer.seed_links_data,
                     None,
                     &global,
                     LocalState::new(),
@@ -973,7 +1021,8 @@ impl APRandomizer{
                     false
                 );
                 let reverse = traverse(
-                    &randomizer.links,
+                    &randomizer.base_links_data,
+                    &randomizer.seed_links_data,
                     None,
                     &global,
                     LocalState::new(),
@@ -987,10 +1036,11 @@ impl APRandomizer{
 
                 for vertex_ids in randomizer.game_data.item_vertex_ids.iter() {    
                     for &v in vertex_ids {
-                        if is_bireachable(
+                        if get_bireachable_idxs(
                                 &global,
-                                &forward.local_states[v],
-                                &reverse.local_states[v]) {
+                                v,
+                                &forward,
+                                &reverse).is_some() {
                             items_reachable += 1;
                             if items_reachable >= 2 {
                                 break;
@@ -1004,7 +1054,7 @@ impl APRandomizer{
                 if items_reachable < 2 {
                     let new_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
                     map = get_map(Path::new(map_repo_url), map_repository_array, TryInto::<usize>::try_into(new_seed).unwrap()).unwrap();
-                    randomizer = Randomizer::new(Box::new(map), Box::new(locked_doors.clone()), Box::new(difficulty_tiers.clone()), Box::new(game_data.clone()));
+                    randomizer = Randomizer::new(Box::new(map), Box::new(locked_doors.clone()), Box::new(difficulty_tiers.clone()), Box::new(game_data.clone()), Box::new(game_data.base_links_data.clone()), Box::new(game_data.seed_links.clone()));
                     println!("Not enough locations reachable from start ({:?}) trying new map.", items_reachable);
                 }
             }
@@ -1035,7 +1085,7 @@ impl APRandomizer{
 
     pub fn get_links_infos(&self) -> HashMap<(usize, usize), HashMap<String, Vec<usize>>> {
         let mut links: HashMap<(usize, usize), HashMap<String, Vec<usize>>> = HashMap::new();
-        for (idx, link) in self.randomizer.links.iter().enumerate() {
+        for (idx, link) in self.randomizer.base_links_data.links.iter().chain(self.randomizer.seed_links_data.links.iter()).enumerate() {
             let key= (self.regions_map[link.from_vertex_id], self.regions_map[link.to_vertex_id]);
             links.entry(key).or_insert_with(HashMap::new).entry(link.strat_name.clone()).or_insert_with(Vec::new).push(idx);
         }
@@ -1044,10 +1094,10 @@ impl APRandomizer{
 
     pub fn get_link_requirement(&self, link_id: usize) -> String {
         format!("from:{} to:{} using {}: {:?}", 
-        self.regions_map[self.randomizer.links[link_id].from_vertex_id], 
-        self.regions_map[self.randomizer.links[link_id].to_vertex_id], 
-            self.randomizer.links[link_id].strat_name, 
-            self.randomizer.links[link_id].requirement)
+        self.regions_map[self.randomizer.get_link(link_id).from_vertex_id], 
+        self.regions_map[self.randomizer.get_link(link_id).to_vertex_id], 
+            self.randomizer.get_link(link_id).strat_name, 
+            self.randomizer.get_link(link_id).requirement)
     }
 
     pub fn update_reachability(&self, state: &mut RandomizationState, debug: bool)
@@ -1060,7 +1110,8 @@ impl APRandomizer{
         let start_vertex_id = self.randomizer.game_data.vertex_isv.index_by_key
             [&(state.hub_location.room_id, state.hub_location.node_id, 0)];
         let forward = traverse(
-            &self.randomizer.links,
+            &self.randomizer.base_links_data,
+            &self.randomizer.seed_links_data,
             None,
             &state.global_state,
             LocalState::new(),
@@ -1072,7 +1123,8 @@ impl APRandomizer{
             debug
         );
         let reverse = traverse(
-            &self.randomizer.links,
+            &self.randomizer.base_links_data,
+            &self.randomizer.seed_links_data,
             None,
             &state.global_state,
             LocalState::new(),
@@ -1089,13 +1141,14 @@ impl APRandomizer{
         let mut collapsed_count = 0;
 
         for i in 0..num_vertices {
-            bi_reachability[i] = is_bireachable(
+            bi_reachability[i] = get_bireachable_idxs(
                                             &state.global_state,
-                                            &forward.local_states[i],
-                                            &reverse.local_states[i],
-                                            );
-            f_reachability[i] = forward.local_states[i].is_some();
-            r_reachability[i] = reverse.local_states[i].is_some();
+                                            i,
+                                            &forward,
+                                            &reverse,
+                                            ).is_some();
+            f_reachability[i] = forward.local_states[i][0].is_some() && forward.local_states[i][1].is_some();
+            r_reachability[i] = reverse.local_states[i][0].is_some() && reverse.local_states[i][1].is_some();
 
             if self.randomizer.game_data.vertex_isv.keys[i].2 == 0 {
                 bi_reachability_collapsed.push(bi_reachability[i]);
@@ -1158,6 +1211,12 @@ impl IntoPy<PyObject> for Box<Map> {
 }
 
 impl IntoPy<PyObject> for Box<GameData> {
+    fn into_py(self, py: Python<'_>) -> PyObject {
+        (*self).into_py(py)
+    }
+}
+
+impl IntoPy<PyObject> for Box<LinksDataGroup> {
     fn into_py(self, py: Python<'_>) -> PyObject {
         (*self).into_py(py)
     }
@@ -1265,6 +1324,8 @@ fn create_gamedata(apworld_path: Option<String>) -> GameData {
     let start_locations_path = Path::new("worlds/sm_map_rando/data/start_locations.json");
     let hub_locations_path = Path::new("worlds/sm_map_rando/data/hub_locations.json");
     //let mosaic_path = Path::new("worlds/sm_map_rando/data/Mosaic");
+    let title_screen_path = Path::new("worlds/sm_map_rando/data/TitleScreen/Images");
+
     GameData::load(
         sm_json_data_path, 
         room_geometry_path, 
@@ -1273,6 +1334,7 @@ fn create_gamedata(apworld_path: Option<String>) -> GameData {
         start_locations_path,
         hub_locations_path,
         Path::new(""),
+        title_screen_path,
         apworld_path).unwrap()
 }
 

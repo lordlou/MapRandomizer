@@ -20,7 +20,7 @@ use std::hash::Hash;
 use std::path::{Path, PathBuf};
 use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
-use log::{info, error};
+use log::{info};
 
 use self::themed_retiling::RetiledThemeData;
 type DefaultHashBuilder = BuildHasherDefault<DefaultHasher>;
@@ -845,6 +845,8 @@ fn parse_entrance_condition(entrance_json: &JsonValue, heated: bool) -> Result<E
     }
 }
 
+#[pyclass]
+#[derive(Clone)]
 #[derive(Default)]
 pub struct LinksDataGroup {
     pub links: Vec<Link>,
@@ -897,7 +899,8 @@ fn get_ignored_notable_strats() -> HashSet<String> {
 
 type TitleScreenImage = ndarray::Array3<u8>;
 
-#[derive(Default)]
+#[pyclass]
+#[derive(Default, Clone)]
 pub struct TitleScreenData {
     pub top_left: Vec<TitleScreenImage>,
     pub top_right: Vec<TitleScreenImage>,
@@ -1936,9 +1939,13 @@ impl GameData {
         ];
         for entry in files {
                 let path_str = region_pattern.clone() + entry;
-                self.process_region(&self.read_json(Path::new(&path_str))?)
-                    .with_context(|| format!("Processing {}", path_str))?;
-
+                let room_json = self.read_json(Path::new(&path_str))?;
+                let room_name = room_json["name"].clone();
+                let preprocessed_room_json = self
+                    .preprocess_room(&room_json)
+                    .with_context(|| format!("Preprocessing room {}", room_name))?;
+                self.process_room(&preprocessed_room_json)
+                    .with_context(|| format!("Processing room {}", room_name))?;
         }
 
         let ignored_notable_strats = get_ignored_notable_strats();
@@ -3521,7 +3528,7 @@ impl GameData {
         for file in file_it {
             let file = file?;
             let filename = file.file_name().into_string().unwrap();
-            let img = read_image(&file.path())?;
+            let img = read_image(&file.path(), self)?;
 
             if filename.starts_with("TL") {
                 self.title_screen_data.top_left.push(img);
