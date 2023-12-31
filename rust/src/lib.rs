@@ -224,7 +224,7 @@ pub struct Options {
     #[pyo3(get, set)]
     randomized_start: bool,
     #[pyo3(get, set)]
-    save_animals: bool,
+    save_animals: u8,
     #[pyo3(get, set)]
     early_save: bool,
     #[pyo3(get, set)]
@@ -305,7 +305,7 @@ impl Options{
                 botwoon_proficiency: f32,
                 escape_timer_multiplier: f32,
                 randomized_start: bool,
-                save_animals: bool,
+                save_animals: u8,
                 early_save: bool,
                 objectives: u8,
                 doors_mode: u8,
@@ -714,8 +714,10 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         escape_timer_multiplier: preset.escape_timer_multiplier,
         randomized_start: options.randomized_start,
         save_animals: match options.save_animals {
-            false => SaveAnimals::No,
-            true => SaveAnimals::Yes,
+            0 => SaveAnimals::No,
+            1 => SaveAnimals::Maybe,
+            2 => SaveAnimals::Yes,
+            _ => panic!("Unrecognized save_animals: {}", options.save_animals)
         },
         early_save: options.early_save,
         phantoon_proficiency: preset.phantoon_proficiency,
@@ -856,11 +858,12 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
         objectives: match options.objectives {
-            0 => randomize::Objectives::Bosses,
-            1 => randomize::Objectives::Minibosses,
-            2 => randomize::Objectives::Metroids,
-            3 => randomize::Objectives::Chozos,
-            4 => randomize::Objectives::Pirates,
+            0 => randomize::Objectives::None,
+            1 => randomize::Objectives::Bosses,
+            2 => randomize::Objectives::Minibosses,
+            3 => randomize::Objectives::Metroids,
+            4 => randomize::Objectives::Chozos,
+            5 => randomize::Objectives::Pirates,
             _ => panic!("Unrecognized objectives: {}", options.objectives)
         },
         doors_mode: match options.doors_mode {
