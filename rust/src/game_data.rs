@@ -1069,6 +1069,30 @@ impl GameData {
         }
     }
 
+    pub fn glob_filepaths(&self, glob_pattern: &str, contains_path: &str, extension: &str) -> Vec<PathBuf> {
+        let mut filepaths = vec![];
+        match &self.apworld_path {
+            Some(apworldpath) => {
+                let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
+                let archive = zip::ZipArchive::new(zipfile).unwrap();
+                for filename in archive.file_names() {
+                    if filename.contains(contains_path) && filename.ends_with(extension) {
+                        filepaths.push(PathBuf::from(filename));
+                    }   
+                }
+                filepaths
+            },
+            None => {
+                for entry in glob::glob(glob_pattern).unwrap() {
+                    if entry.as_ref().unwrap().to_str().unwrap().ends_with(extension) {
+                        filepaths.push(PathBuf::from(entry.unwrap().as_path()));
+                    }
+                }
+                filepaths
+            }
+        }
+    }
+
     fn read_json(&self, path: &Path) -> Result<JsonValue> {
         let json_str = self.read_to_string(path)?;
         let json_data = json::parse(&json_str).with_context(|| format!("unable to parse {}", path.display()))?;
@@ -1915,31 +1939,10 @@ impl GameData {
 
     fn load_regions(&mut self) -> Result<()> {
         let region_pattern =
-            self.sm_json_data_path.to_str().unwrap().to_string();
-        let files = [
-            "/region/brinstar/blue.json",
-            "/region/brinstar/green.json",
-            "/region/brinstar/kraid.json",
-            "/region/brinstar/pink.json",
-            "/region/brinstar/red.json",
-            "/region/crateria/central.json",
-            "/region/crateria/east.json",
-            "/region/crateria/west.json",
-            "/region/lowernorfair/east.json",
-            "/region/lowernorfair/west.json",
-            "/region/maridia/inner-green.json",
-            "/region/maridia/inner-pink.json",
-            "/region/maridia/inner-yellow.json",
-            "/region/maridia/outer.json",
-            "/region/norfair/crocomire.json",
-            "/region/norfair/east.json",
-            "/region/norfair/west.json",
-            "/region/tourian/main.json",
-            "/region/wreckedship/main.json"
-        ];
+            self.sm_json_data_path.to_str().unwrap().to_string() + "/region/**/*.json";
+        let files = self.glob_filepaths(region_pattern.as_str(), "/region/", "json");
         for entry in files {
-                let path_str = region_pattern.clone() + entry;
-                let room_json = self.read_json(Path::new(&path_str))?;
+                let room_json = self.read_json(entry.as_path())?;
                 let room_name = room_json["name"].clone();
                 let preprocessed_room_json = self
                     .preprocess_room(&room_json)
@@ -3522,13 +3525,10 @@ impl GameData {
 
     pub fn load_title_screens(&mut self, path: &Path) -> Result<()> {
         info!("Loading title screens");
-        let file_it = path
-            .read_dir()
-            .with_context(|| format!("Unable to read title screen directory at {}", path.display()))?;
-        for file in file_it {
-            let file = file?;
-            let filename = file.file_name().into_string().unwrap();
-            let img = read_image(&file.path(), self)?;
+        let files = self.glob_filepaths(path.join("*.png").to_str().unwrap(), path.to_str().unwrap(), "png");
+        for file in files {
+            let filename = file.file_name().unwrap().to_str().unwrap();
+            let img = read_image(file.as_path(), self)?;
 
             if filename.starts_with("TL") {
                 self.title_screen_data.top_left.push(img);

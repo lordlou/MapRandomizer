@@ -62,7 +62,6 @@ fn init_presets(
 
     presets: Vec<Preset>,
     game_data: &GameData,
-    ignored_notable_strats: &HashSet<String>,
     implicit_tech: &HashSet<String>,
 ) -> Vec<PresetData> {
     let mut out: Vec<PresetData> = Vec::new();
@@ -71,9 +70,8 @@ fn init_presets(
 
     // Tech which is currently not used by any strat in logic, so we avoid showing on the website:
     let ignored_tech: HashSet<String> = [
-        "canGrappleClip",
         "canShinesparkWithReserve",
-        //"canRiskPermanentLossOfAccess",
+        "canRiskPermanentLossOfAccess",
         "canIceZebetitesSkip",
         "canSpeedZebetitesSkip",
         "canRemorphZebetiteSkip",
@@ -97,17 +95,9 @@ fn init_presets(
     }
 
     let all_notable_strats: HashSet<String> = game_data
-        .links
-        .iter()
+        .all_links()
         .filter_map(|x| x.notable_strat_name.clone())
         .collect();
-    if !ignored_notable_strats.is_subset(&all_notable_strats) {
-        let diff: Vec<String> = ignored_notable_strats
-            .difference(&all_notable_strats)
-            .cloned()
-            .collect();
-        panic!("Unrecognized ignored notable strats: {:?}", diff);
-    }
 
     let visible_tech: Vec<String> = game_data
         .tech_isv
@@ -118,9 +108,9 @@ fn init_presets(
         .collect();
     let visible_tech_set: HashSet<String> = visible_tech.iter().cloned().collect();
 
+    // TODO: remove this
     let visible_notable_strats: HashSet<String> = all_notable_strats
         .iter()
-        .filter(|&x| !ignored_notable_strats.contains(x))
         .cloned()
         .collect();
 
@@ -189,29 +179,6 @@ fn init_presets(
     out
 }
 
-fn get_ignored_notable_strats() -> HashSet<String> {
-    [
-        "Suitless Botwoon Kill",
-        "Maridia Bug Room Frozen Menu Bridge",
-        "Breaking the Maridia Tube Gravity Jump",
-        "Metroid Room 1 PB Dodge Kill (Left to Right)",
-        "Metroid Room 1 PB Dodge Kill (Right to Left)",
-        "Metroid Room 2 PB Dodge Kill (Bottom to Top)",
-        "Metroid Room 3 PB Dodge Kill (Left to Right)",
-        "Metroid Room 3 PB Dodge Kill (Right to Left)",
-        "Metroid Room 4 Three PB Kill (Top to Bottom)",
-        "Metroid Room 4 Six PB Dodge Kill (Bottom to Top)",
-        "Metroid Room 4 Three PB Dodge Kill (Bottom to Top)",
-        "Partial Covern Ice Clip",
-        "Mickey Mouse Crumble Jump IBJ",
-        "G-Mode Morph Breaking the Maridia Tube Gravity Jump", // not usable because of canRiskPermanentLossOfAccess
-        "Mt. Everest Cross Room Jump through Top Door", // currently unusable because of obstacleCleared requirement
-    ]
-    .iter()
-    .map(|x| x.to_string())
-    .collect()
-}
-
 fn get_implicit_tech() -> HashSet<String> {
     [
         "canSpecialBeamAttack",
@@ -221,7 +188,6 @@ fn get_implicit_tech() -> HashSet<String> {
         "canUseGrapple",
         "canEscapeEnemyGrab",
         "canDownBack",
-        "canRiskPermanentLossOfAccess",
     ]
     .into_iter()
     .map(|x| x.to_string())
@@ -955,9 +921,8 @@ impl APRandomizer{
     #[new]
     pub fn new(game_data: &GameData, options: Options, seed: usize) -> Self {
         let presets: Vec<Preset> = serde_json::from_str(&game_data.read_to_string(Path::new(&"worlds/sm_map_rando/data/presets.json")).unwrap()).unwrap();
-        let ignored_notable_strats = get_ignored_notable_strats();
         let implicit_tech = get_implicit_tech();
-        let preset_datas = init_presets(presets, game_data, &ignored_notable_strats, &implicit_tech);
+        let preset_datas = init_presets(presets, game_data, &implicit_tech);
         let difficulty_tiers = vec![get_difficulty_config(&options, &preset_datas, game_data); 1];
 
         let (map_repo_filename, map_repo_url) = if difficulty_tiers[0].map_layout == 1 { 
@@ -1260,7 +1225,9 @@ impl GameData {
     fn get_location_names(&self) -> Vec<String> {
         let mut item_loc: Vec<String> = Vec::new();
         for i in 0..self.item_locations.len() {
-            item_loc.push(self.node_json_map[&self.item_locations[i]]["name"].to_string());
+            let room_name = self.room_json_map[&self.item_locations[i].0]["name"].to_string();
+            let location_name = self.node_json_map[&self.item_locations[i]]["name"].to_string();
+            item_loc.push(format!("{room_name} {location_name}"));
         }
         item_loc
     }
@@ -1295,9 +1262,11 @@ impl GameData {
         let mut nodes: Vec<(String, Option<String>)> = Vec::new();
         for &(room_id, node_id, obstacles) in &self.vertex_isv.keys {
             if obstacles == 0 { 
-                let mut location_name = None;
+                let mut complete_location_name = None;
                 if self.item_locations.contains(&(room_id, node_id)) {
-                    location_name = Some(self.node_json_map[&(room_id, node_id)]["name"].to_string());
+                    let room_name = self.room_json_map[&room_id]["name"].to_string();
+                    let location_name = self.node_json_map[&(room_id, node_id)]["name"].to_string();
+                    complete_location_name = Some(format!("{room_name} {location_name}"));
                 }
                 /*else {
                     for i in 0..self.flag_locations.len() {
@@ -1308,7 +1277,9 @@ impl GameData {
                         }
                     } 
                 }*/
-                nodes.push((self.node_json_map[&(room_id, node_id)]["name"].to_string(), location_name));
+                let room_name = self.room_json_map[&room_id]["name"].to_string();
+                let node_name = self.node_json_map[&(room_id, node_id)]["name"].to_string();
+                nodes.push((format!("{room_name} {node_name}"), complete_location_name));
             }
         }
         nodes
