@@ -108,7 +108,7 @@ check_reload:
 
 
 org !button_combo
-    dw $0303  ; L + R + Select + Start  (overridable by the customizer)
+    dw $3030  ; L + R + Select + Start  (overridable by the customizer)
 
 warnpc !freespace82_end
 

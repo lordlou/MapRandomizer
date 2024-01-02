@@ -357,7 +357,7 @@ FUNCTION_PAUSE_REPAINT_HELPER:
 org $848986
     JSR HOOK_RESERVE_PICKUP
 
-org $84F710
+org $84F770
 HOOK_RESERVE_PICKUP:
     LDA #$FFFF : STA !samus_previous_reserves
     LDA $09D4 ; Original code
