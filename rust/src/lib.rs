@@ -446,7 +446,6 @@ pub struct APCollectionState {
     //local_states: Vec<Option<LocalState>>,
     //#[pyo3(get)]
     //cost: Vec<f32>,
-    ap_randomizer: Option<Box<APRandomizer>>,
 }
 
 /*
@@ -566,8 +565,7 @@ impl APCollectionState{
             key_visited_vertices: HashSet::new(),
         };
         APCollectionState { 
-            randomization_state,
-            ap_randomizer
+            randomization_state
         }
     }
 
@@ -611,12 +609,12 @@ impl APCollectionState{
         result
     }*/
 
-    pub fn add_item(&mut self, item: usize) {
-        self.randomization_state.global_state.collect(unsafe { transmute(item) }, &self.ap_randomizer.as_ref().unwrap().randomizer.game_data);
+    pub fn add_item(&mut self, item: usize, game_data: &GameData) {
+        self.randomization_state.global_state.collect(unsafe { transmute(item) }, game_data);
     }
 
-    pub fn remove_item(&mut self, item: usize) {
-        self.randomization_state.global_state.remove(unsafe { transmute(item) }, &self.ap_randomizer.as_ref().unwrap().randomizer.game_data);
+    pub fn remove_item(&mut self, item: usize, game_data: &GameData) {
+        self.randomization_state.global_state.remove(unsafe { transmute(item) }, game_data);
     }
 
     pub fn add_flag(&mut self, flag: usize) {
