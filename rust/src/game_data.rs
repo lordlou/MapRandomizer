@@ -1045,7 +1045,7 @@ impl GameData {
             Some(apworldpath) => {
                 let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
                 let mut archive = zip::ZipArchive::new(zipfile).unwrap();
-                let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
+                let path_str = path.strip_prefix("worlds/").unwrap_or(path).to_str().unwrap().replace("\\", "/");
                 std::io::read_to_string(archive.by_name(path_str.as_str()).unwrap())
                     .with_context(|| format!("unable to read {}", path_str.as_str()))
             },
@@ -1059,7 +1059,7 @@ impl GameData {
             Some(apworldpath) => {
                 let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
                 let mut archive = zip::ZipArchive::new(zipfile).unwrap();
-                let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
+                let path_str = path.strip_prefix("worlds/").unwrap_or(path).to_str().unwrap().replace("\\", "/");
                 let mut zip_file = archive.by_name(path_str.as_str()).unwrap();
                 let mut bytes = Vec::with_capacity(zip_file.size() as usize);
                 zip_file.read_to_end(&mut bytes).unwrap();
@@ -3525,7 +3525,7 @@ impl GameData {
 
     pub fn load_title_screens(&mut self, path: &Path) -> Result<()> {
         info!("Loading title screens");
-        let files = self.glob_filepaths(path.join("*.png").to_str().unwrap(), path.to_str().unwrap(), "png");
+        let files = self.glob_filepaths(path.join("*.png").to_str().unwrap(), path.strip_prefix("worlds/").unwrap_or(path).to_str().unwrap(), "png");
         for file in files {
             let filename = file.file_name().unwrap().to_str().unwrap();
             let img = read_image(file.as_path(), self)?;
