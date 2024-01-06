@@ -3760,7 +3760,7 @@ pub struct SpoilerItemSummary {
 
 #[derive(Serialize, Deserialize)]
 pub struct SpoilerFlagSummary {
-    flag: String,
+    pub flag: String,
     // area: String,
 }
 

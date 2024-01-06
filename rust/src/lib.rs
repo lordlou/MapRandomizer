@@ -10,7 +10,7 @@ use game_data::{StartLocation, HubLocation, LinksDataGroup};
 use patch::Rom;
 use pyo3::{prelude::*, types::PyDict};
 use rand::{SeedableRng, RngCore};
-use randomize::{Randomization, SpoilerLog, escape_timer, randomize_doors, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers, RandomizationState, ItemLocationState, FlagLocationState, SaveLocationState, MotherBrainFight};
+use randomize::{Randomization, SpoilerLog, escape_timer, randomize_doors, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers, RandomizationState, ItemLocationState, FlagLocationState, SaveLocationState, MotherBrainFight, SpoilerSummary, SpoilerItemSummary, SpoilerLocation, SpoilerFlagSummary};
 use traverse::TraverseResult;
 use crate::{
     game_data::{GameData, Map, IndexedVec, Item, NodeId, RoomId, ObstacleMask},
@@ -1310,12 +1310,49 @@ fn create_gamedata(apworld_path: Option<String>) -> GameData {
         apworld_path).unwrap()
 }
 
+fn create_summary(spoiler_summary_vec: Vec<(usize, String, String)>) -> Vec<SpoilerSummary> {
+    let mut result: Vec<SpoilerSummary> = Vec::new();
+    let mut current_step = 0;
+    for (step, item, location) in spoiler_summary_vec {
+        if step == current_step - 1 {
+            result[step].items.push(SpoilerItemSummary {
+                item: item,
+                location: SpoilerLocation {
+                    area: location,
+                    room: "".to_string(),
+                    node: "".to_string(),
+                    coords: (0, 0),
+                    },
+                });
+        } else {
+            current_step += 1;
+            result.push(SpoilerSummary {
+                step: current_step,
+                items: vec![SpoilerItemSummary {
+                    item: item,
+                    location: SpoilerLocation {
+                        area: location,
+                        room: "".to_string(),
+                        node: "".to_string(),
+                        coords: (0, 0),
+                    },
+                }],
+                flags: vec![SpoilerFlagSummary {
+                    flag: "".to_string(),
+                }],
+            })
+        }
+    }
+    result
+}
+
 #[pyfunction]
 fn patch_rom(
     base_rom_path: String,
     ap_randomizer: &APRandomizer,
     item_placement_ids: Vec<usize>,
-    state: &RandomizationState
+    state: &RandomizationState,
+    spoiler_summary_vec: Vec<(usize, String, String)>
 ) -> Vec<u8> {
     let rom_path = Path::new(&base_rom_path);
     let base_rom = Rom::load(rom_path).unwrap();
@@ -1323,8 +1360,9 @@ fn patch_rom(
     let randomizer = &ap_randomizer.randomizer;
 
     let spoiler_escape = escape_timer::compute_escape_data(&randomizer.game_data, &randomizer.map, &randomizer.difficulty_tiers[0]).unwrap();
+    let summary = create_summary(spoiler_summary_vec);
     let spoiler_log = SpoilerLog {
-        summary: Vec::new(),
+        summary: summary,
         escape: spoiler_escape,
         details: Vec::new(),
         all_items: Vec::new(),
