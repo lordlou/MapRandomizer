@@ -75,11 +75,20 @@ jobs:
         target: ["x86_64", "aarch64"]
     steps:
       - uses: actions/checkout@v3
-      - name: Build wheels
+      - name: Build x86_64 wheels
         uses: PyO3/maturin-action@v1
+        if: ${{ matrix.target == 'x86_64' }}
         with:
           target: ${{ matrix.target }}
           manylinux: auto
+          args: --release --out dist -m rust/Cargo.toml -i python${{ matrix.python }}
+      - name: Build aarch64 wheels
+        uses: PyO3/maturin-action@v1
+        # One of our deps, "ring", needs a newer sysroot than what "manylinux: auto" provides.
+        if: ${{ matrix.target == 'aarch64' }}
+        with:
+          target: ${{ matrix.target }}
+          manylinux: 2_28
           args: --release --out dist -m rust/Cargo.toml -i python${{ matrix.python }}
       - name: Set env
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
