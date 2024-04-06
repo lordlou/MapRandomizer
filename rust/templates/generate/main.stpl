@@ -83,6 +83,11 @@
                             id="itemProgressionPresetChallenge" autocomplete="off" 
                             onclick="itemProgressionPresetChanged()">
                         <label class="btn btn-outline-primary" for="itemProgressionPresetChallenge">Challenge</label>
+
+                        <input type="radio" class="btn-check" name="item_progression_preset" value="Desolate"
+                            id="itemProgressionPresetDesolate" autocomplete="off" 
+                            onclick="itemProgressionPresetChanged()">
+                        <label class="btn btn-outline-primary" for="itemProgressionPresetDesolate">Desolate</label>
                     </div>
                 </div>
                 <div class="accordion m-0 p-0" id="accordionItemPriority">
@@ -172,23 +177,25 @@
                     <label for="doors">Doors</label>
                 </div>
                 <div class="col-lg-3 btn-group my-2" role="group">
-                    <input type="radio" class="btn-check" name="doors" id="doorsBlue" value="Blue" checked=true>
+                    <input type="radio" class="btn-check" name="doors" id="doorsBlue" value="Blue">
                     <label class="btn btn-outline-primary" for="doorsBlue">Blue</label>
-                    <input type="radio" class="btn-check" name="doors" id="doorsAmmo" value="Ammo">
+                    <input type="radio" class="btn-check" name="doors" id="doorsAmmo" value="Ammo" checked=true>
                     <label class="btn btn-outline-primary" for="doorsAmmo">Ammo</label>
                 </div>
             </div>
 
             <div class="form-group row">
                 <div class="col-lg-3 my-2 pt-1">
-                    <% include!("help/randomized_start.stpl"); %>
-                    <label for="randomized_start">Start location</label>
+                    <% include!("help/start_location.stpl"); %>
+                    <label for="start_location">Start location</label>
                 </div>
-                <div class="col-lg-3 btn-group my-2" role="group">
-                    <input type="radio" class="btn-check" name="randomized_start" id="randomizedStartNo" value="false" checked=true>
-                    <label class="btn btn-outline-primary" for="randomizedStartNo">Ship</label>
-                    <input type="radio" class="btn-check" name="randomized_start" id="randomizedStartYes" value="true">
-                    <label class="btn btn-outline-primary" for="randomizedStartYes">Random</label>
+                <div class="col-lg-4 btn-group my-2" role="group">
+                    <input type="radio" class="btn-check" name="start_location" id="startLocationShip" value="Ship" checked=true>
+                    <label class="btn btn-outline-primary" for="startLocationShip">Ship</label>
+                    <input type="radio" class="btn-check" name="start_location" id="startLocationRandom" value="Random">
+                    <label class="btn btn-outline-primary" for="startLocationRandom">Random</label>
+                    <input type="radio" class="btn-check" name="start_location" id="startLocationEscape" value="Escape">
+                    <label class="btn btn-outline-primary" for="startLocationEscape">Escape</label>
                 </div>
             </div>
 

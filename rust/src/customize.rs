@@ -6,6 +6,7 @@ use std::cmp::min;
 use anyhow::{bail, Result};
 
 use crate::customize::vanilla_music::override_music;
+use crate::web::MosaicTheme;
 use crate::{
     game_data::GameData,
     patch::{ snes2pc, Rom},
@@ -15,12 +16,12 @@ use retiling::apply_retiling;
 use room_palettes::apply_area_themed_palettes;
 
 struct AllocatorBlock {
-    _start_addr: usize,
+    start_addr: usize,
     end_addr: usize,
     current_addr: usize,
 }
 
-struct Allocator {
+pub struct Allocator {
     blocks: Vec<AllocatorBlock>,
 }
 
@@ -30,7 +31,7 @@ impl Allocator {
             blocks: blocks
                 .into_iter()
                 .map(|(start, end)| AllocatorBlock {
-                    _start_addr: start,
+                    start_addr: start,
                     end_addr: end,
                     current_addr: start,
                 })
@@ -49,6 +50,20 @@ impl Allocator {
         }
         bail!("Failed to allocate {} bytes", size);
     }
+
+    pub fn get_stats(&self) -> (usize, usize, usize) {
+        let mut min_free = 0; // only count completely free blocks
+        let mut max_free = 0; // include partially free blocks
+        let mut total_capacity = 0;
+        for block in &self.blocks {
+            total_capacity += block.end_addr - block.start_addr;
+            if block.current_addr == block.start_addr {
+                min_free += block.end_addr - block.start_addr;
+            }
+            max_free += block.end_addr - block.current_addr;
+        }
+        (min_free, max_free, total_capacity)
+    }
 }
 
 #[derive(Debug)]
@@ -58,17 +73,28 @@ pub enum MusicSettings {
     Disabled,
 }
 
+
 #[derive(Debug)]
-pub enum AreaTheming {
+pub enum PaletteTheme {
     Vanilla,
-    Palettes,
-    Tiles(String),
+    AreaThemed,
+}
+
+#[derive(Debug)]
+pub enum TileTheme {
+    Vanilla,
+    Scrambled,
+    Constant(String),
 }
 
 #[derive(Default, Debug, Copy, Clone)]
 pub enum ControllerButton {
     #[default]
     Default,
+    Left,
+    Right,
+    Up,
+    Down,
     X,
     Y,
     A,
@@ -88,6 +114,7 @@ pub struct ControllerConfig {
     pub item_cancel: ControllerButton,
     pub angle_up: ControllerButton,
     pub angle_down: ControllerButton,
+    pub spin_lock_buttons: Vec<ControllerButton>,
     pub quick_reload_buttons: Vec<ControllerButton>,
     pub moonwalk: bool,
 }
@@ -105,7 +132,8 @@ pub struct CustomizeSettings {
     pub etank_color: Option<(u8, u8, u8)>,
     pub reserve_hud_style: bool,
     pub vanilla_screw_attack_animation: bool,
-    pub area_theming: AreaTheming,
+    pub palette_theme: PaletteTheme,
+    pub tile_theme: TileTheme,
     pub music: MusicSettings,
     pub disable_beeping: bool,
     pub shaking: ShakingSetting,
@@ -192,6 +220,10 @@ fn apply_custom_samus_sprite(
 
 pub fn parse_controller_button(s: &str) -> Result<ControllerButton> {
     Ok(match s {
+        "Left" => ControllerButton::Left,
+        "Right" => ControllerButton::Right,
+        "Up" => ControllerButton::Up,
+        "Down" => ControllerButton::Down,
         "X" => ControllerButton::X,
         "Y" => ControllerButton::Y,
         "A" => ControllerButton::A,
@@ -208,6 +240,10 @@ fn get_button_mask(mut controller_button: ControllerButton, default: ControllerB
         controller_button = default;
     }
     match controller_button {
+        ControllerButton::Left => 0x0200,
+        ControllerButton::Right => 0x0100,
+        ControllerButton::Up => 0x0800,
+        ControllerButton::Down => 0x0400,
         ControllerButton::X => 0x0040,
         ControllerButton::Y => 0x4000,
         ControllerButton::A => 0x0080,
@@ -218,6 +254,19 @@ fn get_button_mask(mut controller_button: ControllerButton, default: ControllerB
         ControllerButton::Start => 0x1000,
         _ => panic!("Unexpected controller button: {:?}", controller_button)
     }
+}
+
+fn get_button_list_mask(buttons: &[ControllerButton]) -> isize {
+    let mut mask = 0x0000;
+    for &button in buttons {
+        mask |= get_button_mask(button, ControllerButton::Default);
+    }
+    if mask == 0x0000 {
+        // If no button are specified, assume this input combination (e.g. quick reload or spin lock)
+        // is disabled, rather than being activated with no inputs held.
+        mask = 0xFFFF;
+    }
+    mask
 }
 
 fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig) -> Result<()> {
@@ -235,15 +284,10 @@ fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig) 
         rom.write_u16(snes2pc(addr), mask)?;
     }
     
-    let mut quick_reload_mask = 0x0000;
-    for &button in &controller_config.quick_reload_buttons {
-        quick_reload_mask |= get_button_mask(button, ControllerButton::Default);
-    }
-    if quick_reload_mask == 0x0000 {
-        // The user probably intended to disable quick-reload entirely (rather than having quick reload trigger
-        // when not holding any buttons), so that's what we do, effectively, by requiring all 12 buttons to be pressed:
-        quick_reload_mask = 0xFFFF;
-    }
+    let spin_lock_mask = get_button_list_mask(&controller_config.spin_lock_buttons);
+    rom.write_u16(snes2pc(0x82FE7C), spin_lock_mask)?;
+
+    let quick_reload_mask = get_button_list_mask(&controller_config.quick_reload_buttons);
     rom.write_u16(snes2pc(0x82FE7E), quick_reload_mask)?;
 
     if controller_config.moonwalk {
@@ -257,10 +301,12 @@ fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig) 
 */
 pub fn customize_rom(
     rom: &mut Rom,
+    orig_rom: &Rom,
     seed_patch: &[u8],
     settings: &CustomizeSettings,
     game_data: &GameData,
     //samus_sprite_categories: &[SamusSpriteCategory],
+    mosaic_themes: &[MosaicTheme],
 ) -> Result<()> {
     rom.resize(0x400000);
     let patch = ips::Patch::parse(seed_patch).unwrap();
@@ -270,17 +316,19 @@ pub fn customize_rom(
     }
 
     remove_mother_brain_flashing(rom)?;
-    match &settings.area_theming {
-        AreaTheming::Vanilla => {}
-        AreaTheming::Palettes => {
+    apply_retiling(rom, orig_rom, game_data, &settings.tile_theme, mosaic_themes)?;
+
+    match &settings.palette_theme {
+        PaletteTheme::Vanilla => {}
+        PaletteTheme::AreaThemed => {
             apply_area_themed_palettes(rom, game_data)?;
         }
-        AreaTheming::Tiles(theme) => {
-            apply_retiling(rom, game_data, &theme)?;
-            // // Failed attempt to put Dachora further back, e.g. so it doesn't go in front of Crateria tube:
-            // rom.write_u8(snes2pc(0xA0E5FF + 0x39), 0x06)?;
-        }
     }
+
+    // Fix Phantoon power-on sequence to not overwrite the first two palettes, since those contain
+    // customized HUD colors which would get messed up.
+    rom.write_u16(snes2pc(0xA7DC6E), 0x0040)?;
+
     //apply_custom_samus_sprite(rom, settings, samus_sprite_categories)?;
     /*if let Some((r, g, b)) = settings.etank_color {
         let color = (r as isize) | ((g as isize) << 5) | ((b as isize) << 10);

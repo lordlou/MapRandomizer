@@ -56,9 +56,7 @@
         </div>
         <div class="row">
             <div class="col-5 col-sm-4 col-md-3">Start location:</div>
-            <div class="col-7 col-sm-8 col-md-9">
-                <%= if difficulty.randomized_start { "Random" } else { "Ship" } %>
-            </div>
+            <div class="col-7 col-sm-8 col-md-9"><%= start_location_mode %></div>
         </div>
         <div class="row">
             <div class="col-5 col-sm-4 col-md-3">Save the animals:</div>
@@ -79,9 +77,6 @@
             WallJump::Collectible => {
                 game_variations.push("Collectible wall jump");
             }
-            WallJump::Disabled => {
-                game_variations.push("Disabled wall jump");
-            }
             _ => {}
         }
         match difficulty.etank_refill {
@@ -93,8 +88,14 @@
             }
             _ => {}
         }
-        if maps_revealed {
+        if maps_revealed == "Partial" {
+            game_variations.push("Maps partially revealed from start");
+        }
+        if maps_revealed == "Yes" {
             game_variations.push("Maps revealed from start");
+        }
+        if difficulty.energy_free_shinesparks {
+            game_variations.push("Energy-free shinesparks");
         }
         if ultra_low_qol {
             game_variations.push("Ultra-low quality of life");

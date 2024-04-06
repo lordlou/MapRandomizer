@@ -36,6 +36,8 @@ pub struct RoomDoorGraph {
 pub struct SpoilerEscapeRouteNode {
     room: String,
     node: String,
+    x: usize,
+    y: usize,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -165,7 +167,9 @@ pub fn get_full_room_door_graph(
     let mut door_ptr_pair_to_vertex: HashMap<DoorPtrPair, VertexId> = HashMap::new();
     for (room_idx, room) in game_data.room_geometry.iter().enumerate() {
         for (door_idx, door) in room.doors.iter().enumerate() {
-            let vertex_id = base.vertices.index_by_key[&(room_idx, door_idx)];
+            let vertex_id = *base.vertices.index_by_key.get(&(room_idx, door_idx))
+                .context(format!("base.vertices.index_by_key missing entry: ({}, {})", room_idx, door_idx))
+                .unwrap();
             let door_ptr_pair = (door.exit_ptr, door.entrance_ptr);
             door_ptr_pair_to_vertex.insert(door_ptr_pair, vertex_id);
         }
@@ -186,22 +190,30 @@ fn get_vertex_name(
     vertex_id: VertexId,
     room_door_graph: &RoomDoorGraph,
     game_data: &GameData,
+    map: &Map,
 ) -> SpoilerEscapeRouteNode {
+    let (room_idx, door_idx) = room_door_graph.vertices.keys[vertex_id];
+    let room = &game_data.room_geometry[room_idx];
     if vertex_id == room_door_graph.ship_vertex_id {
         return SpoilerEscapeRouteNode {
             room: "Landing Site".to_string(),
             node: "Ship".to_string(),
+            x: map.rooms[room_idx].0 + 4,
+            y: map.rooms[room_idx].1 + 4,
         };
     }
-    let (room_idx, door_idx) = room_door_graph.vertices.keys[vertex_id];
-    let door = &game_data.room_geometry[room_idx].doors[door_idx];
+    let door = &room.doors[door_idx];
     let door_ptr_pair = (door.exit_ptr, door.entrance_ptr);
     let (room_id, door_id) = game_data.door_ptr_pair_map[&door_ptr_pair];
+    let x = map.rooms[room_idx].0 + door.x;
+    let y = map.rooms[room_idx].1 + door.y;
     let room_json = &game_data.room_json_map[&room_id];
     let node_json = &game_data.node_json_map[&(room_id, door_id)];
     SpoilerEscapeRouteNode {
         room: room_json["name"].as_str().unwrap().to_string(),
         node: node_json["name"].as_str().unwrap().to_string(),
+        x,
+        y,
     }
 }
 
@@ -209,6 +221,7 @@ fn get_spoiler_escape_route(
     path: &[(VertexId, Cost)],
     room_door_graph: &RoomDoorGraph,
     game_data: &GameData,
+    map: &Map,
 ) -> Vec<SpoilerEscapeRouteEntry> {
     let mut out: Vec<SpoilerEscapeRouteEntry> = Vec::new();
     for slice in path.windows(2) {
@@ -217,8 +230,8 @@ fn get_spoiler_escape_route(
                 continue;
             }
             out.push(SpoilerEscapeRouteEntry {
-                from: get_vertex_name(src_vertex_id, room_door_graph, game_data),
-                to: get_vertex_name(dst_vertex_id, room_door_graph, game_data),
+                from: get_vertex_name(src_vertex_id, room_door_graph, game_data, map),
+                to: get_vertex_name(dst_vertex_id, room_door_graph, game_data, map),
                 base_igt_frames: dst_cost,
             });
         } else {
@@ -262,23 +275,28 @@ pub fn compute_escape_data(
             graph.animals_vertex_id,
             &graph,
         )?;
-        animals_spoiler = Some(get_spoiler_escape_route(&animals_path, &graph, &game_data));
+        animals_spoiler = Some(get_spoiler_escape_route(&animals_path, &graph, &game_data, map));
         let ship_path = get_shortest_path(graph.animals_vertex_id, graph.ship_vertex_id, &graph)?;
-        ship_spoiler = get_spoiler_escape_route(&ship_path, &graph, &game_data);
+        ship_spoiler = get_spoiler_escape_route(&ship_path, &graph, &game_data, map);
         base_igt_frames = animals_path.last().unwrap().1 + ship_path.last().unwrap().1;
     } else {
         animals_spoiler = None;
         let ship_path =
             get_shortest_path(graph.mother_brain_vertex_id, graph.ship_vertex_id, &graph)?;
-        ship_spoiler = get_spoiler_escape_route(&ship_path, &graph, &game_data);
+        ship_spoiler = get_spoiler_escape_route(&ship_path, &graph, &game_data, map);
         base_igt_frames = ship_path.last().unwrap().1;
     }
 
     let base_igt_seconds: f32 = (base_igt_frames as f32) / 60.0;
-    let base_leniency_factor: f32 = 1.1;
+    let base_leniency_factor: f32 = 1.0;
     let raw_time_seconds =
         base_igt_seconds * base_leniency_factor * difficulty.escape_timer_multiplier;
-    let mut final_time_seconds = f32::ceil(raw_time_seconds / 5.0) * 5.0;
+
+    let mut final_time_seconds = if difficulty.escape_timer_multiplier <= 1.0 {
+        f32::ceil(raw_time_seconds)
+    } else {
+        f32::ceil(raw_time_seconds / 5.0) * 5.0
+    };
     if final_time_seconds > 5995.0 {
         final_time_seconds = 5995.0;
     }

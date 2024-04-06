@@ -6,8 +6,8 @@ use json::JsonValue;
 use sailfish::TemplateOnce;
 use urlencoding;
 
-use crate::game_data::{GameData, Link, NodeId, Requirement, RoomId};
-use crate::randomize::{DebugOptions, DifficultyConfig, SaveAnimals, AreaAssignment, WallJump, EtankRefill};
+use crate::game_data::{EntranceCondition, ExitCondition, GameData, Link, MainEntranceCondition, NodeId, Requirement, RoomId};
+use crate::randomize::{DebugOptions, DifficultyConfig, SaveAnimals, AreaAssignment, WallJump, EtankRefill, MapsRevealed, StartLocationMode};
 use crate::traverse::{apply_requirement, GlobalState, LocalState};
 
 use super::{PresetData, VersionInfo, HQ_VIDEO_URL_ROOT};
@@ -197,10 +197,41 @@ fn make_tech_templates<'a>(
             let mut tech_set: HashSet<usize> = HashSet::new();
             for req in strat_json["requires"].members() {
                 extract_tech_rec(req, &mut tech_set, game_data);
-                if strat_json["bypassesDoorShell"].as_bool() == Some(true) {
-                    tech_set.insert(game_data.tech_isv.index_by_key["canSkipDoorLock"]);
-                }
             }
+            if strat_json["bypassesDoorShell"].as_bool() == Some(true) {
+                tech_set.insert(game_data.tech_isv.index_by_key["canSkipDoorLock"]);
+            }
+            if strat_json["entranceCondition"].has_key("comeInWithGMode") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canEnterGMode"]);
+            }
+            if strat_json["entranceCondition"].has_key("comeInWithRMode") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canEnterRMode"]);
+            }
+            if strat_json["entranceCondition"].has_key("comeInSpeedballing") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canSpeedball"]);
+            }
+            if strat_json["entranceCondition"].has_key("comeInStutterShinecharging") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canStutterWaterShineCharge"]);
+            }
+            if strat_json["entranceCondition"].has_key("comeInWithTemporaryBlue") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canTemporaryBlue"]);
+            }
+            if strat_json["entranceCondition"].has_key("comeInWithBombBoost") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canBombHorizontally"]);
+            }
+            if strat_json["entranceCondition"].has_key("comeInWithGrappleTeleport") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canGrappleTeleport"]);
+            }
+            if strat_json["exitCondition"].has_key("leaveWithGModeSetup") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canEnterGMode"]);
+            }
+            if strat_json["exitCondition"].has_key("leaveWithGMode") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canEnterGMode"]);
+            }
+            if strat_json["exitCondition"].has_key("leaveWithGrappleTeleport") {
+                tech_set.insert(game_data.tech_isv.index_by_key["canGrappleTeleport"]);
+            }
+
             for tech_idx in tech_set {
                 tech_strat_ids[tech_idx].insert(ids.clone());
             }
@@ -310,8 +341,14 @@ fn get_difficulty_config(preset: &PresetData) -> DifficultyConfig {
         tech: tech_vec,
         notable_strats: strat_vec,
         shine_charge_tiles: preset.preset.shinespark_tiles as f32,
+        heated_shine_charge_tiles: preset.preset.heated_shinespark_tiles as f32,
+        shinecharge_leniency_frames: preset.preset.shinecharge_leniency_frames as i32,
         progression_rate: crate::randomize::ProgressionRate::Fast,
         random_tank: true,
+        spazer_before_plasma: true,
+        stop_item_placement_early: false,
+        item_pool: vec![],
+        starting_items: vec![],
         item_placement_style: crate::randomize::ItemPlacementStyle::Forced,
         item_priorities: vec![],
         filler_items: vec![],
@@ -325,12 +362,14 @@ fn get_difficulty_config(preset: &PresetData) -> DifficultyConfig {
         draygon_proficiency: preset.preset.draygon_proficiency,
         ridley_proficiency: preset.preset.ridley_proficiency,
         botwoon_proficiency: preset.preset.botwoon_proficiency,
+        mother_brain_proficiency: preset.preset.mother_brain_proficiency,
         supers_double: true,
         mother_brain_fight: crate::randomize::MotherBrainFight::Short,
         escape_movement_items: true,
         escape_refill: true,
         escape_enemies_cleared: true,
         mark_map_stations: true,
+        room_outline_revealed: true,
         transition_letters: false,
         item_markers: crate::randomize::ItemMarkers::ThreeTiered,
         item_dot_change: crate::randomize::ItemDotChange::Fade,
@@ -346,14 +385,15 @@ fn get_difficulty_config(preset: &PresetData) -> DifficultyConfig {
         objectives: crate::randomize::Objectives::Bosses,
         doors_mode: crate::randomize::DoorsMode::Ammo,
         save_animals: SaveAnimals::No,
-        randomized_start: false,
+        start_location_mode: StartLocationMode::Ship,
         early_save: false,
         area_assignment: AreaAssignment::Standard,
         wall_jump: WallJump::Vanilla,
         etank_refill: EtankRefill::Vanilla,
-        maps_revealed: false,
-        map_layout: 0,
+        maps_revealed: MapsRevealed::Yes,
+        vanilla_map: false,
         ultra_low_qol: false,
+        energy_free_shinesparks: false,
         skill_assumptions_preset: None,
         item_progression_preset: None,
         quality_of_life_preset: None,
@@ -362,6 +402,49 @@ fn get_difficulty_config(preset: &PresetData) -> DifficultyConfig {
             extended_spoiler: false,
         }),
     }
+}
+
+fn get_cross_room_reqs(link: &Link, game_data: &GameData) -> Requirement {
+    let mut reqs: Vec<Requirement> = vec![];
+    if link.bypasses_door_shell {
+        reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canSkipDoorLock"]));
+    }
+    if let Some(entrance_condition) = &link.entrance_condition {
+        let main = &entrance_condition.main;
+        if let MainEntranceCondition::ComeInWithGMode { .. } = main {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canEnterGMode"]));
+        }
+        if let MainEntranceCondition::ComeInWithRMode { .. } = main {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canEnterRMode"]));
+        }
+        if let MainEntranceCondition::ComeInSpeedballing { .. } = main {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canSpeedball"]));
+        }
+        if let MainEntranceCondition::ComeInStutterShinecharging { .. } = main {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canStutterWaterShineCharge"]));
+        }
+        if let MainEntranceCondition::ComeInWithTemporaryBlue {  } = main {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canTemporaryBlue"]));
+        }
+        if let MainEntranceCondition::ComeInWithBombBoost {  } = main {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canBombHorizontally"]));
+        }
+        if let MainEntranceCondition::ComeInWithGrappleTeleport { .. } = main {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canGrappleTeleport"]));
+        }
+    }
+    if let Some(exit_condition) = &link.exit_condition {
+        if let ExitCondition::LeaveWithGMode { .. } = exit_condition {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canEnterGMode"]));
+        }
+        if let ExitCondition::LeaveWithGModeSetup { .. } = exit_condition {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canEnterGMode"]));
+        }
+        if let ExitCondition::LeaveWithGrappleTeleport { .. } = exit_condition {
+            reqs.push(Requirement::Tech(game_data.tech_isv.index_by_key["canGrappleTeleport"]));
+        }
+    }
+    Requirement::make_and(reqs)
 }
 
 fn strip_cross_room_reqs(req: Requirement, game_data: &GameData) -> Requirement {
@@ -422,8 +505,10 @@ fn get_strat_difficulty(
             return difficulty_configs.len();
         }
         for link in &links_by_ids[&key] {
-            let req = strip_cross_room_reqs(link.requirement.clone(), game_data);
-            let new_local = apply_requirement(&req, &global, local, false, difficulty, game_data);
+            let extra_req = get_cross_room_reqs(link, game_data);
+            let main_req = strip_cross_room_reqs(link.requirement.clone(), game_data);
+            let combined_req = Requirement::make_and(vec![extra_req, main_req]);
+            let new_local = apply_requirement(&combined_req, &global, local, false, difficulty, game_data);
             if new_local.is_some() {
                 return i;
             }
@@ -654,6 +739,7 @@ impl LogicData {
                 max_power_bombs: 50,
                 weapon_mask: weapon_mask,
                 shine_charge_tiles: difficulty.shine_charge_tiles,
+                heated_shine_charge_tiles: difficulty.heated_shine_charge_tiles,
             };
 
             global_states.push(global);

@@ -14,6 +14,326 @@ document.getElementById("navigation-releases").classList.add("active");
 
 <h3 class="my-3">Release History</h3>
 
+<p><a id="release110">Version 111 (2024-03-31)</a>:
+<ul>
+<li>Bug fix: 
+    <ul>
+    <li>Clearing Metroid Room 4 was incorrectly treated as logically waking the planet.
+    </ul>
+<li>Logic updates:
+    <ul>
+    <li>Cross-room strats through the Toilet are now in logic.
+    <li>New tech:
+        <ul>
+        <li>canJumpIntoRespawningBlock (Very Hard)
+        <li>canGrappleBombHang (Extreme)
+        <li>canBeExtremelyPatient (Beyond)
+        </ul>
+    <li>New notable strats:
+        <ul>
+        <li>Upper Norfair Farming Room Gate Glitch With Farming (Hard)
+        <li>Spiky Acid Snakes Suitless Damage Boosts (Expert)
+        <li>Moat Leave With Grapple Teleport (Extreme)
+        <li>Green Hills Grapple Teleport Fling to Right (Extreme)
+        <li>Below Spazer Grapple Teleport X-Ray Climb (Extreme)
+        <li>Below Spazer Grapple Teleport Clip (Extreme)
+        <li>Lower Norfair Jail Grapple Teleport (Extreme)
+        <li>Green Hills Grapple Teleport into Grapple Jump (Insane)
+        <li>Croc Speedway Speed Block Moondance (Insane)
+        <li>Bowling Alley Speed Block Moondance (Insane)
+        <li>Lava Dive HiJumpless Nahime Morph Kago (Insane)
+        <li>Red Brinstar Firefleas Ceiling Bomb Jump (Beyond)
+        </ul>
+    </ul>
+</ul>
+
+<p><a id="release110">Version 110 (2024-03-19)</a>:
+<ul>
+<li>New map pools:
+    <ul>
+    <li>The Toilet is decoupled from Aqueduct and can pass through any one of many possible rooms.
+    </ul>
+<li>New tile theme options "West Maridia" and "Scrambled" are available.
+    <ul>
+    <li>The "Scrambled" option will give each room a random theme.
+    </ul>
+<li>Area-themed "Room palettes" are revamped:
+    <ul>
+    <li>Colors are adjusted to improve the aesthetics and coherence of the palettes.
+    <li>Area-themed glows are now included.
+    <li>Area-themed palettes can now be combined with "Tile theme".
+    </ul>
+<li>Sand exits are restored to their vanilla layout:
+    <ul>
+    <li>This affects the bottom of Bug Sand Hole, Aqueduct, and Botwoon Energy Tank Room.
+    <li>Through sand transitions, Samus' X position is clamped to fit the entrance in the room below.
+    </ul>
+<li>The quality-of-life option "Enemy drops are buffed" is buffed further:
+    <ul>
+    <li>The drop rate of Supers is doubled for Zebs, Geegas, and Kagos.
+    </ul>
+<li>In "Desolate" or "Reduced Items" presets, the Power Bomb pool size is reduced to 25 Power Bombs.
+<li>Heated shinecharge tiles are adjusted to be less lenient in Medium, Hard, and Very Hard.
+<li>With MSU-1, songs resume when returning from item/elevator rooms.
+<li>When no item is placed in Bomb Torizo Room, the fight can be activated by touching the item location.
+<li>Fixes to bugs:
+    <ul>
+    <li>Space Jump Room was not indicated as a water room on the map.
+    <li>With Spin Lock, pressing down out of a wall jump could still cause Samus to morph.
+    <li>With "Stop item placement early", logically assumed items could sometimes fail to be placed.
+    <li>Shinecharge leniency frames were not taken into account in certain situations.
+    <li>Clearing a Metroid room was incorrectly treated as logically waking the planet.
+    <li>Grapple teleport could be logically required without Grapple.
+    <li>Certain IBJ strats could be logically required without Morph or Bombs.
+    </ul>
+<li>Logic updates:
+    <ul>
+    <li>New notable strats:
+        <ul>
+        <li>Golden Torizo Crystal Flash (Expert)
+        <li>West Sand Hall Spring Fling with Momentum (Expert)
+        <li>Croc Escape Frozen Geruta Shinecharge (Extreme) 
+        <li>Gauntlet Energy Tank Room Spark Master (Extreme)
+        </ul>
+    <li>Crossing Colosseum using Ice without HiJump is moved from Very Hard to Expert.
+    <li>"Crocomire with 5 Missiles" is moved from Insane to Extreme.
+    </ul>
+</ul>
+
+<p><a id="release109">Version 109 (2024-02-27)</a>:
+<ul>
+<li>Spin Lock (L + R + Up + X) can be used to temporarily prevent up or down from breaking spin.
+    <ul>
+    <li>This can make it easier to perform chains of wall jumps on a controller/D-pad.
+    <li>The input combination can be customized (or disabled) on the seed page.
+    <li>Spin lock is canceled by pressing shot.
+    </ul>
+<li>Charge and Spazer are now filler items on "Challenge" item progression.
+<li>New group of settings "Item pool" (under Item progression > Customize):
+    <ul>
+    <li>Adjustable amount of Missiles, Supers, Power Bombs, ETanks, and Reserve Tanks.
+    <li>Option "Stop item placement early" (under Item progression > Customize > Item pool):
+        <ul>
+        <li>If enabled, no more items are placed after the game becomes logically beatable.
+        </ul>
+    <li>"Reduced" item pool preset uses "Stop item placement early" and a small amount of ammo/tanks:
+        <ul>
+        <li>12 Missile packs, 6 Super packs, 6 Power Bomb packs, 3 Energy Tanks, 3 Reserve Tanks
+        <li>More tanks may be placed depending on difficulty settings.
+        </ul>
+    </ul>
+<li>New item progression preset "Desolate" is added:
+    <ul>
+    <li>This is like "Challenge" but also enables the "Reduced" item pool.
+    </ul>
+<li>Logic updates:
+    <ul>
+    <li>New tech:
+        <ul>
+        <li>canManageReserves (Hard)
+        <li>canGrappleTeleport (Expert)
+        <li>canTrickyGrappleJump (Insane)
+        </ul>
+    <li>New notable strats:
+        <ul>
+        <li>Mother Brain Speed Zebetite Skip (Hard)
+        <li>Mother Brain Ice Zebetite Skip (Hard)
+        <li>East Sand Hall Cross-Room Speed Jump (Expert)
+        <li>Red Tower Frozen Beetom Ice Climb (Extreme)
+        <li>Warehouse Entrance Arm Pump Jump (Extreme)
+        <li>Watering Hole Double Frozen Zeb Runway (Extreme)
+        <li>Green Brinstar Main Shaft Bottom Ice Clip (Extreme)
+        <li>Fish Tank Grapple Teleport into Grapple Jump (Insane)
+        <li>Glass Tunnel Grapple Teleport into Grapple Jump (or Tube Intact) (Insane)
+        <li>Green Hills Grapple Teleport into Grapple Jump (Insane)
+        </ul>
+    <li>Notable strat "Green Hills Grapple Gate Glitch" is moved from Extreme to Expert.
+    </ul>
+</ul>
+
+<p><a id="release108">Version 108 (2024-02-12)</a>:
+<ul>
+<li>New option "Starting items" under "Item progression" > "Customize".
+<li>Videos are added for many tech and notable strats.
+<li>Logic updates:
+    <ul>
+    <li>Ridley logic is adjusted and is now generally more lenient (except on Insane).
+    <li>Slow Kihunter farms are removed from logic.
+    <li>Shortcharges across a door transition now have an extra tile of leniency.
+    <li>New tech:
+        <ul>
+        <li>"canDeepTransition" (Extreme)
+        <li>"canTrickyEnemyExtendRunway" (Extreme)
+        </ul>
+    <li>New notable strats:
+        <ul>
+        <li>Red Fish Space Jump Spring Ball Jump (Very Hard)
+        <li>Pink Brinstar Hopper X-Ray Climb (Expert)
+        <li>Mission Impossible Walljumpless (Extreme)
+        <li>Mission Impossible Shinespark (Extreme)
+        <li>Cathedral Entrance 10 Power Bomb Crystal Flash (Extreme)
+        <li>Bowling Alley Path Double Frozen Choot Runway (Extreme)
+        <li>Alcatraz Escape with Grapple X-Ray Ceiling Clip (Extreme)
+        <li>Alcatraz Escape with HiJump Ceiling Clip (Insane)
+        <li>Alcatraz Escape Double Damage Boost (Insane)
+        <li>Bowling Alley Path Triple Frozen Choot Runway (Insane)
+        <li>Everest Crab HiJump Bomb-Grapple-Jump (Insane)
+        <li>Red Fish Space Jump Escape (Insane)
+        <li>Wrecked Ship Main Shaft Spooky Missiles Temporary Blue with Frozen Enemy Runway (Insane)
+        <li>Alcatraz Escape G-Mode Crystal Flash Then Forced Standup (Beyond)
+        </ul>
+    <li>Some tech and notable strats are moved to a different difficulty:
+        <ul>
+        <li>"canXRayStandUp" and "canXRayCeilingClip", "Etecoon E-Tank Beetom Clip", and "East Pants Room Puyo Clip" are moved from Very Hard to Hard.
+        <li>"can10PowerBombCrystalFlash" is moved from Very Hard to Expert.
+        <li>"Ridley without Heat Protection" is moved from Hard to Very Hard.
+        <li>"Climb G-Mode Morph Insane IBJ to Top" and "Climb G-Mode Morph Blind Climb to the Top" are moved from Insane to Beyond.
+        </ul>
+    </ul>
+</ul>
+
+<p><a id="release107">Version 107 (2024-02-03)</a>:
+<ul>
+<li>A new tile theme option "Wrecked Ship" is available.
+<li>Lag is reduced when the escape sequence music restarts after reloading.
+<li>Heat damage multipliers for Basic and Medium are adjusted to be more lenient.
+<li>"Ultra-low quality-of-life" behaves even more like the vanilla game:
+    <ul>
+    <li>Enhanced map details are removed, including markers for doors, heat, water, and refills.
+    <li>Hazard markers ("caution tape") on doors are removed.
+    <li>Item dots no longer fade (or disappear) after collection.
+    </ul>
+<li>Logic updates:
+    <ul>
+    <li>New tech:
+        <ul>
+        <li>canHorizontalShinespark (Medium)
+        <li>canAwakenZebes (Medium)
+        <li>canSpringFling (Expert)
+        <li>canEnemyExtendRunway (Expert), in progress, currently only in Brinstar rooms
+        <li>canInsaneJump (Extreme)
+        </ul>
+    <li>The tech "canMidairShinespark" is moved from Medium to Hard.
+    <li>The tech "can3HighMidAirMorph" is renamed to "can4HighMidAirMorph" and moved from Very Hard to Hard.
+    <li>The tech "can2HighWallMidAirMorph" is renamed to "can3HighWallMidAirMorph".
+    <li>New notable strats:
+        <ul>
+        <li>Metal Pirates Speed Echoes Kill (Very Hard)
+        <li>Lower Norfair Pillar Room with Two Power Bombs (Very Hard)
+        <li>Green Brinstar Beetom Room Frozen Beetom Bridge (Expert)
+        <li>Wasteland Avoid Dessgeegas by Rolling (Expert)
+        <li>Wasteland Statue Clip Damage Boost (Expert)
+        <li>Wasteland HiJumpless Statue Clip Damage Boost (Extreme)
+        <li>Warehouse Energy Tank Frozen Beetom Runway (Extreme)
+        <li>Hellway Frozen Zeb Runway (Extreme)
+        <li>Early Supers Right Door Frozen Zeb Runway (Extreme)
+        <li>East Sand Hole Suitless HiJump Perfect Bomb Boost (Insane)
+        <li>Dachora Room G-Mode Setup: Lure the Zeela Down Below (Insane)
+        <li>Lower Norfair Pillar Room with Bombs (Insane)
+        </ul>
+    </ul>
+</ul>
+
+<p><a id="release106">Version 106 (2024-01-17)</a>:
+<ul>
+<li>A new setting "Partial" is added for "Maps revealed from start" (under "Other options").
+<li>A new option "Energy-free shinesparks" is added (under "Other options").
+    <ul>
+    <li>The logic takes into account if this is enabled.
+    </ul>
+<li>A new setting "Escape" is added for "Start location".
+    <ul>
+    <li>When enabled, the game begins in the escape sequence, and the only goal is to complete it.
+    </ul>
+<li>The quality-of-life option "Enemy drops are buffed" now has an additional effect:
+    <ul>
+    <li>Power Bomb drops give 2 Power Bombs.
+    </ul>
+<li>Adjustments to how escape timer multipliers work:
+    <ul>
+    <li>The base leniency factor (previously 1.05) is removed.
+    <li>With the new scale, 1.0 is now the minimum multiplier guaranteed to be beatable.
+    <li>The default multipliers are updated.
+    <li>When using a low multiplier (1.0 or less), the escape timer now rounds up to the nearest 
+    second instead of to a multiple of 5 seconds.
+    </ul>
+<li>New Samus sprites: "Buffed Eggplant" and "Buffed Pug", by Fredz00z.
+<li>New notable strats:
+    <ul>
+    <li>Warehouse Kihunter Room Bottom Leave Shinecharged (Expert)
+    <li>Tourian Escape Room 4 Acid Bath Shinespark (Expert)
+    <li>Tourian Escape Room 4 IBJ and Acid Bath (Extreme)
+    </ul>
+</ul>
+
+<p><a id="release105">Version 105 (2024-01-07)</a>:
+<ul>
+<li>Update to item progression settings:
+    <ul>
+    <li>Plasma and XRayScope are added as filler items on "Normal" and "Tricky" presets.
+    <li>A new option "Spazer before Plasma" is added and enabled on all presets.
+    </ul>
+<li>New quality-of-life option "Room outline revealed on entry" is added (enabled by default).
+    <ul>
+    <li>When enabled, entering a room partially reveals all its tiles in the pause map.
+    <li>Partially revealed tiles show the room outline but not details such as item dots or door locks.
+    </ul>
+<li>Map behavior in boss rooms is cleaned up:
+    <ul>
+    <li>Boss room tiles become explored by entering them, even if the mini-map is disabled.
+    <li>If "Room outline revealed on entry" is enabled, then the vanilla game's quirky auto-exploration of boss room tiles does not happen.
+    </ul>
+<li>Locked doors are drawn using smaller markers on the map.
+    <ul>
+    <li>Previously the door markers covered the entire wall, which could obscure room boundaries.
+    <li>The size is now consistent with the normal size of doors on the map.
+    </ul>
+<li>The escape timer base leniency is reduced from 10% to 5%.
+<li>For MSU-1, extended tracks are now supported (e.g. boss-specific music).
+<li>New Samus sprite: "Agender Samus" by Abyss.
+<li>Logic updates:
+    <ul>
+    <li>Many more strats are added for carrying a shinecharge/shinespark across multiple rooms.
+    <li>New setting "Shinecharge leniency frames" is added (under "Skill Assumptions").
+    <li>The tech "canWaterShineCharge" is moved from Very Hard to Hard.
+    <li>Riding Mama Turtle without taking damage now requires "canCarefulJump" (Medium).
+    <li>New tech "canShinechargeMovementTricky" is added (Expert).
+    <li>New notable strats:
+        <ul>
+        <li>Red Tower Climb with Space Jump (Very Hard)
+        <li>Final Missile Bombway Shinespark (Extreme)
+        <li>WS East Supers R-Mode Standup Clip (Extreme)
+        <li>Basement G-mode Morph Workrobot Ride (Insane)
+        </ul>
+    </ul>
+</ul>
+
+<p><a id="release104">Version 104 (2024-01-01)</a>:
+<ul>
+<li>Revamped Reserve HUD now shows greater contrast between filled and unfilled bars.
+<li>A new setting "Heated shinecharge tiles" is added under "Skill assumptions".
+    <ul>
+    <li>More difficult short-charges can be required in unheated rooms (or with Varia).
+    </ul>
+<li>Fixed several bugs:
+    <ul>
+    <li>Certain cross-room speedball strats were wrongly in logic without Morph or with too short of runway.
+    <li>G-mode strats showed up in logic pages for lower difficulties (though not in logic).
+    <li>Hazard markings could appear on the left side of Mother Brain Room.
+    <li>The escape route was not working in the spoiler map.
+    </ul>
+<li>The tech "canCrystalFlash" is moved from Hard to Very Hard.
+<li>The Draygon logic is now more lenient in situations with low Missile count.
+<li>New notable strats:
+    <ul>
+    <li>Pink Hoppers Shinespark into the Wall to Ride the Elevator (Very Hard)
+    <li>Pink Hoppers Screw and Kago to Ride the Elevator (Very Hard)
+    <li>Bubble Mountain Tricky Spring Ball Jump with Grapple (Very Hard)
+    <li>Parlor Carry Shinecharge From Right to Bottom (Expert)
+    <li>Mt. Everest Top Left Shinecharge (Insane)
+    </ul>
+</ul>
+
 <p><a id="release103">Version 103 (2023-12-22)</a>:
 <ul>
 <li>Fixed a logic issue where a cross-room walljump could be required when walljump is not available (a bug introduced in v102).

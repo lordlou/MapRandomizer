@@ -6,18 +6,21 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use log::info;
 
-use crate::game_data::{GameData, Map};
+use crate::game_data::{self, GameData, Map};
+use crate::randomize::Randomizer;
 use crate::seed_repository::SeedRepository;
 
 use self::logic::LogicData;
 
-pub const VERSION: usize = 103;
+pub const VERSION: usize = 111;
 pub const HQ_VIDEO_URL_ROOT: &'static str = "https://storage.googleapis.com/super-metroid-map-rando-videos-webm";
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Preset {
     pub name: String,
-    pub shinespark_tiles: usize,
+    pub shinespark_tiles: f32,
+    pub heated_shinespark_tiles: f32,
+    pub shinecharge_leniency_frames: usize,
     pub resource_multiplier: f32,
     pub escape_timer_multiplier: f32,
     pub gate_glitch_leniency: usize,
@@ -26,6 +29,7 @@ pub struct Preset {
     pub draygon_proficiency: f32,
     pub ridley_proficiency: f32,
     pub botwoon_proficiency: f32,
+    pub mother_brain_proficiency: f32,
     pub tech: Vec<String>,
     pub notable_strats: Vec<String>,
 }
@@ -57,6 +61,13 @@ pub struct SamusSpriteCategory {
     pub sprites: Vec<SamusSpriteInfo>,
 }
 
+#[derive(Deserialize, Clone)]
+pub struct MosaicTheme {
+    pub name: String,
+    pub display_name: String,
+}
+
+
 #[derive(Clone)]
 pub struct VersionInfo {
     pub version: usize,
@@ -79,6 +90,7 @@ pub struct AppData {
     pub version_info: VersionInfo,
     pub static_visualizer: bool,
     pub etank_colors: Vec<Vec<String>>,  // colors in HTML hex format, e.g "#ff0000"
+    pub mosaic_themes: Vec<MosaicTheme>,
     pub parallelism: usize,
 }
 
@@ -96,24 +108,32 @@ impl MapRepository {
         })
     }
 
-    pub fn get_map(&self, attempt_num_rando: usize, seed: usize) -> Result<Map> {
+    pub fn get_map(&self, attempt_num_rando: usize, seed: usize, game_data: &GameData) -> Result<Map> {
         let idx = seed % self.filenames.len();
         let path = self.base_path.join(&self.filenames[idx]);
         let map_string = std::fs::read_to_string(&path)
             .with_context(|| format!("[attempt {attempt_num_rando}] Unable to read map file at {}", path.display()))?;
         info!("[attempt {attempt_num_rando}] Map: {}", path.display());
-        let map: Map = serde_json::from_str(&map_string)
+        let mut map: Map = serde_json::from_str(&map_string)
             .with_context(|| format!("[attempt {attempt_num_rando}] Unable to parse map file at {}", path.display()))?;
-        Ok(map)
-    }
-
-    pub fn get_vanilla_map(&self, attempt_num_rando: usize) -> Result<Map> {
-        let path = Path::new("data/vanilla_map.json");
-        let map_string = std::fs::read_to_string(&path)
-            .with_context(|| format!("[attempt {attempt_num_rando}] Unable to read map file at {}", path.display()))?;
-        info!("[attempt {attempt_num_rando}] Map: {}", path.display());
-        let map: Map = serde_json::from_str(&map_string)
-            .with_context(|| format!("[attempt {attempt_num_rando}] Unable to parse map file at {}", path.display()))?;
+        
+        // Make Toilet area/subarea align with its intersecting room(s):
+        // TODO: Push this upstream into the map generation
+        let toilet_intersections = Randomizer::get_toilet_intersections(&map, game_data);
+        if toilet_intersections.len() > 0 {
+            let area = map.area[toilet_intersections[0]];
+            let subarea = map.subarea[toilet_intersections[0]];
+            for i in 1..toilet_intersections.len() {
+                if map.area[toilet_intersections[i]] != area {
+                    panic!("Mismatched areas for Toilet intersection");
+                }
+                if map.subarea[toilet_intersections[i]] != subarea {
+                    panic!("Mismatched subareas for Toilet intersection");
+                }
+            }
+            map.area[game_data.toilet_room_idx] = area;
+            map.subarea[game_data.toilet_room_idx] = subarea;
+        }
         Ok(map)
     }
 }

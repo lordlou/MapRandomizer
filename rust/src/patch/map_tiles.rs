@@ -2,8 +2,8 @@ use hashbrown::{HashMap, HashSet};
 use log::info;
 
 use crate::{
-    game_data::{GameData, Item, ItemIdx, Map, RoomGeometryDoor, RoomGeometryItem},
-    randomize::{DoorType, ItemDotChange, ItemMarkers, Objectives, Randomization},
+    game_data::{GameData, Item, ItemIdx, Map, RoomGeometryDoor, RoomGeometryItem, AreaIdx},
+    randomize::{DoorType, ItemDotChange, ItemMarkers, Objectives, Randomization, MapsRevealed},
 };
 
 use super::{snes2pc, xy_to_explored_bit_ptr, xy_to_map_offset, Rom};
@@ -72,10 +72,11 @@ pub struct MapPatcher<'a> {
     edge_pixels_map: HashMap<Edge, Vec<usize>>,
     locked_door_state_indices: &'a [usize],
     area_data: Vec<Vec<(ItemIdx, TilemapOffset, TilemapWord, Interior)>>,
+    transition_tile_coords: Vec<(AreaIdx, isize, isize)>,
 }
 
-const VANILLA_ELEVATOR_TILE: TilemapWord = 0xCE; // Index of elevator tile in vanilla game
-const ELEVATOR_TILE: TilemapWord = 0x12; // Index of elevator tile with TR's map patch
+pub const VANILLA_ELEVATOR_TILE: TilemapWord = 0xCE; // Index of elevator tile in vanilla game
+pub const ELEVATOR_TILE: TilemapWord = 0x12; // Index of elevator tile with TR's map patch
 pub const TILE_GFX_ADDR_4BPP: usize = 0xE28000; // Where to store area-specific tile graphics (must agree with map_area.asm)
 pub const TILE_GFX_ADDR_2BPP: usize = 0xE2C000; // Where to store area-specific tile graphics (must agree with map_area.asm)
 
@@ -146,6 +147,7 @@ impl<'a> MapPatcher<'a> {
             edge_pixels_map: pixels_map,
             locked_door_state_indices,
             area_data: vec![vec![]; 6],
+            transition_tile_coords: vec![],
         }
     }
 
@@ -318,10 +320,10 @@ impl<'a> MapPatcher<'a> {
         };
         for y in 0..8 {
             for x in 0..8 {
-                if data[y][x] > 4 {
-                    data[y][x] = 3;
-                } else if data[y][x] == 4 {
+                if data[y][x] == 4 || data[y][x] == 12 {
                     data[y][x] = 0;
+                } else if data[y][x] > 4 {
+                    data[y][x] = 3;
                 }
             }
         }
@@ -602,7 +604,7 @@ impl<'a> MapPatcher<'a> {
                 2
             }
         } else {
-            3
+            13
         };
         match tile.interior {
             Interior::Empty => {}
@@ -706,17 +708,15 @@ impl<'a> MapPatcher<'a> {
         if door_edges.contains(&tile.left) {
             let color = self.get_door_color(tile.left);
             data[0][0] = 3;
-            data[1][0] = 4;
-            data[2][0] = color;
+            data[1][0] = 3;
+            data[2][0] = 12;
             data[3][0] = color;
             data[4][0] = color;
-            data[5][0] = color;
-            data[6][0] = 4;
+            data[5][0] = 12;    
+            data[6][0] = 3;
             data[7][0] = 3;
-            data[2][1] = 4;
             data[3][1] = 4;
             data[4][1] = 4;
-            data[5][1] = 4;
         } else {
             for &i in &self.edge_pixels_map[&tile.left] {
                 data[i][0] = 3;
@@ -726,17 +726,16 @@ impl<'a> MapPatcher<'a> {
         if door_edges.contains(&tile.right) {
             let color = self.get_door_color(tile.right);
             data[0][7] = 3;
-            data[1][7] = 4;
-            data[2][7] = color;
+            data[1][7] = 3;
+            data[2][7] = 12;
             data[3][7] = color;
             data[4][7] = color;
-            data[5][7] = color;
-            data[6][7] = 4;
+            data[5][7] = 12;
+            data[6][7] = 3;
             data[7][7] = 3;
-            data[2][6] = 4;
             data[3][6] = 4;
             data[4][6] = 4;
-            data[5][6] = 4;
+
         } else {
             for &i in &self.edge_pixels_map[&tile.right] {
                 data[i][7] = 3;
@@ -746,17 +745,15 @@ impl<'a> MapPatcher<'a> {
         if door_edges.contains(&tile.up) {
             let color = self.get_door_color(tile.up);
             data[0][0] = 3;
-            data[0][1] = 4;
-            data[0][2] = color;
+            data[0][1] = 3;
+            data[0][2] = 12;
             data[0][3] = color;
             data[0][4] = color;
-            data[0][5] = color;
-            data[0][6] = 4;
+            data[0][5] = 12;    
+            data[0][6] = 3;
             data[0][7] = 3;
-            data[1][2] = 4;
             data[1][3] = 4;
             data[1][4] = 4;
-            data[1][5] = 4;
         } else {
             for &i in &self.edge_pixels_map[&tile.up] {
                 data[0][i] = 3;
@@ -766,17 +763,15 @@ impl<'a> MapPatcher<'a> {
         if door_edges.contains(&tile.down) {
             let color = self.get_door_color(tile.down);
             data[7][0] = 3;
-            data[7][1] = 4;
-            data[7][2] = color;
+            data[7][1] = 3;
+            data[7][2] = 12;
             data[7][3] = color;
             data[7][4] = color;
-            data[7][5] = color;
-            data[7][6] = 4;
+            data[7][5] = 12;    
+            data[7][6] = 3;
             data[7][7] = 3;
-            data[6][2] = 4;
             data[6][3] = 4;
             data[6][4] = 4;
-            data[6][5] = 4;
         } else {
             for &i in &self.edge_pixels_map[&tile.down] {
                 data[7][i] = 3;
@@ -854,8 +849,8 @@ impl<'a> MapPatcher<'a> {
         // final length of the elevator on the map, which already has variations across rooms). We skip Lower Norfair Elevator
         // and Main Hall because these have no arrows on the vanilla map (since these don't cross regions in vanilla).
 
-        // Patch map tile in Aqueduct to replace Botwoon Hallway with tube/elevator tile
-        self.patch_room("Aqueduct", vec![(2, 3, ELEVATOR_TILE)])?;
+        // // Patch map tile in Aqueduct to replace Botwoon Hallway with tube/elevator tile
+        // self.patch_room("Aqueduct", vec![(2, 3, ELEVATOR_TILE)])?;
 
         Ok(())
     }
@@ -1066,22 +1061,29 @@ impl<'a> MapPatcher<'a> {
         Ok(())
     }
 
-    fn indicate_special_tiles(&mut self) -> Result<()> {
+    fn indicate_refill_station_tiles(&mut self) -> Result<()> {
         let refill_tile_desc = vec![(0, 0, E, E, E, E, Interior::Refill)];
-        let map_tile_desc = vec![(0, 0, E, E, E, E, Interior::MapStation)];
-        self.patch_room_basic("Landing Site", vec![(4, 4, E, E, E, E, Interior::Refill)])?;
         for room in &self.game_data.room_geometry {
             if room.name.contains("Refill") || room.name.contains("Recharge") {
                 self.patch_room_basic(&room.name, refill_tile_desc.clone())?;
             }
         }
+        self.patch_room_basic("Landing Site", vec![(4, 4, E, E, E, E, Interior::Refill)])?;
+        Ok(())
+    }
+
+    fn indicate_map_station_tiles(&mut self) -> Result<()> {
+        let map_tile_desc = vec![(0, 0, E, E, E, E, Interior::MapStation)];
 
         for room in &self.game_data.room_geometry {
             if room.name.contains(" Map Room") {
                 self.patch_room_basic(&room.name, map_tile_desc.clone())?;
             }
         }
+        Ok(())
+    }
 
+    fn indicate_objective_tiles(&mut self) -> Result<()> {
         let boss_tile = self.get_basic_tile(BasicTile { 
             left: E, 
             right: E, 
@@ -1800,7 +1802,7 @@ impl<'a> MapPatcher<'a> {
         self.indicate_liquid_room("Colosseum", LiquidType::Water, 1, 0)?;
         self.indicate_liquid_room("The Precious Room", LiquidType::Water, 1, 0)?;
         self.indicate_liquid_room("Draygon's Room", LiquidType::Water, 0, 0)?;
-        self.indicate_liquid_room("Space Jump Room", LiquidType::Water, 1, 0)?;
+        self.indicate_liquid_room("Space Jump Room", LiquidType::Water, 0, 0)?;
         self.indicate_liquid_room("Crab Tunnel", LiquidType::Water, 0, 0)?;
         self.indicate_liquid_room("Crab Hole", LiquidType::Water, 0, 0)?;
         self.indicate_liquid_room("Maridia Map Room", LiquidType::Water, 0, 0)?;
@@ -1832,7 +1834,7 @@ impl<'a> MapPatcher<'a> {
 
         self.patch_room_basic(
             "Aqueduct",
-            vec![(1, 6, E, E, E, P, O), (3, 6, E, E, E, P, O)],
+            vec![(1, 2, E, E, E, P, O), (3, 2, E, E, E, P, O)],
         )?;
 
         self.patch_room_basic("West Aqueduct Quicksand Room", vec![(0, 1, W, W, E, P, O)])?;
@@ -1863,29 +1865,33 @@ impl<'a> MapPatcher<'a> {
         let dir = &door.direction;
         let x = door.x as isize;
         let y = door.y as isize;
-        if dir == "right" {
-            self.patch_room(
-                &self.game_data.room_geometry[room_idx].name,
-                vec![(x + 1, y, right_arrow_tile)],
-            )?;
-        } else if dir == "left" {
-            self.patch_room(
-                &self.game_data.room_geometry[room_idx].name,
-                vec![(x - 1, y, right_arrow_tile | FLIP_X)],
-            )?;
-        } else if dir == "down" {
-            self.patch_room(
-                &self.game_data.room_geometry[room_idx].name,
-                vec![(x, y + 1, down_arrow_tile)],
-            )?;
-        } else if dir == "up" {
-            self.patch_room(
-                &self.game_data.room_geometry[room_idx].name,
-                vec![(x, y - 1, down_arrow_tile | FLIP_Y)],
-            )?;
-        } else {
-            bail!("Unrecognized door direction: {dir}");
-        }
+
+        let coords = match dir.as_str() {
+            "right" => (x + 1, y),
+            "left" => (x - 1, y),
+            "down" => (x, y + 1),
+            "up" => (x, y - 1),
+            _ => bail!("Unrecognized door direction: {dir}")
+        };
+        let tile_word = match dir.as_str() {
+            "right" => right_arrow_tile,
+            "left" => right_arrow_tile | FLIP_X,
+            "down" => down_arrow_tile,
+            "up" => down_arrow_tile | FLIP_Y,
+            _ => bail!("Unrecognized door direction: {dir}")
+        };
+
+        self.patch_room(
+            &self.game_data.room_geometry[room_idx].name,
+            vec![(coords.0, coords.1, tile_word)],
+        )?;
+
+        let room = &self.game_data.room_geometry[room_idx];
+        let room_x = self.rom.read_u8(room.rom_address + 2)? as isize;
+        let room_y = self.rom.read_u8(room.rom_address + 3)? as isize;
+        let area_idx = self.map.area[room_idx];
+        self.transition_tile_coords.push((area_idx, room_x + coords.0, room_y + coords.1));
+
         Ok(())
     }
 
@@ -1898,29 +1904,23 @@ impl<'a> MapPatcher<'a> {
         let dir = &door.direction;
         let x = door.x as isize;
         let y = door.y as isize;
-        if dir == "right" {
-            self.patch_room(
-                &self.game_data.room_geometry[room_idx].name,
-                vec![(x + 1, y, letter_tile)],
-            )?;
-        } else if dir == "left" {
-            self.patch_room(
-                &self.game_data.room_geometry[room_idx].name,
-                vec![(x - 1, y, letter_tile)],
-            )?;
-        } else if dir == "down" {
-            self.patch_room(
-                &self.game_data.room_geometry[room_idx].name,
-                vec![(x, y + 1, letter_tile)],
-            )?;
-        } else if dir == "up" {
-            self.patch_room(
-                &self.game_data.room_geometry[room_idx].name,
-                vec![(x, y - 1, letter_tile)],
-            )?;
-        } else {
-            bail!("Unrecognized door direction: {dir}");
-        }
+        let coords = match dir.as_str() {
+            "right" => (x + 1, y),
+            "left" => (x - 1, y),
+            "down" => (x, y + 1),
+            "up" => (x, y - 1),
+            _ => bail!("Unrecognized door direction: {dir}")
+        };
+        self.patch_room(
+            &self.game_data.room_geometry[room_idx].name,
+            vec![(coords.0, coords.1, letter_tile)],
+        )?;
+
+        let room = &self.game_data.room_geometry[room_idx];
+        let room_x = self.rom.read_u8(room.rom_address + 2)? as isize;
+        let room_y = self.rom.read_u8(room.rom_address + 3)? as isize;
+        let area_idx = self.map.area[room_idx];
+        self.transition_tile_coords.push((area_idx, room_x + coords.0, room_y + coords.1));
         Ok(())
     }
 
@@ -1940,6 +1940,8 @@ impl<'a> MapPatcher<'a> {
             (6, rgb(29, 15, 0)),   // Tourian,
             (15, rgb(18, 12, 14)), // Gray door
             (7, rgb(27, 7, 18)),   // Red (pink) door
+            (12, rgb(0, 0, 0)),    // Black (door lock shadows covering wall)
+            (13, rgb(31, 31, 31)), // White (item dots)
         ];
         // Dotted grid lines
         let i = 12;
@@ -1952,6 +1954,15 @@ impl<'a> MapPatcher<'a> {
                 .write_u16(snes2pc(0xB6F000) + 2 * (0x20 + i as usize), color as isize)?;
             self.rom
                 .write_u16(snes2pc(0xB6F000) + 2 * (0x60 + i as usize), color as isize)?;
+        }
+
+        // In partially revealed palette, hide room interior, item dots, and door locks setting them all to black:
+        for i in [1, 2, 4, 6, 7, 13, 14, 15] {
+            self.rom.write_u16(snes2pc(0xB6F000) + 2 * (0x30 + i as usize), rgb(0, 0, 0) as isize)?;
+        }
+        // In partially revealed palette, show walls/passages (as gray), and eliminate the door lock shadows covering walls:
+        for i in [3, 12] {
+            self.rom.write_u16(snes2pc(0xB6F000) + 2 * (0x30 + i as usize), rgb(16, 16, 16) as isize)?;
         }
 
         // Set up arrows of different colors (one per area):
@@ -2145,28 +2156,51 @@ impl<'a> MapPatcher<'a> {
         Ok(())
     }
 
-    fn set_map_stations_explored(&mut self) -> Result<()> {
-        if self.randomization.difficulty.maps_revealed {
-            self.rom.write_n(snes2pc(0xB5F000), &vec![0xFF; 0x600])?;
-            self.rom.write_u16(snes2pc(0xB5F600), 0x003F)?;
-            return Ok(());
-        }
-        self.rom.write_n(snes2pc(0xB5F000), &vec![0; 0x600])?;
-        self.rom.write_u16(snes2pc(0xB5F600), 0x0000)?;
-        if !self.randomization.difficulty.mark_map_stations {
-            return Ok(());
-        }
-        for (room_idx, room) in self.game_data.room_geometry.iter().enumerate() {
-            if !room.name.contains(" Map Room") {
-                continue;
+    fn set_initial_map(&mut self) -> Result<()> {
+        let revealed_addr = snes2pc(0xB5F000);
+        let partially_revealed_addr = snes2pc(0xB5F800);
+        let area_seen_addr = snes2pc(0xB5F600);
+        match self.randomization.difficulty.maps_revealed {
+            MapsRevealed::Yes => {
+                self.rom.write_n(revealed_addr, &vec![0xFF; 0x600])?;  // whole map revealed bits: true
+                self.rom.write_n(partially_revealed_addr, &vec![0xFF; 0x600])?;  // whole map partially revealed bits: true
+                self.rom.write_u16(area_seen_addr, 0x003F)?;  // area seen bits: true (for pause map area switching)    
+            },
+            MapsRevealed::Partial => {
+                self.rom.write_n(revealed_addr, &vec![0; 0x600])?;  // whole map revealed bits: false
+                self.rom.write_n(partially_revealed_addr, &vec![0xFF; 0x600])?;  // whole map partially revealed bits: true
+                self.rom.write_u16(area_seen_addr, 0x003F)?;  // area seen bits: true (for pause map area switching)
+
+                // Show area-transition markers (arrows or letters) as revealed:
+                for &(area, x, y) in &self.transition_tile_coords {
+                    let (offset, bitmask) = xy_to_explored_bit_ptr(x, y);
+                    let ptr_revealed = revealed_addr + area * 0x100 + offset as usize;
+                    self.rom.write_u8(ptr_revealed, self.rom.read_u8(ptr_revealed)? | bitmask as isize)?;
+                }
+            },
+            MapsRevealed::No => {
+                self.rom.write_n(revealed_addr, &vec![0; 0x600])?;
+                self.rom.write_n(partially_revealed_addr, &vec![0; 0x600])?;
+                self.rom.write_u16(area_seen_addr, 0x0000)?;
             }
-            let area = self.map.area[room_idx];
-            let x = self.rom.read_u8(room.rom_address + 2)?;
-            let y = self.rom.read_u8(room.rom_address + 3)?;
-            let (offset, bitmask) = xy_to_explored_bit_ptr(x, y);
-            let base_ptr = 0xB5F000 + area * 0x100;
-            self.rom
-                .write_u8(snes2pc(base_ptr + offset as usize), bitmask as isize)?;
+        }
+
+        if self.randomization.difficulty.mark_map_stations {
+            for (room_idx, room) in self.game_data.room_geometry.iter().enumerate() {
+                if !room.name.contains(" Map Room") {
+                    continue;
+                }
+                let area = self.map.area[room_idx];
+                let x = self.rom.read_u8(room.rom_address + 2)?;
+                let y = self.rom.read_u8(room.rom_address + 3)?;
+                let (offset, bitmask) = xy_to_explored_bit_ptr(x, y);
+
+                let ptr_revealed = revealed_addr + area * 0x100 + offset as usize;
+                self.rom.write_u8(ptr_revealed, self.rom.read_u8(ptr_revealed)? | bitmask as isize)?;
+
+                let ptr_partial = partially_revealed_addr + area * 0x100 + offset as usize;
+                self.rom.write_u8(ptr_partial, self.rom.read_u8(ptr_partial)? | bitmask as isize)?;
+            }        
         }
         Ok(())
     }
@@ -2266,7 +2300,7 @@ impl<'a> MapPatcher<'a> {
                 ItemMarkers::ThreeTiered => {
                     if item.is_unique() {
                         Interior::MajorItem
-                    } else if item != Item::Missile || item != Item::ArchipelagoItem {
+                    } else if (item != Item::Missile && item != Item::Nothing) || item != Item::ArchipelagoItem{
                         Interior::MediumItem
                     } else {
                         Interior::Item
@@ -2276,7 +2310,9 @@ impl<'a> MapPatcher<'a> {
             basic_tile.interior = interior;
             let tile1 = self.get_basic_tile(basic_tile)?;
             self.area_data[area].push((item_idx, offset as TilemapOffset, tile1 | 0x0C00, interior));
-            if self.randomization.difficulty.item_dot_change == ItemDotChange::Fade {
+            if self.randomization.difficulty.ultra_low_qol {
+                self.rom.write_u16(base_ptr + offset, (tile1 | 0x0C00) as isize)?;
+            } else if self.randomization.difficulty.item_dot_change == ItemDotChange::Fade {
                 if interior == Interior::MajorItem
                     || (interior == Interior::MediumItem
                         && orig_basic_tile.interior != Interior::MajorItem)
@@ -2679,16 +2715,25 @@ impl<'a> MapPatcher<'a> {
         self.fix_elevators()?;
         self.fix_item_dots()?;
         self.fix_walls()?;
-        self.indicate_passages()?;
-        self.indicate_doors()?;
-        self.indicate_gray_doors()?;
-        self.indicate_sand()?;
-        self.indicate_heat()?;
-        self.indicate_special_tiles()?;
-        self.indicate_liquid()?;
-        self.indicate_locked_doors()?;
+        if !self.randomization.difficulty.ultra_low_qol {
+            self.indicate_passages()?;
+            self.indicate_doors()?;
+            self.indicate_gray_doors()?;
+            self.indicate_sand()?;
+            self.indicate_heat()?;
+            self.indicate_map_station_tiles()?;
+            self.indicate_refill_station_tiles()?;
+        } else {
+            // With Ultra-Low QoL, make Tourian Map Room show up as an item dot (like other map rooms) instead of as a save.
+            self.patch_room_basic("Tourian Map Room", vec![(0, 0, W, W, W, W, Interior::Item)])?;
+        }
+        self.indicate_objective_tiles()?;
+        if !self.randomization.difficulty.ultra_low_qol {
+            self.indicate_liquid()?;
+            self.indicate_locked_doors()?;
+        }
         self.add_cross_area_arrows()?;
-        self.set_map_stations_explored()?;
+        self.set_initial_map()?;
         self.indicate_major_items()?;
         self.write_map_tiles()?;
         self.write_hazard_tiles()?;

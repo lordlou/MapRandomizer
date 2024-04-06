@@ -19,6 +19,7 @@ parser = argparse.ArgumentParser(
 parser.add_argument('session_file')
 parser.add_argument('start_index')
 parser.add_argument('end_index')
+parser.add_argument('pool')
 args = parser.parse_args()
 
 logging.basicConfig(format='%(asctime)s %(message)s',
@@ -37,7 +38,6 @@ class CPU_Unpickler(pickle.Unpickler):
             return super().find_class(module, name)
 
 device = torch.device('cpu')
-session_name = 'session-2023-06-08T14:55:16.779895.pkl-small-71'
 
 session_name = args.session_file
 start_index = int(args.start_index)
@@ -49,19 +49,20 @@ mean_mc_dist = torch.mean(session.replay_buffer.episode_data.mc_distances.to(tor
 
 common_mask = (
     (session.replay_buffer.episode_data.reward == 0) &
-    (torch.mean(session.replay_buffer.episode_data.save_distances.to(torch.float), dim=1) < 4.00) &
+    session.replay_buffer.episode_data.toilet_good &
+    (torch.mean(session.replay_buffer.episode_data.save_distances.to(torch.float), dim=1) < 4.10) &
     (session.replay_buffer.episode_data.graph_diameter <= 45)
 )
 
 tame_ind = torch.nonzero(
     common_mask &
     (session.replay_buffer.episode_data.mc_dist_coef > 0.0) &
-    (max_mc_dist <= 12)
+    (max_mc_dist <= 13)
 )
 wild_ind = torch.nonzero(
     common_mask &
     (session.replay_buffer.episode_data.mc_dist_coef == 0.0) &
-    (max_mc_dist >= 18)
+    (max_mc_dist >= 22)
 )
 
 def print_summary(ind):
@@ -77,14 +78,22 @@ print_summary(tame_ind)
 print("--- Wild ---")
 print_summary(wild_ind)
 
-ind = tame_ind
+pool = args.pool
+if pool == "tame":
+    ind = tame_ind
+elif pool == "wild":
+    ind = wild_ind
+else:
+    print("Unrecognized pool " + pool)
 # ind = wild_ind
 logging.info("{} maps".format(ind.shape[0]))
 # os._exit(0)
 
-os.makedirs(f'maps/{session_name}', exist_ok=True)
+os.makedirs(f'maps/{session_name}-{pool}', exist_ok=True)
 episode_data_action = session.replay_buffer.episode_data.action[ind[start_index:end_index], :]
 del session
+
+toilet_idx = [i for i, room in enumerate(rooms) if room.name == "Toilet"][0]
 
 def get_map(ind_i):
     # num_rooms = len(session.envs[0].rooms)
@@ -97,12 +106,27 @@ def get_map(ind_i):
     doors_dict = {}
     doors_cnt = {}
     door_pairs = []
+    toilet_intersections = []
+    toilet_y = int(room_position_y[0, toilet_idx])
+    toilet_x = int(room_position_x[0, toilet_idx])
     for i, room in enumerate(rooms):
+        room_width = len(room.map[0])
+        room_height = len(room.map)
+        room_x = int(room_position_x[0, i])
+        room_y = int(room_position_y[0, i])
+        if i != toilet_idx:
+            rel_x = toilet_x - room_x
+            rel_y = toilet_y - room_y
+            if 0 <= rel_x < room_width:
+                for y in range(rel_y + 2, rel_y + 8):
+                    if 0 <= y < room_height and room.map[y][rel_x] == 1:
+                        toilet_intersections.append(i)
+                        break
         for door in room.door_ids:
-            x = int(room_position_x[0, i]) + door.x
+            x = room_x + door.x
             if door.direction == Direction.RIGHT:
                 x += 1
-            y = int(room_position_y[0, i]) + door.y
+            y = room_y + door.y
             if door.direction == Direction.DOWN:
                 y += 1
             vertical = door.direction in (Direction.DOWN, Direction.UP)
@@ -122,10 +146,12 @@ def get_map(ind_i):
                 doors_cnt[key] = 1
 
     assert all(x == 2 for x in doors_cnt.values())
+    assert len(toilet_intersections) == 1
     map = {
         'rooms': [[room_position_x[0, i].item(), room_position_y[0, i].item()]
                   for i in range(room_position_x.shape[1] - 1)],
-        'doors': door_pairs
+        'doors': door_pairs,
+        'toilet_intersections': toilet_intersections,
     }
     return map
 
@@ -152,6 +178,8 @@ for ind_i in range(start_index, end_index):
         src_room_id = door_room_dict[tuple(conn[0])]
         dst_room_id = door_room_dict[tuple(conn[1])]
         edges_list.append((src_room_id, dst_room_id))
+    for i in map['toilet_intersections']:
+        edges_list.append((toilet_idx, i))
 
     room_graph = graph_tool.Graph(directed=True)
     for (src, dst) in edges_list:
@@ -165,7 +193,8 @@ for ind_i in range(start_index, end_index):
         for (src, dst) in filtered_edges:
             subgraph.add_edge(src, dst)
         comp, hist = graph_tool.topology.label_components(subgraph)
-        return hist.shape[0] == 1
+        num_connected_components = hist.shape[0]
+        return num_connected_components == 1
 
     # Try to assign new areas to rooms in a way that makes areas as clustered as possible
     best_entropy = float('inf')
@@ -179,15 +208,23 @@ for ind_i in range(start_index, end_index):
         if e < best_entropy:
             u, block_id = np.unique(state.get_blocks().get_array(), return_inverse=True)
             assert len(u) == num_areas
+
+            invalid = False
+            # ensure that Toilet gets assigned to same area as its intersecting room
+            for i in map['toilet_intersections']:
+                if block_id[i] != block_id[toilet_idx]:
+                    invalid = True
+
+            # check each area to ensure it is connected and fits within the size constraints:
             for j in range(num_areas):
                 indj = np.where(block_id == j)[0]
                 x_range = np.max(xs_max[indj]) - np.min(xs_min[indj])
                 y_range = np.max(ys_max[indj]) - np.min(ys_min[indj])
-                if x_range > 60 or y_range > 29:
-                    break
+                if x_range > 58 or y_range > 28:
+                    invalid = True
                 if not check_connected(indj, edges_list):
-                    break
-            else:
+                    invalid = True
+            if not invalid:
                 print(i, e, best_entropy)
                 best_entropy = e
                 best_state = state
@@ -204,5 +241,5 @@ for ind_i in range(start_index, end_index):
     logging.info("Successful area assignment")
 
     map['area'] = area_arr.tolist()
-    filename = f'maps/{session_name}/{ind_i}.json'
+    filename = f'maps/{session_name}-{pool}/{ind_i}.json'
     json.dump(map, open(filename, 'w'))

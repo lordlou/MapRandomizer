@@ -1,16 +1,19 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use maprando::customize::{customize_rom, CustomizeSettings, MusicSettings, ControllerConfig};
+use log::info;
+use maprando::customize::{customize_rom, ControllerConfig, CustomizeSettings, MusicSettings};
 use maprando::game_data::{Item, Map};
 use maprando::patch::ips_write::create_ips_patch;
 use maprando::patch::Rom;
 use maprando::randomize::{
-    DebugOptions, ItemMarkers, ItemPlacementStyle, ItemPriorityGroup, MotherBrainFight, Objectives,
-    ProgressionRate, Randomization, Randomizer, ItemDotChange, DoorsMode, randomize_doors, SaveAnimals, AreaAssignment,
+    randomize_doors, AreaAssignment, DebugOptions, DoorsMode, ItemDotChange, ItemMarkers,
+    ItemPlacementStyle, ItemPriorityGroup, LockedDoor, MotherBrainFight, Objectives,
+    ProgressionRate, Randomization, Randomizer, SaveAnimals, StartLocationMode,
 };
 use maprando::spoiler_map;
-use maprando::web::{SamusSpriteInfo, SamusSpriteCategory};
+use maprando::web::{SamusSpriteCategory, SamusSpriteInfo};
 use maprando::{game_data::GameData, patch::make_rom, randomize::DifficultyConfig};
+use rand::{RngCore, SeedableRng};
 use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
@@ -19,7 +22,13 @@ struct Args {
     map: PathBuf,
 
     #[arg(long)]
+    random_seed: Option<usize>,
+
+    #[arg(long)]
     item_placement_seed: Option<usize>,
+
+    #[arg(long)]
+    max_attempts: Option<usize>,
 
     #[arg(long)]
     input_rom: PathBuf,
@@ -41,11 +50,6 @@ struct Args {
 }
 
 fn get_randomization(args: &Args, game_data: &GameData) -> Result<Randomization> {
-    let map_string = std::fs::read_to_string(&args.map)
-        .with_context(|| format!("Unable to read map file at {}", args.map.display()))?;
-    let map: Map = serde_json::from_str(&map_string)
-        .with_context(|| format!("Unable to parse map file at {}", args.map.display()))?;
-
     // let ignored_tech: Vec<String> = ["canWallIceClip", "canGrappleClip", "canUseSpeedEchoes"].iter().map(|x| x.to_string()).collect();
     // let tech: Vec<String> = game_data.tech_isv.keys.iter().filter(|&x| !ignored_tech.contains(&x)).cloned().collect();
     // let tech: Vec<String> = vec![
@@ -122,9 +126,28 @@ fn get_randomization(args: &Args, game_data: &GameData) -> Result<Randomization>
         notable_strats: vec![],
         // tech,
         shine_charge_tiles: 16.0,
-        // shine_charge_tiles: 32,
+        heated_shine_charge_tiles: 16.0,
+        shinecharge_leniency_frames: 15,
         progression_rate: ProgressionRate::Fast,
         random_tank: true,
+        spazer_before_plasma: true,
+        stop_item_placement_early: false,
+        item_pool: vec![],
+        starting_items: vec![
+            (Item::Gravity, 1),
+            (Item::Varia, 1),
+            (Item::Morph, 1),
+            (Item::Missile, 1),
+            (Item::Super, 1),
+            (Item::PowerBomb, 1),
+            (Item::SpeedBooster, 1),
+            (Item::SpaceJump, 1),
+            (Item::ScrewAttack, 1),
+            (Item::HiJump, 1),
+            (Item::Grapple, 1),
+            (Item::ETank, 1),
+            (Item::ReserveTank, 1),
+        ],
         semi_filler_items: vec![],
         filler_items: vec![Item::Missile],
         early_filler_items: vec![],
@@ -153,12 +176,14 @@ fn get_randomization(args: &Args, game_data: &GameData) -> Result<Randomization>
         draygon_proficiency: 1.0,
         ridley_proficiency: 1.0,
         botwoon_proficiency: 1.0,
+        mother_brain_proficiency: 1.0,
         supers_double: true,
         mother_brain_fight: MotherBrainFight::Skip,
         escape_enemies_cleared: true,
         escape_refill: true,
         escape_movement_items: true,
         mark_map_stations: true,
+        room_outline_revealed: true,
         transition_letters: true,
         item_markers: ItemMarkers::ThreeTiered,
         item_dot_change: ItemDotChange::Fade,
@@ -174,41 +199,119 @@ fn get_randomization(args: &Args, game_data: &GameData) -> Result<Randomization>
         objectives: Objectives::Pirates,
         // objectives: Objectives::Bosses,
         doors_mode: DoorsMode::Ammo,
-        randomized_start: false,
+        start_location_mode: StartLocationMode::Ship,
         save_animals: SaveAnimals::No,
         area_assignment: AreaAssignment::Standard,
         early_save: false,
-        wall_jump: maprando::randomize::WallJump::Collectible,
+        wall_jump: maprando::randomize::WallJump::Vanilla,
         etank_refill: maprando::randomize::EtankRefill::Vanilla,
-        maps_revealed: true,
+        maps_revealed: maprando::randomize::MapsRevealed::Yes,
+        energy_free_shinesparks: false,
         vanilla_map: false,
         ultra_low_qol: false,
         skill_assumptions_preset: Some("None".to_string()),
         item_progression_preset: Some("None".to_string()),
         quality_of_life_preset: Some("None".to_string()),
-        debug_options: Some(DebugOptions {
-            new_game_extra: true,
-            extended_spoiler: true,
-        }),
+        debug_options: None,
+        // debug_options: Some(DebugOptions {
+        //     new_game_extra: true,
+        //     extended_spoiler: true,
+        // }),
     };
+    let mut single_map: Option<Map>;
+    let mut filenames: Vec<String> = Vec::new();
+    if args.map.is_dir() {
+        for path in std::fs::read_dir(&args.map)
+            .with_context(|| format!("Unable to read maps in directory {}", args.map.display()))?
+        {
+            filenames.push(path?.file_name().into_string().unwrap());
+        }
+        filenames.sort();
+        info!(
+            "{} maps available ({})",
+            filenames.len(),
+            args.map.display()
+        );
+        single_map = None;
+    } else {
+        let map_string = std::fs::read_to_string(&args.map)
+            .with_context(|| format!("Unable to read map file at {}", args.map.display()))?;
+        single_map = Some(
+            serde_json::from_str(&map_string)
+                .with_context(|| format!("Unable to parse map file at {}", args.map.display()))?,
+        );
+    }
     let difficulty_tiers = [difficulty];
+    let root_seed = match args.random_seed {
+        Some(s) => s,
+        None => (rand::rngs::StdRng::from_entropy().next_u64() & 0xFFFFFFFF) as usize,
+    };
+    let mut rng_seed = [0u8; 32];
+    rng_seed[..8].copy_from_slice(&root_seed.to_le_bytes());
+    rng_seed[9] = 0; // Not race-mode
+    let mut rng = rand::rngs::StdRng::from_seed(rng_seed);
     let max_attempts = if args.item_placement_seed.is_some() {
         1
     } else {
-        10
+        match args.max_attempts {
+            Some(ma) => ma,
+            None => 10000, // Same as maprando-web.
+        }
     };
-    for attempt_num in 0..max_attempts {
-        let seed = match args.item_placement_seed {
-            Some(s) => s,
-            None => attempt_num,
-        };
-        let locked_doors = randomize_doors(game_data, &map, &difficulty_tiers[0], seed);
-        let randomizer = Randomizer::new(&map, &locked_doors, &difficulty_tiers, &game_data,
-            &game_data.base_links_data, &game_data.seed_links);
-        if let Ok(randomization) = randomizer.randomize(attempt_num, seed, 1) {
-            return Ok(randomization);
+    let max_attempts_per_map =
+        if difficulty_tiers[0].start_location_mode == StartLocationMode::Random {
+            10
         } else {
-            println!("Failed randomization attempt");
+            1
+        };
+    let max_map_attempts = max_attempts / max_attempts_per_map;
+    let mut attempt_num = 0;
+    for _ in 0..max_map_attempts {
+        let map_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
+        let map = match single_map {
+            Some(ref m) => m.clone(),
+            None => {
+                let idx = map_seed % filenames.len();
+                let path = args.map.join(&filenames[idx]);
+                let map_string = std::fs::read_to_string(&path)
+                    .with_context(|| format!("Unable to read map file at {}", path.display()))?;
+                info!("[attempt {attempt_num}] Map: {}", path.display());
+                serde_json::from_str(&map_string).with_context(|| {
+                    format!("Unable to parse map file at {}", args.map.display())
+                })?
+            }
+        };
+        let door_seed = match args.item_placement_seed {
+            Some(s) => s,
+            None => (rng.next_u64() & 0xFFFFFFFF) as usize,
+        };
+        let locked_doors = randomize_doors(game_data, &map, &difficulty_tiers[0], door_seed);
+        let randomizer = Randomizer::new(
+            &map,
+            &locked_doors,
+            &difficulty_tiers,
+            &game_data,
+            &game_data.base_links_data,
+            &game_data.seed_links,
+        );
+        for _ in 0..max_attempts_per_map {
+            attempt_num += 1;
+            let item_seed = match args.item_placement_seed {
+                Some(s) => s,
+                None => (rng.next_u64() & 0xFFFFFFFF) as usize,
+            };
+            info!("Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_seed}, item placement seed={item_seed}");
+            match randomizer.randomize(attempt_num, item_seed, 1) {
+                Ok(randomization) => {
+                    return Ok(randomization);
+                }
+                Err(e) => {
+                    info!(
+                        "Attempt {attempt_num}/{max_attempts}: Randomization failed: {}",
+                        e
+                    );
+                }
+            }
         }
     }
     bail!("Exhausted randomization attempts");
@@ -240,13 +343,21 @@ fn main() -> Result<()> {
     )?;
 
     // Perform randomization (map selection & item placement):
-    let randomization = get_randomization(&args, &game_data)?;
+    let mut randomization = get_randomization(&args, &game_data)?;
+
+    // Override locked doors:
+    //randomization.locked_doors.push(LockedDoor {
+    //    src_ptr_pair: (Some(0x19012), Some(0x18F52)),
+    //    dst_ptr_pair: (Some(0x18F52), Some(0x19012)),
+    //    door_type: maprando::randomize::DoorType::Yellow,
+    //    bidirectional: true });
 
     // Override start location:
     // randomization.start_location = game_data.start_locations.last().unwrap().clone();
 
     // Generate the patched ROM:
-    let mut input_rom = Rom::load(&args.input_rom)?;
+    let orig_rom = Rom::load(&args.input_rom)?;
+    let mut input_rom = orig_rom.clone();
     input_rom.data.resize(0x400000, 0);
     let game_rom = make_rom(&input_rom, &randomization, &game_data)?;
     let ips_patch = create_ips_patch(&input_rom.data, &game_rom.data);
@@ -258,26 +369,31 @@ fn main() -> Result<()> {
         etank_color: None,
         reserve_hud_style: true,
         vanilla_screw_attack_animation: true,
-        area_theming: maprando::customize::AreaTheming::Tiles("OuterCrateria".to_string()),
+        palette_theme: maprando::customize::PaletteTheme::AreaThemed,
+        tile_theme: maprando::customize::TileTheme::Constant("OuterCrateria".to_string()),
         music: MusicSettings::AreaThemed,
         // music: MusicSettings::Vanilla,
         disable_beeping: false,
         shaking: maprando::customize::ShakingSetting::Vanilla,
-        controller_config: ControllerConfig::default(),        
+        controller_config: ControllerConfig::default(),
     };
-    customize_rom(&mut output_rom, &ips_patch, &customize_settings, &game_data, &[
-        SamusSpriteCategory {
+    customize_rom(
+        &mut output_rom,
+        &orig_rom,
+        &ips_patch,
+        &customize_settings,
+        &game_data,
+        &[SamusSpriteCategory {
             category_name: "category".to_string(),
-            sprites: vec![
-                SamusSpriteInfo {
-                    name: "samus".to_string(),
-                    display_name: "Samus".to_string(),
-                    credits_name: None,
-                    authors: vec!["Nintendo".to_string()],
-                }
-            ]
-        }
-    ])?;
+            sprites: vec![SamusSpriteInfo {
+                name: "samus".to_string(),
+                display_name: "Samus".to_string(),
+                credits_name: None,
+                authors: vec!["Nintendo".to_string()],
+            }],
+        }],
+        &vec![],
+    )?;
 
     // Save the outputs:
     if let Some(output_rom_path) = &args.output_rom {
