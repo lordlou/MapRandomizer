@@ -390,6 +390,7 @@ fn get_difficulty_config(preset: &PresetData) -> DifficultyConfig {
         area_assignment: AreaAssignment::Standard,
         wall_jump: WallJump::Vanilla,
         etank_refill: EtankRefill::Vanilla,
+        map_layout: 0,
         maps_revealed: MapsRevealed::Yes,
         vanilla_map: false,
         ultra_low_qol: false,

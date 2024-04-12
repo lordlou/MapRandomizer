@@ -4,6 +4,7 @@ pub mod randomize;
 pub mod patch;
 pub mod spoiler_map;
 pub mod seed_repository;
+pub mod web;
 pub mod customize;
 
 use game_data::{StartLocation, HubLocation, LinksDataGroup};
@@ -13,10 +14,7 @@ use rand::{SeedableRng, RngCore};
 use randomize::{Randomization, SpoilerLog, escape_timer, randomize_doors, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers, RandomizationState, ItemLocationState, FlagLocationState, SaveLocationState, MotherBrainFight, SpoilerSummary, SpoilerItemSummary, SpoilerLocation, SpoilerFlagSummary};
 use traverse::TraverseResult;
 use crate::{
-    game_data::{GameData, Map, IndexedVec, Item, NodeId, RoomId, ObstacleMask},
-    randomize::{Randomizer, DifficultyConfig, VertexInfo, SaveAnimals},
-    traverse::{GlobalState, LocalState, traverse, get_bireachable_idxs},
-    patch::make_rom,
+    game_data::{GameData, IndexedVec, Item, Map, NodeId, ObstacleMask, RoomId}, patch::make_rom, randomize::{DifficultyConfig, Randomizer, SaveAnimals, StartLocationMode, VertexInfo}, traverse::{get_bireachable_idxs, traverse, GlobalState, LocalState}
 };
 use std::{path::{Path, PathBuf}, mem::transmute};
 use reqwest::blocking::get;
@@ -31,6 +29,8 @@ struct Preset {
     #[pyo3(get)]
     name: String,
     shinespark_tiles: usize,
+    heated_shinespark_tiles: usize,
+    shinecharge_leniency_frames: i32,
     resource_multiplier: f32,
     escape_timer_multiplier: f32,
     gate_glitch_leniency: i32,
@@ -39,6 +39,7 @@ struct Preset {
     draygon_proficiency: f32,
     ridley_proficiency: f32,
     botwoon_proficiency: f32,
+    mother_brain_proficiency: f32,
     #[pyo3(get)]
     tech: Vec<String>,
     #[pyo3(get)]
@@ -206,6 +207,10 @@ pub struct Options {
     #[pyo3(get, set)]
     shinespark_tiles: usize,
     #[pyo3(get, set)]
+    heated_shinespark_tiles: usize,
+    #[pyo3(get, set)]
+    shinecharge_leniency_frames: i32,
+    #[pyo3(get, set)]
     resource_multiplier: f32,
     #[pyo3(get, set)]
     gate_glitch_leniency: i32,
@@ -220,9 +225,11 @@ pub struct Options {
     #[pyo3(get, set)]
     botwoon_proficiency: f32,
     #[pyo3(get, set)]
+    mother_brain_proficiency: f32,
+    #[pyo3(get, set)]
     escape_timer_multiplier: f32,
     #[pyo3(get, set)]
-    randomized_start: bool,
+    start_location_mode: u8,
     #[pyo3(get, set)]
     save_animals: u8,
     #[pyo3(get, set)]
@@ -247,6 +254,8 @@ pub struct Options {
     escape_movement_items: bool,
     #[pyo3(get, set)]
     mark_map_stations: bool,
+    #[pyo3(get, set)]
+    room_outline_revealed: bool,
     #[pyo3(get, set)]
     transition_letters: bool, 
     #[pyo3(get, set)]
@@ -276,9 +285,11 @@ pub struct Options {
     #[pyo3(get, set)]
     etank_refill: usize,
     #[pyo3(get, set)]
-    maps_revealed: bool,
+    maps_revealed: u8,
     #[pyo3(get, set)]
     map_layout: usize,
+    #[pyo3(get, set)]
+    energy_free_shinesparks: bool,
     #[pyo3(get, set)]
     ultra_low_qol: bool,
     #[pyo3(get, set)]
@@ -296,6 +307,8 @@ impl Options{
                 techs: Vec<String>,
                 strats: Vec<String>,
                 shinespark_tiles: usize,
+                heated_shinespark_tiles: usize,
+                shinecharge_leniency_frames: i32,
                 resource_multiplier: f32,
                 gate_glitch_leniency: i32,
                 door_stuck_leniency: i32,
@@ -303,8 +316,9 @@ impl Options{
                 draygon_proficiency: f32,
                 ridley_proficiency: f32,
                 botwoon_proficiency: f32,
+                mother_brain_proficiency: f32,
                 escape_timer_multiplier: f32,
-                randomized_start: bool,
+                start_location_mode: u8,
                 save_animals: u8,
                 early_save: bool,
                 objectives: u8,
@@ -317,6 +331,7 @@ impl Options{
                 escape_refill: bool,
                 escape_movement_items: bool,
                 mark_map_stations: bool,
+                room_outline_revealed: bool,
                 transition_letters: bool,
                 item_markers: u8,
                 item_dots_disappear: bool,
@@ -331,8 +346,9 @@ impl Options{
                 momentum_conservation: bool,
                 wall_jump: usize,
                 etank_refill: usize,
-                maps_revealed: bool,
+                maps_revealed: u8,
                 map_layout: usize,
+                energy_free_shinesparks: bool,
                 ultra_low_qol: bool,
                 skill_assumptions_preset: String,
                 item_progression_preset: String,
@@ -342,6 +358,8 @@ impl Options{
             techs,
             strats,
             shinespark_tiles,
+            heated_shinespark_tiles,
+            shinecharge_leniency_frames,
             resource_multiplier,
             gate_glitch_leniency,
             door_stuck_leniency,
@@ -349,8 +367,9 @@ impl Options{
             draygon_proficiency,
             ridley_proficiency,
             botwoon_proficiency,
+            mother_brain_proficiency,
             escape_timer_multiplier,
-            randomized_start,
+            start_location_mode,
             save_animals,
             early_save,
             objectives,
@@ -363,6 +382,7 @@ impl Options{
             escape_refill,
             escape_movement_items,
             mark_map_stations,
+            room_outline_revealed,
             transition_letters,
             item_markers,
             item_dots_disappear,
@@ -379,6 +399,7 @@ impl Options{
             etank_refill,
             maps_revealed,
             map_layout,
+            energy_free_shinesparks,
             ultra_low_qol,
             skill_assumptions_preset,
             item_progression_preset,
@@ -503,6 +524,7 @@ impl APCollectionState{
             difficulty_tier: None,
         };
         let initial_flag_location_state = FlagLocationState {
+            reachable: false,
             bireachable: false,
             bireachable_vertex_id: None,
         };
@@ -524,6 +546,7 @@ impl APCollectionState{
                         max_power_bombs: 0,
                         weapon_mask: weapon_mask,
                         shine_charge_tiles: rando.difficulty_tiers[0].shine_charge_tiles,
+                        heated_shine_charge_tiles: rando.difficulty_tiers[0].heated_shine_charge_tiles,
                     }
                 },
             None => GlobalState {
@@ -538,6 +561,7 @@ impl APCollectionState{
                 max_power_bombs: 0,
                 weapon_mask: 0,
                 shine_charge_tiles: 0.0,
+                heated_shine_charge_tiles: 0.0,
             },
         };
         let randomizer = &ap_randomizer.as_ref().unwrap().randomizer;
@@ -654,14 +678,17 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         preset = Preset {
             name: pd.preset.name,
             shinespark_tiles: pd.preset.shinespark_tiles,
+            heated_shinespark_tiles: pd.preset.heated_shinespark_tiles,
             resource_multiplier: pd.preset.resource_multiplier,
             escape_timer_multiplier: pd.preset.escape_timer_multiplier,
+            shinecharge_leniency_frames: pd.preset.shinecharge_leniency_frames,
             gate_glitch_leniency: pd.preset.gate_glitch_leniency,
             door_stuck_leniency: pd.preset.door_stuck_leniency,
             phantoon_proficiency: pd.preset.phantoon_proficiency,
             draygon_proficiency: pd.preset.draygon_proficiency,
             ridley_proficiency: pd.preset.ridley_proficiency,
             botwoon_proficiency: pd.preset.botwoon_proficiency,
+            mother_brain_proficiency: pd.preset.mother_brain_proficiency,
             tech: tech_vec,
             notable_strats: strat_vec,
         }
@@ -670,14 +697,17 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         preset = Preset {
             name: "Custom".to_string(),
             shinespark_tiles: options.shinespark_tiles,
+            heated_shinespark_tiles: options.heated_shinespark_tiles,
             resource_multiplier: options.resource_multiplier,
             escape_timer_multiplier: options.escape_timer_multiplier,
+            shinecharge_leniency_frames: options.shinecharge_leniency_frames,
             gate_glitch_leniency: options.gate_glitch_leniency,
             door_stuck_leniency: options.door_stuck_leniency,
             phantoon_proficiency: options.phantoon_proficiency,
             draygon_proficiency: options.draygon_proficiency,
             ridley_proficiency: options.ridley_proficiency,
             botwoon_proficiency: options.botwoon_proficiency,
+            mother_brain_proficiency: options.mother_brain_proficiency,
             tech: options.techs.clone(),
             notable_strats: options.strats.clone(),
             }
@@ -696,8 +726,14 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         tech: preset.tech,
         notable_strats: preset.notable_strats,
         shine_charge_tiles: preset.shinespark_tiles as f32,
+        heated_shine_charge_tiles: preset.heated_shinespark_tiles as f32,
+        shinecharge_leniency_frames:  preset.shinecharge_leniency_frames,
         progression_rate: randomize::ProgressionRate::Uniform,
         random_tank: true,
+        spazer_before_plasma: false,
+        stop_item_placement_early: false,
+        item_pool: vec![],
+        starting_items: vec![],
         semi_filler_items: vec![],
         filler_items: vec![Item::Missile],
         early_filler_items: vec![],
@@ -710,7 +746,12 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         gate_glitch_leniency: preset.gate_glitch_leniency,
         door_stuck_leniency: preset.door_stuck_leniency,
         escape_timer_multiplier: preset.escape_timer_multiplier,
-        randomized_start: options.randomized_start,
+        start_location_mode: match options.start_location_mode {
+            0 => StartLocationMode::Ship,
+            1 => StartLocationMode::Random,
+            2 => StartLocationMode::Escape,
+            _ => panic!("Unrecognized start_location_mode: {}", options.start_location_mode)
+        },
         save_animals: match options.save_animals {
             0 => SaveAnimals::No,
             1 => SaveAnimals::Maybe,
@@ -722,6 +763,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         draygon_proficiency: preset.draygon_proficiency,
         ridley_proficiency: preset.ridley_proficiency,
         botwoon_proficiency: preset.botwoon_proficiency,
+        mother_brain_proficiency: preset.mother_brain_proficiency,
         supers_double: match qol_preset {
             0 => false,
             1 => true,
@@ -770,6 +812,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             4 => options.mark_map_stations,
             _ => panic!("Unrecognized quality_of_life_preset: {}", qol_preset)
         },
+        room_outline_revealed: options.room_outline_revealed,
         transition_letters: options.transition_letters,
         item_markers: match qol_preset {
             0 => ItemMarkers::Simple,
@@ -876,7 +919,6 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         wall_jump: match options.wall_jump {
             0 => randomize::WallJump::Vanilla,
             1 => randomize::WallJump::Collectible,
-            2 => randomize::WallJump::Disabled,
             _ => panic!("Unrecognized doors_mode: {}", options.doors_mode)
         },
         etank_refill: match options.etank_refill {
@@ -885,8 +927,15 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             2 => randomize::EtankRefill::Full,
             _ => panic!("Unrecognized doors_mode: {}", options.doors_mode)
         },
-        maps_revealed: options.maps_revealed,
+        maps_revealed: match options.maps_revealed {
+            0 => randomize::MapsRevealed::No,
+            1 => randomize::MapsRevealed::Partial,
+            2 => randomize::MapsRevealed::Yes,
+            _ => panic!("Unrecognized maps_revealed: {}", options.maps_revealed)
+        },
         map_layout: options.map_layout,
+        vanilla_map: options.map_layout == 0,
+        energy_free_shinesparks: options.energy_free_shinesparks,
         ultra_low_qol: options.ultra_low_qol,
         skill_assumptions_preset: Some("".to_string()/*options.skill_assumptions_preset*/),
         item_progression_preset: Some("".to_string()/*options.item_progression_preset*/),
@@ -948,7 +997,7 @@ impl APRandomizer{
 
         let mut randomizer = Randomizer::new(Box::new(map), Box::new(locked_doors.clone()), Box::new(difficulty_tiers.clone()), Box::new(game_data.clone()), Box::new(game_data.base_links_data.clone()), Box::new(game_data.seed_links.clone()));
         
-        if diff_settings.map_layout != 0 && !diff_settings.randomized_start {
+        if diff_settings.map_layout != 0 && diff_settings.start_location_mode != StartLocationMode::Ship {
             let mut items_reachable = 0;
             let mut rng = {
                 let mut rng_seed = [0u8; 32];
@@ -972,6 +1021,7 @@ impl APRandomizer{
                     max_power_bombs: 0,
                     weapon_mask: weapon_mask,
                     shine_charge_tiles: randomizer.difficulty_tiers[0].shine_charge_tiles,
+                    heated_shine_charge_tiles: randomizer.difficulty_tiers[0].heated_shine_charge_tiles,
                 };
                 let forward = traverse(
                     &randomizer.base_links_data,
@@ -1371,12 +1421,14 @@ fn patch_rom(
     let randomization = Randomization {
         difficulty: randomizer.difficulty_tiers[0].clone(),
         map: *randomizer.map.clone(),
+        toilet_intersections: (*randomizer.toilet_intersections.clone()).to_vec(),
         locked_doors: randomizer.locked_doors.to_vec(),
         item_placement: item_placement,
         spoiler_log: spoiler_log,
         seed: ap_randomizer.seed,
         display_seed: ap_randomizer.seed,
         start_location: state.start_location.clone(),
+        starting_items: randomizer.difficulty_tiers[0].starting_items.clone(),
     };
     make_rom(&base_rom, &randomization, &randomizer.game_data).unwrap().data
 }

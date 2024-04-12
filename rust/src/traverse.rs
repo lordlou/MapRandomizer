@@ -1680,7 +1680,7 @@ pub fn get_spoiler_route(
     vertex_id: usize,
     cost_idx: usize,
 ) -> Vec<LinkIdx> {
-    let mut trail_id = traverse_result.start_trail_ids[vertex_id][cost_idx];
+    let mut trail_id = traverse_result.start_trail_ids[vertex_id][cost_idx].unwrap();
     let mut steps: Vec<LinkIdx> = Vec::new();
     while trail_id != -1 {
         let step_trail = &traverse_result.step_trails[trail_id as usize];

@@ -300,6 +300,7 @@ impl Requirement {
     }
 }
 
+#[pyclass]
 #[derive(Clone, Debug)]
 pub struct Link {
     #[pyo3(get)]

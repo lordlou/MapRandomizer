@@ -211,6 +211,7 @@ pub struct DifficultyConfig {
     pub area_assignment: AreaAssignment,
     pub wall_jump: WallJump,
     pub etank_refill: EtankRefill,
+    pub map_layout: usize,
     pub maps_revealed: MapsRevealed,
     pub energy_free_shinesparks: bool,
     pub vanilla_map: bool,
@@ -2141,7 +2142,7 @@ impl Randomizer {
             initial_items_remaining[item as usize] = cnt;
         }
 
-        ensure_enough_tanks(&mut initial_items_remaining, game_data, &difficulty_tiers[0]);
+        ensure_enough_tanks(&mut initial_items_remaining, game_data.as_ref(), &difficulty_tiers[0]);
 
         if initial_items_remaining.iter().sum::<usize>() > game_data.item_locations.len() {
             initial_items_remaining[Item::Missile as usize] -= initial_items_remaining.iter().sum::<usize>() - game_data.item_locations.len();
@@ -2154,7 +2155,7 @@ impl Randomizer {
         assert!(initial_items_remaining.iter().sum::<usize>() <= game_data.item_locations.len());
         initial_items_remaining[Item::Nothing as usize] = game_data.item_locations.len() - initial_items_remaining.iter().sum::<usize>();
 
-        let toilet_intersections = Self::get_toilet_intersections(map, game_data);
+        let toilet_intersections = Self::get_toilet_intersections(map.as_ref(), game_data.as_ref());
 
         //let map = Box::new(*map);
         //let locked_doors = Box::new(*locked_doors);
@@ -3431,7 +3432,7 @@ impl Randomizer {
         };
         for &(item, cnt) in &self.difficulty_tiers[0].starting_items {
             for _ in 0..cnt {
-                global.collect(item, self.game_data);
+                global.collect(item, self.game_data.as_ref());
             }
         }
         global
@@ -3441,7 +3442,7 @@ impl Randomizer {
         // For the "Escape" start location mode, item placement is irrelevant since you start
         // with all items collected.
         let spoiler_escape =
-            escape_timer::compute_escape_data(self.game_data, self.map, &self.difficulty_tiers[0])?;
+            escape_timer::compute_escape_data(self.game_data.as_ref(), self.map.as_ref(), &self.difficulty_tiers[0])?;
             let spoiler_all_rooms = self
             .map
             .rooms
@@ -3500,7 +3501,7 @@ impl Randomizer {
         };
         Ok(Randomization {
             difficulty: self.difficulty_tiers[0].clone(),
-            map: self.map.clone(),
+            map: (*self.map).clone(),
             toilet_intersections: self.toilet_intersections.clone(),
             locked_doors: self.locked_doors.to_vec(),
             item_placement: vec![Item::Nothing; 100],
@@ -4172,9 +4173,14 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         notable_strats: vec![],
         // tech,
         shine_charge_tiles: 16.0,
-        // shine_charge_tiles: 32,
+        heated_shine_charge_tiles: 16.0, 
+        shinecharge_leniency_frames: 15,
         progression_rate: ProgressionRate::Slow,
         random_tank: true,
+        spazer_before_plasma: true,
+        stop_item_placement_early: false,
+        item_pool: vec![],
+        starting_items: vec![],
         semi_filler_items: vec![],
         filler_items: vec![Item::Missile],
         early_filler_items: vec![],
@@ -4197,12 +4203,14 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         draygon_proficiency: 1.0,
         ridley_proficiency: 1.0,
         botwoon_proficiency: 1.0,
+        mother_brain_proficiency: 1.0,
         supers_double: true,
         mother_brain_fight: MotherBrainFight::Short,
         escape_enemies_cleared: true,
         escape_refill: true,
         escape_movement_items: true,
         mark_map_stations: true,
+        room_outline_revealed: true,
         transition_letters: false,
         item_markers: ItemMarkers::ThreeTiered,
         item_dot_change: ItemDotChange::Disappear,
@@ -4217,14 +4225,16 @@ pub fn get_difficulty_config(game_data: &GameData) -> DifficultyConfig {
         momentum_conservation: false,
         objectives: Objectives::Bosses,
         doors_mode: DoorsMode::Blue,
-        randomized_start: false,
+        start_location_mode: StartLocationMode::Ship,
         save_animals: SaveAnimals::No,
         early_save: false,
         area_assignment: AreaAssignment::Standard,
-        wall_jump: WallJump::Collectible,
+        wall_jump: WallJump::Vanilla,
         etank_refill: EtankRefill::Vanilla,
-        maps_revealed: true,
         map_layout: 0,
+        maps_revealed: MapsRevealed::Yes,
+        energy_free_shinesparks: false,
+        vanilla_map: false,
         ultra_low_qol: false,
         skill_assumptions_preset: Some("None".to_string()),
         item_progression_preset: Some("None".to_string()),
