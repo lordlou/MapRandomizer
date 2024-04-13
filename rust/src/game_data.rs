@@ -2035,6 +2035,10 @@ impl GameData {
             self.sm_json_data_path.to_str().unwrap().to_string() + "/region/**/*.json";
         let files = self.glob_filepaths(region_pattern.as_str(), "/region/", "json");
         for entry in files {
+            let entry_str = entry.to_str().unwrap();
+            if entry_str.contains("ceres") || entry_str.contains("roomDiagrams") {
+                continue;
+            }
                 let room_json = self.read_json(entry.as_path())?;
                 let room_name = room_json["name"].clone();
                 let preprocessed_room_json = self

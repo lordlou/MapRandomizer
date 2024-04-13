@@ -71,11 +71,7 @@ fn init_presets(
 
     // Tech which is currently not used by any strat in logic, so we avoid showing on the website:
     let ignored_tech: HashSet<String> = [
-        "canShinesparkWithReserve",
         "canRiskPermanentLossOfAccess",
-        "canIceZebetitesSkip",
-        "canSpeedZebetitesSkip",
-        "canRemorphZebetiteSkip",
         "canEscapeMorphLocation", // Special internal tech for "vanilla map" option
     ]
     .iter()
