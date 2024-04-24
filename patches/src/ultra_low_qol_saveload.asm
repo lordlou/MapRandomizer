@@ -3,6 +3,9 @@
 arch snes.cpu
 LoRom
 
+; see AP's Basepatch multiworld.asm
+!ReceiveQueueCompletedCount_InRamThatGetsSavedToSaveSlot = $7ed8ae
+!SRAM_MW_ITEMS_RECV_WCOUNT = $702606
 
 org $819A47		;Fix File Copy for the new SRAM files
 	LDA.l SRAMAddressTable,X : Skip 7 : LDA.l SRAMAddressTable,X : Skip 11 : CPY #$0A00
@@ -55,6 +58,8 @@ LoadItems: LDA $D7C0,Y : STA $09A2,Y : DEY : DEY : BPL LoadItems		;Loads current
 	LDA $D916 : STA $078B		;Current save for the area
 	LDA $D918 : STA $079F		;Current Area
     LDA $7EFE00 : STA $1F5B     ;Current Map-area
+	lda.l !ReceiveQueueCompletedCount_InRamThatGetsSavedToSaveSlot
+    sta.l !SRAM_MW_ITEMS_RECV_WCOUNT
 	PLY : PLX : PLB : PLP : CLC : RTL
 SetupClearSRAM: LDX $16 : LDY #$09FE : LDA #$0000
 ClearSRAM: STA $700000,X : INX : INX : DEY : DEY : BPL ClearSRAM

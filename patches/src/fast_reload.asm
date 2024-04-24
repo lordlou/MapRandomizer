@@ -141,7 +141,7 @@ org !spin_lock_button_combo
     dw $0870
 
 org !reload_button_combo
-    dw $0303  ; L + R + Select + Start  (overridable by the customizer)
+    dw $3030  ; L + R + Select + Start  (overridable by the customizer)
 
 ; Hook setting up game
 org $80a088

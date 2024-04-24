@@ -973,11 +973,11 @@ impl APRandomizer{
 
         let (map_repo_filename, map_repo_url) = if difficulty_tiers[0].map_layout == 1 { 
             ("worlds/sm_map_rando/data/mapRepositoryTame.json",
-            "https://storage.googleapis.com/super-metroid-map-rando/maps/session-2023-06-08T14:55:16.779895.pkl-small-71-subarea-balance-2/")
+            "https://storage.googleapis.com/super-metroid-map-rando/maps/v110c-tame/")
         }
         else {
             ("worlds/sm_map_rando/data/mapRepositoryWild.json",
-            "https://storage.googleapis.com/super-metroid-map-rando/maps/session-2023-06-08T14:55:16.779895.pkl-small-64-subarea-balance-2/")
+            "https://storage.googleapis.com/super-metroid-map-rando/maps/v110c-wild/")
         };
 
         let binding = get_map_repository(game_data, map_repo_filename).unwrap();
