@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::{
-    game_data::{DoorPtr, GameData, RoomPtr, RoomStateIdx},
+    game_data::{self, DoorPtr, GameData, RoomPtr, RoomStateIdx},
     patch::{self, apply_ips_patch, bps::BPSPatch, get_room_state_ptrs, pc2snes, snes2pc, Rom}, web::MosaicTheme,
 };
 use rand::{Rng, SeedableRng};
@@ -10,18 +10,19 @@ use hashbrown::HashMap;
 
 use super::TileTheme;
 
-const BPS_PATCH_PATH: &str = "../patches/mosaic";
+const BPS_PATCH_PATH: &str = "worlds/sm_map_rando/data/patches/mosaic";
 
-fn apply_bps_patch(rom: &mut Rom, orig_rom: &Rom, filename: &str) -> Result<()> {
+fn apply_bps_patch(rom: &mut Rom, orig_rom: &Rom, filename: &str, game_data: &GameData) -> Result<()> {
     // let patch_path = format!("{}-{:X}-{}.bps", theme_name, room_ptr, state_idx);
     let path = Path::new(BPS_PATCH_PATH).join(filename);
-    let patch_bytes = std::fs::read(path)?;
+    let patch_bytes = game_data.read_to_bytes(&path)
+    .with_context(|| format!("Unable to read patch {}", path.display()))?;
     let patch = BPSPatch::new(patch_bytes)?;
     patch.apply(&orig_rom.data, &mut rom.data);
     Ok(())
 }
 
-fn apply_toilet(rom: &mut Rom, orig_rom: &Rom, theme_name: &str) -> Result<()> {
+fn apply_toilet(rom: &mut Rom, orig_rom: &Rom, theme_name: &str, game_data: &GameData) -> Result<()> {
     let toilet_intersecting_room_ptr_addr = snes2pc(0xB5FE70);
     let toilet_rel_x_addr = snes2pc(0xB5FE72);
     let toilet_rel_y_addr = snes2pc(0xB5FE73);
@@ -36,7 +37,7 @@ fn apply_toilet(rom: &mut Rom, orig_rom: &Rom, theme_name: &str) -> Result<()> {
         format!("{}-{:X}-Transit-{}-{}.bps", theme_name, room_ptr, x, y)    
     };
     println!("toilet patch: {}", patch_filename);
-    apply_bps_patch(rom, orig_rom, &patch_filename)
+    apply_bps_patch(rom, orig_rom, &patch_filename, game_data)
         .context(format!("Applying Toilet patch: {}", patch_filename))?;
     
     Ok(())
@@ -51,7 +52,7 @@ pub fn apply_retiling(rom: &mut Rom, orig_rom: &Rom, game_data: &GameData, theme
         "Bowling",
     ];
     for name in &patch_names {
-        let patch_path_str = format!("../patches/ips/{}.ips", name);
+        let patch_path_str = format!("worlds/sm_map_rando/data/patches/ips/{}.ips", name);
         apply_ips_patch(rom, Path::new(&patch_path_str), game_data)?;    
     }
 
@@ -75,7 +76,7 @@ pub fn apply_retiling(rom: &mut Rom, orig_rom: &Rom, game_data: &GameData, theme
 
     let random_seed = u32::from_le_bytes(rom.read_n(snes2pc(0xdfff00), 4)?.try_into()?);
 
-    apply_bps_patch(rom, orig_rom, "tilesets.bps")?;
+    apply_bps_patch(rom, orig_rom, "tilesets.bps", game_data)?;
 
     let mut theme_name_map: HashMap<RoomPtr, String> = HashMap::new();
     for &room_ptr in game_data.raw_room_id_by_ptr.keys() {
@@ -115,7 +116,7 @@ pub fn apply_retiling(rom: &mut Rom, orig_rom: &Rom, game_data: &GameData, theme
         let state_ptrs = get_room_state_ptrs(&rom, room_ptr)?;
         for (state_idx, (_event_ptr, state_ptr)) in state_ptrs.iter().enumerate() {
             let patch_filename = format!("{}-{:X}-{}.bps", theme_name, room_ptr, state_idx);
-            apply_bps_patch(rom, orig_rom, &patch_filename)?;
+            apply_bps_patch(rom, orig_rom, &patch_filename, game_data)?;
 
             let fx_ptr = rom.read_u16(state_ptr + 6)? as usize;
             for i in 0..4 {
@@ -130,7 +131,7 @@ pub fn apply_retiling(rom: &mut Rom, orig_rom: &Rom, game_data: &GameData, theme
         }
     }
 
-    apply_toilet(rom, orig_rom, &theme_name_map[&toilet_room_ptr])?;
+    apply_toilet(rom, orig_rom, &theme_name_map[&toilet_room_ptr], game_data)?;
 
     Ok(())
 }

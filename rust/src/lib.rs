@@ -7,8 +7,9 @@ pub mod seed_repository;
 pub mod web;
 pub mod customize;
 
+use customize::{customize_rom, ControllerConfig, CustomizeSettings, MusicSettings};
 use game_data::{StartLocation, HubLocation, LinksDataGroup};
-use patch::Rom;
+use patch::{ips_write::create_ips_patch, Rom};
 use pyo3::{prelude::*, types::PyDict};
 use rand::{SeedableRng, RngCore};
 use randomize::{Randomization, SpoilerLog, escape_timer, randomize_doors, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers, RandomizationState, ItemLocationState, FlagLocationState, SaveLocationState, MotherBrainFight, SpoilerSummary, SpoilerItemSummary, SpoilerLocation, SpoilerFlagSummary};
@@ -1426,7 +1427,32 @@ fn patch_rom(
         start_location: state.start_location.clone(),
         starting_items: randomizer.difficulty_tiers[0].starting_items.clone(),
     };
-    make_rom(&base_rom, &randomization, &randomizer.game_data).unwrap().data
+    let game_rom = make_rom(&base_rom, &randomization, &randomizer.game_data).unwrap();
+    let ips_patch = create_ips_patch(&base_rom.data, &game_rom.data);
+
+    let mut output_rom = base_rom.clone();
+    let customize_settings = CustomizeSettings {
+        samus_sprite: None,
+        etank_color: None,
+        reserve_hud_style: true,
+        vanilla_screw_attack_animation: true,
+        palette_theme: customize::PaletteTheme::AreaThemed,
+        tile_theme: customize::TileTheme::Constant("OuterCrateria".to_string()),
+        music: MusicSettings::AreaThemed,
+        // music: MusicSettings::Vanilla,
+        disable_beeping: false,
+        shaking: customize::ShakingSetting::Vanilla,
+        controller_config: ControllerConfig::default(),
+    };
+    customize_rom(
+        &mut output_rom,
+        &base_rom,
+        &ips_patch,
+        &customize_settings,
+        &randomizer.game_data,
+        &vec![],
+    ).unwrap();
+    output_rom.data
 }
 
 #[pymodule]
