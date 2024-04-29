@@ -990,7 +990,7 @@ impl APRandomizer{
             get_map(Path::new(map_repo_url), map_repository_array, TryInto::<usize>::try_into(seed).unwrap()).unwrap()
         };
         let diff_settings = difficulty_tiers[0].clone();
-        let locked_doors = randomize_doors(&game_data, &map, &diff_settings, seed);
+        let mut locked_doors = randomize_doors(&game_data, &map, &diff_settings, seed);
 
         let mut randomizer = Randomizer::new(Box::new(map), Box::new(locked_doors.clone()), Box::new(difficulty_tiers.clone()), Box::new(game_data.clone()), Box::new(game_data.base_links_data.clone()), Box::new(game_data.seed_links.clone()));
         
@@ -1067,6 +1067,7 @@ impl APRandomizer{
                 if items_reachable < 2 {
                     let new_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
                     map = get_map(Path::new(map_repo_url), map_repository_array, TryInto::<usize>::try_into(new_seed).unwrap()).unwrap();
+                    locked_doors = randomize_doors(&game_data, &map, &diff_settings, seed);
                     randomizer = Randomizer::new(Box::new(map), Box::new(locked_doors.clone()), Box::new(difficulty_tiers.clone()), Box::new(game_data.clone()), Box::new(game_data.base_links_data.clone()), Box::new(game_data.seed_links.clone()));
                     println!("Not enough locations reachable from start ({:?}) trying new map.", items_reachable);
                 }
@@ -1437,11 +1438,11 @@ fn patch_rom(
         reserve_hud_style: true,
         vanilla_screw_attack_animation: true,
         palette_theme: customize::PaletteTheme::AreaThemed,
-        tile_theme: customize::TileTheme::Constant("OuterCrateria".to_string()),
+        tile_theme: customize::TileTheme::Constant("WreckedShip".to_string()),
         music: MusicSettings::AreaThemed,
         // music: MusicSettings::Vanilla,
         disable_beeping: false,
-        shaking: customize::ShakingSetting::Vanilla,
+        shaking: customize::ShakingSetting::Disabled,
         controller_config: ControllerConfig::default(),
     };
     customize_rom(

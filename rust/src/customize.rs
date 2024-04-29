@@ -3,9 +3,11 @@ pub mod room_palettes;
 pub mod vanilla_music;
 
 use std::cmp::min;
+use std::path::Path;
 use anyhow::{bail, Result};
 
 use crate::customize::vanilla_music::override_music;
+use crate::patch::apply_ips_patch;
 use crate::web::MosaicTheme;
 use crate::{
     game_data::GameData,
@@ -330,7 +332,7 @@ pub fn customize_rom(
     rom.write_u16(snes2pc(0xA7DC6E), 0x0040)?;
 
     //apply_custom_samus_sprite(rom, settings, samus_sprite_categories)?;
-    /*if let Some((r, g, b)) = settings.etank_color {
+    if let Some((r, g, b)) = settings.etank_color {
         let color = (r as isize) | ((g as isize) << 5) | ((b as isize) << 10);
         rom.write_u16(snes2pc(0x82FFFE), color)?; // Gameplay ETank color
                                                   // rom.write_u16(snes2pc(0xB6F01A), color)?;
@@ -338,7 +340,7 @@ pub fn customize_rom(
         rom.write_u16(snes2pc(0xA7CA7B), color)?; // During Phantoon power-on
     }
     if settings.reserve_hud_style {
-        apply_ips_patch(rom, Path::new("../patches/ips/reserve_hud.ips"))?;
+        apply_ips_patch(rom, Path::new("worlds/sm_map_rando/data/patches/ips/reserve_hud.ips"), game_data)?;
         // Make used reserve tiles empty, for when they appear when transitioning to and from Kraid's room
         // Since the current IPS creation tool doesn't include settings these addresses to zero, it has to be done here instead
         for i in 0..6 {
@@ -346,7 +348,7 @@ pub fn customize_rom(
             rom.write_n(snes2pc(0xE20000+(0x10000*i)+0xC460), &[0x00; 0x10])?;
             rom.write_n(snes2pc(0xE20000+(0x10000*i)+0xC4C0), &[0x00; 0x20])?;
         }
-    }*/
+    }
     match settings.music {
         MusicSettings::Vanilla => {
             override_music(rom)?;
