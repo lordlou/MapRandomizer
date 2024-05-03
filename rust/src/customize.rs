@@ -3,8 +3,10 @@ pub mod room_palettes;
 pub mod vanilla_music;
 
 use std::cmp::min;
+use std::mem::transmute;
 use std::path::Path;
 use anyhow::{bail, Result};
+use pyo3::prelude::*;
 
 use crate::customize::vanilla_music::override_music;
 use crate::patch::apply_ips_patch;
@@ -68,28 +70,38 @@ impl Allocator {
     }
 }
 
-#[derive(Debug)]
+#[pyclass]
+#[derive(Debug, Clone)]
 pub enum MusicSettings {
     Vanilla,
     AreaThemed,
     Disabled,
 }
 
-
-#[derive(Debug)]
+#[pyclass]
+#[derive(Debug, Clone)]
 pub enum PaletteTheme {
     Vanilla,
     AreaThemed,
 }
 
-#[derive(Debug)]
+#[pyclass]
+#[derive(Debug, Clone)]
 pub enum TileTheme {
     Vanilla,
     Scrambled,
-    Constant(String),
+    OuterCrateria,
+    InnerCrateria,
+    GreenBrinstar,
+    UpperNorfair,
+    WreckedShip,
+    WestMaridia,
+    //Constant(String),
 }
 
+#[pyclass]
 #[derive(Default, Debug, Copy, Clone)]
+#[repr(usize)]
 pub enum ControllerButton {
     #[default]
     Default,
@@ -107,39 +119,122 @@ pub enum ControllerButton {
     Start,
 }
 
-#[derive(Default, Debug)]
+#[pyclass]
+#[derive(Default, Debug, Clone)]
 pub struct ControllerConfig {
+    #[pyo3(get, set)]
     pub shot: ControllerButton,
+    #[pyo3(get, set)]
     pub jump: ControllerButton,
+    #[pyo3(get, set)]
     pub dash: ControllerButton,
+    #[pyo3(get, set)]
     pub item_select: ControllerButton,
+    #[pyo3(get, set)]
     pub item_cancel: ControllerButton,
+    #[pyo3(get, set)]
     pub angle_up: ControllerButton,
+    #[pyo3(get, set)]
     pub angle_down: ControllerButton,
+    #[pyo3(get, set)]
     pub spin_lock_buttons: Vec<ControllerButton>,
+    #[pyo3(get, set)]
     pub quick_reload_buttons: Vec<ControllerButton>,
+    #[pyo3(get, set)]
     pub moonwalk: bool,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[pymethods]
+impl ControllerConfig {
+    #[new]
+    pub fn new(
+        shot: ControllerButton,
+        jump: ControllerButton,
+        dash: ControllerButton,
+        item_select: ControllerButton,
+        item_cancel: ControllerButton,
+        angle_up: ControllerButton,
+        angle_down: ControllerButton,
+        spin_lock_buttons: Vec<ControllerButton>,
+        quick_reload_buttons: Vec<ControllerButton>,
+        moonwalk: bool,
+    ) -> ControllerConfig {
+        ControllerConfig {
+            shot,
+            jump,
+            dash,
+            item_select,
+            item_cancel,
+            angle_up,
+            angle_down,
+            spin_lock_buttons,
+            quick_reload_buttons,
+            moonwalk,
+        }
+    }
+}
+
+#[pyclass]
+#[derive(Debug, Clone)]
 pub enum ShakingSetting {
     Vanilla,
     Reduced,
     Disabled
 }
 
-#[derive(Debug)]
+#[pyclass]
+#[derive(Debug, Clone)]
 pub struct CustomizeSettings {
+    #[pyo3(get, set)]
     pub samus_sprite: Option<String>,
+    #[pyo3(get, set)]
     pub etank_color: Option<(u8, u8, u8)>,
+    #[pyo3(get, set)]
     pub reserve_hud_style: bool,
+    #[pyo3(get, set)]
     pub vanilla_screw_attack_animation: bool,
+    #[pyo3(get, set)]
     pub palette_theme: PaletteTheme,
+    #[pyo3(get, set)]
     pub tile_theme: TileTheme,
+    #[pyo3(get, set)]
     pub music: MusicSettings,
+    #[pyo3(get, set)]
     pub disable_beeping: bool,
+    #[pyo3(get, set)]
     pub shaking: ShakingSetting,
+    #[pyo3(get, set)]
     pub controller_config: ControllerConfig,
+}
+
+#[pymethods]
+impl CustomizeSettings {
+    #[new]
+    pub fn new(
+        samus_sprite: Option<String>,
+        etank_color: Option<(u8, u8, u8)>,
+        reserve_hud_style: bool,
+        vanilla_screw_attack_animation: bool,
+        palette_theme: PaletteTheme,
+        tile_theme: TileTheme,
+        music: MusicSettings,
+        disable_beeping: bool,
+        shaking: ShakingSetting,
+        controller_config: ControllerConfig,
+    ) -> CustomizeSettings {
+        CustomizeSettings {
+            samus_sprite,
+            etank_color,
+            reserve_hud_style,
+            vanilla_screw_attack_animation,
+            palette_theme,
+            tile_theme,
+            music,
+            disable_beeping,
+            shaking,
+            controller_config,
+        }
+    }
 }
 
 fn remove_mother_brain_flashing(rom: &mut Rom) -> Result<()> {
@@ -219,7 +314,7 @@ fn apply_custom_samus_sprite(
 
     Ok(())
 }
-
+*/
 pub fn parse_controller_button(s: &str) -> Result<ControllerButton> {
     Ok(match s {
         "Left" => ControllerButton::Left,
@@ -271,7 +366,7 @@ fn get_button_list_mask(buttons: &[ControllerButton]) -> isize {
     mask
 }
 
-fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig) -> Result<()> {
+fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig, game_data: &GameData) -> Result<()> {
     let control_data = vec![
         (0x81B325, controller_config.jump, ControllerButton::A),
         (0x81B32B, controller_config.dash, ControllerButton::B),
@@ -293,14 +388,14 @@ fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig) 
     rom.write_u16(snes2pc(0x82FE7E), quick_reload_mask)?;
 
     if controller_config.moonwalk {
-        apply_ips_patch(rom, Path::new("../patches/ips/enable_moonwalk.ips"))?;
+        apply_ips_patch(rom, Path::new("worlds/sm_map_rando/data/patches/ips/enable_moonwalk.ips"), game_data)?;
     }
     // $82FE7E
 
     Ok(())
 }
 
-*/
+
 pub fn customize_rom(
     rom: &mut Rom,
     orig_rom: &Rom,
@@ -392,6 +487,6 @@ pub fn customize_rom(
             rom.write_n(snes2pc(0x86846B), &[0; 144])?;
         }
     }
-    //apply_controller_config(rom, &settings.controller_config)?;
+    apply_controller_config(rom, &settings.controller_config, game_data)?;
     Ok(())
 }

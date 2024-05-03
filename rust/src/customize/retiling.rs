@@ -82,7 +82,13 @@ pub fn apply_retiling(rom: &mut Rom, orig_rom: &Rom, game_data: &GameData, theme
     for &room_ptr in game_data.raw_room_id_by_ptr.keys() {
         let theme_name = match theme {
             TileTheme::Vanilla => "Base".to_string(),
-            TileTheme::Constant(s) => s.clone(),
+            TileTheme::OuterCrateria => "OuterCrateria".to_string(),
+            TileTheme::InnerCrateria => "InnerCrateria".to_string(),
+            TileTheme::GreenBrinstar => "GreenBrinstar".to_string(),
+            TileTheme::UpperNorfair => "UpperNorfair".to_string(),
+            TileTheme::WreckedShip => "WreckedShip".to_string(),
+            TileTheme::WestMaridia => "WestMaridia".to_string(),
+            //TileTheme::Constant(s) => s.clone(),
             TileTheme::Scrambled => {
                 let seed = random_seed ^ (room_ptr as u32);
                 let mut rng_seed = [0u8; 32];

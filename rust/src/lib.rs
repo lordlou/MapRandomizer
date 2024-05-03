@@ -7,13 +7,14 @@ pub mod seed_repository;
 pub mod web;
 pub mod customize;
 
-use customize::{customize_rom, ControllerConfig, CustomizeSettings, MusicSettings};
+use customize::{customize_rom, ControllerButton, ControllerConfig, CustomizeSettings, MusicSettings, PaletteTheme, ShakingSetting, TileTheme};
 use game_data::{StartLocation, HubLocation, LinksDataGroup};
 use patch::{ips_write::create_ips_patch, Rom};
 use pyo3::{prelude::*, types::PyDict};
 use rand::{SeedableRng, RngCore};
 use randomize::{Randomization, SpoilerLog, escape_timer, randomize_doors, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers, RandomizationState, ItemLocationState, FlagLocationState, SaveLocationState, MotherBrainFight, SpoilerSummary, SpoilerItemSummary, SpoilerLocation, SpoilerFlagSummary};
 use traverse::TraverseResult;
+use web::MosaicTheme;
 use crate::{
     game_data::{GameData, IndexedVec, Item, Map, NodeId, ObstacleMask, RoomId}, patch::make_rom, randomize::{DifficultyConfig, Randomizer, SaveAnimals, StartLocationMode, VertexInfo}, traverse::{get_bireachable_idxs, traverse, GlobalState, LocalState}
 };
@@ -1400,7 +1401,8 @@ fn patch_rom(
     ap_randomizer: &APRandomizer,
     item_placement_ids: Vec<usize>,
     state: &RandomizationState,
-    spoiler_summary_vec: Vec<(usize, String, String)>
+    spoiler_summary_vec: Vec<(usize, String, String)>,
+    customize_settings: CustomizeSettings
 ) -> Vec<u8> {
     let rom_path = Path::new(&base_rom_path);
     let base_rom = Rom::load(rom_path).unwrap();
@@ -1430,28 +1432,24 @@ fn patch_rom(
     };
     let game_rom = make_rom(&base_rom, &randomization, &randomizer.game_data).unwrap();
     let ips_patch = create_ips_patch(&base_rom.data, &game_rom.data);
-
     let mut output_rom = base_rom.clone();
-    let customize_settings = CustomizeSettings {
-        samus_sprite: None,
-        etank_color: None,
-        reserve_hud_style: true,
-        vanilla_screw_attack_animation: true,
-        palette_theme: customize::PaletteTheme::AreaThemed,
-        tile_theme: customize::TileTheme::Constant("WreckedShip".to_string()),
-        music: MusicSettings::AreaThemed,
-        // music: MusicSettings::Vanilla,
-        disable_beeping: false,
-        shaking: customize::ShakingSetting::Disabled,
-        controller_config: ControllerConfig::default(),
-    };
+
+    let mosaic_themes = vec![
+        MosaicTheme { name: "OuterCrateria".to_string(), display_name:"Outer Crateria".to_string() },
+        MosaicTheme { name: "InnerCrateria".to_string(), display_name:"Inner Crateria".to_string() },
+        MosaicTheme { name: "GreenBrinstar".to_string(), display_name:"Green Brinstar".to_string() },
+        MosaicTheme { name: "UpperNorfair".to_string(), display_name:"Upper Norfair".to_string() },
+        MosaicTheme { name: "WreckedShip".to_string(), display_name:"Wrecked Ship".to_string() },
+        MosaicTheme { name: "WestMaridia".to_string(), display_name:"West Maridia".to_string() },
+    ];
+
     customize_rom(
         &mut output_rom,
         &base_rom,
         &ips_patch,
         &customize_settings,
         &randomizer.game_data,
-        &vec![],
+        &mosaic_themes,
     ).unwrap();
     output_rom.data
 }
@@ -1468,6 +1466,14 @@ fn pysmmaprando(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<RandomizationState>()?;    
     m.add_class::<Options>()?;
     m.add_class::<LocalState>()?;
+    m.add_class::<CustomizeSettings>()?;
+    m.add_class::<PaletteTheme>()?;
+    m.add_class::<TileTheme>()?;
+    m.add_class::<MusicSettings>()?;
+    m.add_class::<ShakingSetting>()?;
+    m.add_class::<ControllerConfig>()?;
+    m.add_class::<ControllerButton>()?;
+
     m.add_wrapped(wrap_pyfunction!(create_gamedata))?;
     m.add_wrapped(wrap_pyfunction!(patch_rom))?;
     Ok(())
