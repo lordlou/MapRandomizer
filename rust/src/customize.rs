@@ -246,24 +246,24 @@ fn remove_mother_brain_flashing(rom: &mut Rom) -> Result<()> {
 
     Ok(())
 }
-/*
+
 fn apply_custom_samus_sprite(
     rom: &mut Rom,
     settings: &CustomizeSettings,
-    samus_sprite_categories: &[SamusSpriteCategory],
+    //samus_sprite_categories: &[SamusSpriteCategory],
 ) -> Result<()> {
-    if settings.samus_sprite.is_some() || !settings.vanilla_screw_attack_animation {
-        let sprite_name = settings.samus_sprite.clone().unwrap_or("samus".to_string());
+    //if settings.samus_sprite.is_some() || !settings.vanilla_screw_attack_animation {
+        /*let sprite_name = settings.samus_sprite.clone().unwrap_or("samus".to_string());
         let patch_path_str = format!("../patches/samus_sprites/{}.ips", sprite_name);
         apply_ips_patch(rom, Path::new(&patch_path_str))?;
-
+*/
         if settings.vanilla_screw_attack_animation {
             // Disable spin attack animation, to make it behave like vanilla: Screw attack animation will look like
             // you have Space Jump even if you don't:
             rom.write_u16(snes2pc(0x9B93FE), 0)?;
         }
-    }
-
+   // }
+/*
     // Patch credits to give credit to the sprite author:
     if let Some(sprite_name) = settings.samus_sprite.as_ref() {
         for category in samus_sprite_categories {
@@ -311,10 +311,10 @@ fn apply_custom_samus_sprite(
             }
         }
     }
-
+*/
     Ok(())
 }
-*/
+
 pub fn parse_controller_button(s: &str) -> Result<ControllerButton> {
     Ok(match s {
         "Left" => ControllerButton::Left,
@@ -426,7 +426,7 @@ pub fn customize_rom(
     // customized HUD colors which would get messed up.
     rom.write_u16(snes2pc(0xA7DC6E), 0x0040)?;
 
-    //apply_custom_samus_sprite(rom, settings, samus_sprite_categories)?;
+    apply_custom_samus_sprite(rom, settings/*, samus_sprite_categories*/)?;
     if let Some((r, g, b)) = settings.etank_color {
         let color = (r as isize) | ((g as isize) << 5) | ((b as isize) << 10);
         rom.write_u16(snes2pc(0x82FFFE), color)?; // Gameplay ETank color

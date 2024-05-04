@@ -692,6 +692,54 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         }
     }
     else {
+        let mut highest_techs_preset = 0;
+        for tech_name in &options.techs {
+            for i in 1..preset_data.len()+1 {
+                if *tech_name == preset_data[i-1].preset.name && highest_techs_preset < i{
+                    highest_techs_preset = i;
+                }
+            }
+        }
+        let mut highest_strats_preset = 0;
+        for tech_name in &options.strats {
+            for i in 1..preset_data.len()+1 {
+                if *tech_name == preset_data[i-1].preset.name && highest_strats_preset < i {
+                    highest_strats_preset = i;
+                }
+            }
+        }
+
+        let mut tech_set: HashSet<String> = HashSet::new();
+        if highest_techs_preset > 0 {
+            let pd = preset_data[highest_techs_preset-1].clone();            
+            for (tech, enabled) in &pd.tech_setting {
+                if *enabled {
+                    tech_set.insert(tech.clone());
+                }
+            }
+        }
+        let mut strat_set: HashSet<String> = HashSet::new();
+        if highest_strats_preset > 0 {
+            let pd = preset_data[highest_strats_preset-1].clone();      
+            for (strat, enabled) in &pd.notable_strat_setting {
+                if *enabled {
+                    strat_set.insert(strat.clone());
+                }
+            }
+        }
+
+        tech_set.extend(options.techs.clone());
+        let preset_names: Vec<String> = preset_data.iter().map(|preset| preset.preset.name.clone()).collect();
+        for name in &preset_names {
+            tech_set.remove(name);
+        }
+
+        strat_set.extend(options.strats.clone());
+        let preset_names: Vec<String> = preset_data.iter().map(|preset| preset.preset.name.clone()).collect();
+        for name in &preset_names {
+            strat_set.remove(name);
+        }
+
         preset = Preset {
             name: "Custom".to_string(),
             shinespark_tiles: options.shinespark_tiles,
@@ -706,8 +754,8 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
             ridley_proficiency: options.ridley_proficiency,
             botwoon_proficiency: options.botwoon_proficiency,
             mother_brain_proficiency: options.mother_brain_proficiency,
-            tech: options.techs.clone(),
-            notable_strats: options.strats.clone(),
+            tech: tech_set.into_iter().collect::<Vec<_>>(),
+            notable_strats: strat_set.into_iter().collect::<Vec<_>>(),
             }
     }
 
