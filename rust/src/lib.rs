@@ -13,7 +13,7 @@ use patch::{ips_write::create_ips_patch, Rom};
 use pyo3::{prelude::*, types::PyDict};
 use rand::{SeedableRng, RngCore};
 use randomize::{Randomization, SpoilerLog, escape_timer, randomize_doors, ItemPlacementStyle, ItemPriorityGroup, ItemMarkers, RandomizationState, ItemLocationState, FlagLocationState, SaveLocationState, MotherBrainFight, SpoilerSummary, SpoilerItemSummary, SpoilerLocation, SpoilerFlagSummary};
-use traverse::TraverseResult;
+use traverse::{TraverseResult, IMPOSSIBLE_LOCAL_STATE};
 use web::MosaicTheme;
 use crate::{
     game_data::{GameData, IndexedVec, Item, Map, NodeId, ObstacleMask, RoomId}, patch::make_rom, randomize::{DifficultyConfig, Randomizer, SaveAnimals, StartLocationMode, VertexInfo}, traverse::{get_bireachable_idxs, traverse, GlobalState, LocalState}
@@ -1210,8 +1210,8 @@ impl APRandomizer{
                                             &forward,
                                             &reverse,
                                             ).is_some();
-            f_reachability[i] = forward.local_states[i][0].is_some() && forward.local_states[i][1].is_some();
-            r_reachability[i] = reverse.local_states[i][0].is_some() && reverse.local_states[i][1].is_some();
+            f_reachability[i] = forward.local_states[i][0].unwrap().energy_used != IMPOSSIBLE_LOCAL_STATE.energy_used && forward.local_states[i][1].unwrap().energy_used != IMPOSSIBLE_LOCAL_STATE.energy_used;
+            r_reachability[i] = reverse.local_states[i][0].unwrap().energy_used != IMPOSSIBLE_LOCAL_STATE.energy_used && reverse.local_states[i][1].unwrap().energy_used != IMPOSSIBLE_LOCAL_STATE.energy_used;
 
             if self.randomizer.game_data.vertex_isv.keys[i].2 == 0 {
                 bi_reachability_collapsed.push(bi_reachability[i]);

@@ -353,6 +353,7 @@ impl<'a> Patcher<'a> {
         if self.randomization.difficulty.ultra_low_qol {
             patches.extend([
                 "ultra_low_qol_vanilla_bugfixes",
+                "itemsounds", // required for AP's message boxes
                 // "ultra_low_qol_saveload",
                 // "ultra_low_qol_new_game",
                 // "ultra_low_qol_map_area",
