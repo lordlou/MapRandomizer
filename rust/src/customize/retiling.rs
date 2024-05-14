@@ -15,7 +15,7 @@ const BPS_PATCH_PATH: &str = "worlds/sm_map_rando/data/patches/mosaic";
 fn apply_bps_patch(rom: &mut Rom, orig_rom: &Rom, filename: &str, game_data: &GameData) -> Result<()> {
     // let patch_path = format!("{}-{:X}-{}.bps", theme_name, room_ptr, state_idx);
     let path = Path::new(BPS_PATCH_PATH).join(filename);
-    let patch_bytes = game_data.read_to_bytes(&path)
+    let patch_bytes = game_data.read_to_bytes_with_cache(filename)
     .with_context(|| format!("Unable to read patch {}", path.display()))?;
     let patch = BPSPatch::new(patch_bytes)?;
     patch.apply(&orig_rom.data, &mut rom.data);

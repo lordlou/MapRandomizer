@@ -941,6 +941,8 @@ pub struct TitleScreenData {
 #[derive(Default, Clone)]
 pub struct GameData {
     pub apworld_path: Option<String>,
+    cached_mosaic_patches: Vec<u8>,
+    cached_mosaic_patches_map: Option<JsonValue>,
     #[pyo3(get)]
     sm_json_data_path: PathBuf,
     #[pyo3(get)]
@@ -1086,6 +1088,14 @@ impl GameData {
             },
             None => Ok(std::fs::read(path)?)
         }
+    }
+
+    pub fn read_to_bytes_with_cache(&self, path: &str) -> Result<Vec<u8>> {
+        let patches_map = self.cached_mosaic_patches_map.as_ref().unwrap();
+        let entry = &patches_map[path];
+        let offset: usize = entry["offset"].as_usize().unwrap();
+        let size: usize = entry["size"].as_usize().unwrap();
+        Ok(self.cached_mosaic_patches[offset..(offset+size)].to_vec())
     }
 
     pub fn glob_filepaths(&self, glob_pattern: &str, contains_path: &str, extension: &str) -> Vec<PathBuf> {
@@ -3329,6 +3339,13 @@ impl GameData {
     ) -> Result<GameData> {
         let mut game_data = GameData::default();
         game_data.apworld_path = apworld_path;
+
+        // All Mosaic bps files are packed into a single file to speed up IO with zipfile, cached here
+        let mosaic_patches_path = Path::new("worlds/sm_map_rando/data/patches/mosaic/mosaic_patches.data");
+        let mosaic_patches_map_path = Path::new("worlds/sm_map_rando/data/patches/mosaic/mosaic_patches_map.json");
+        game_data.cached_mosaic_patches = game_data.read_to_bytes(&mosaic_patches_path).unwrap();
+        game_data.cached_mosaic_patches_map = Some(game_data.read_json(&mosaic_patches_map_path).unwrap());
+
         game_data.sm_json_data_path = sm_json_data_path.to_owned();
 
         game_data.load_items_and_flags()?;
