@@ -2127,6 +2127,7 @@ impl Randomizer {
 
         let mut initial_items_remaining: Vec<usize> = vec![1; game_data.item_isv.keys.len() - 2];
         initial_items_remaining[Item::Nothing as usize] = 0;
+        initial_items_remaining[Item::Missile as usize] = 0;
         initial_items_remaining[Item::WallJump as usize] = if difficulty_tiers[0].wall_jump == WallJump::Collectible {
             1
         } else { 
