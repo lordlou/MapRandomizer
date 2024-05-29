@@ -203,6 +203,8 @@ pub struct Options {
     #[pyo3(get, set)]
     strats: Vec<String>,
     #[pyo3(get, set)]
+    item_pool: Vec<(Item, usize)>,
+    #[pyo3(get, set)]
     shinespark_tiles: usize,
     #[pyo3(get, set)]
     heated_shinespark_tiles: usize,
@@ -304,6 +306,7 @@ impl Options{
     pub fn new( preset: usize,
                 techs: Vec<String>,
                 strats: Vec<String>,
+                item_pool: Vec<(Item, usize)>,
                 shinespark_tiles: usize,
                 heated_shinespark_tiles: usize,
                 shinecharge_leniency_frames: i32,
@@ -355,6 +358,7 @@ impl Options{
             preset,
             techs,
             strats,
+            item_pool,
             shinespark_tiles,
             heated_shinespark_tiles,
             shinecharge_leniency_frames,
@@ -550,7 +554,7 @@ impl APCollectionState{
             None => GlobalState {
                 tech: Vec::new(),
                 notable_strats: Vec::new(),
-                items: Vec::new(),
+                items: vec![false; 25 - 2],
                 flags: Vec::new(),
                 max_energy: 99,
                 max_reserves: 0,
@@ -562,30 +566,64 @@ impl APCollectionState{
                 heated_shine_charge_tiles: 0.0,
             },
         };
-        let randomizer = &ap_randomizer.as_ref().unwrap().randomizer;
-        let randomization_state = RandomizationState {
-            step_num: 1,
-            start_location: ap_randomizer.as_ref().unwrap().start_location.clone(),
-            hub_location: ap_randomizer.as_ref().unwrap().hub_location.clone(),
-            item_precedence: Vec::new(),
-            item_location_state: vec![
-                initial_item_location_state;
-                randomizer.game_data.item_locations.len()
-            ],
-            flag_location_state: vec![
-                initial_flag_location_state;
-                randomizer.game_data.flag_locations.len()
-            ],
-            save_location_state: vec![
-                initial_save_location_state;
-                randomizer.game_data.item_locations.len()
-            ],
-            items_remaining: randomizer.initial_items_remaining.clone(),
-            global_state: global_state,
-            debug_data: None,
-            previous_debug_data: None,
-            key_visited_vertices: HashSet::new(),
+        let randomization_state = match &ap_randomizer {
+            Some(ap_r) => {
+                let randomizer = &ap_r.randomizer;
+                RandomizationState {
+                    step_num: 1,
+                    start_location: ap_randomizer.as_ref().unwrap().start_location.clone(),
+                    hub_location: ap_randomizer.as_ref().unwrap().hub_location.clone(),
+                    item_precedence: Vec::new(),
+                    item_location_state: vec![
+                        initial_item_location_state;
+                        randomizer.game_data.item_locations.len()
+                    ],
+                    flag_location_state: vec![
+                        initial_flag_location_state;
+                        randomizer.game_data.flag_locations.len()
+                    ],
+                    save_location_state: vec![
+                        initial_save_location_state;
+                        randomizer.game_data.item_locations.len()
+                    ],
+                    items_remaining: randomizer.initial_items_remaining.clone(),
+                    global_state: global_state,
+                    debug_data: None,
+                    previous_debug_data: None,
+                    key_visited_vertices: HashSet::new(),
+                }
+            },
+            None => {
+                let mut ship_start = StartLocation::default();
+                ship_start.name = "Ship".to_string();
+                ship_start.room_id = 8;
+                ship_start.node_id = 5;
+                ship_start.door_load_node_id = Some(2);
+                ship_start.x = 72.0;
+                ship_start.y = 69.5;
+
+                let mut ship_hub = HubLocation::default();
+                ship_hub.name = "Ship".to_string();
+                ship_hub.room_id = 8;
+                ship_hub.node_id = 5;
+                RandomizationState {
+                    step_num: 1,
+                    start_location: ship_start,
+                    hub_location: ship_hub,
+                    item_precedence: Vec::new(),
+                    item_location_state: Vec::new(),
+                    flag_location_state: Vec::new(),
+                    save_location_state: Vec::new(),
+                    items_remaining: Vec::new(),
+                    global_state: global_state,
+                    debug_data: None,
+                    previous_debug_data: None,
+                    key_visited_vertices: HashSet::new(),
+                }
+            }
         };
+
+        
         APCollectionState { 
             randomization_state
         }
@@ -778,7 +816,7 @@ fn get_difficulty_config(options: &Options, preset_data: &Vec<PresetData>, game_
         random_tank: true,
         spazer_before_plasma: false,
         stop_item_placement_early: false,
-        item_pool: vec![],
+        item_pool: options.item_pool.clone(),
         starting_items: vec![],
         semi_filler_items: vec![],
         filler_items: vec![Item::Missile],
@@ -1210,9 +1248,8 @@ impl APRandomizer{
                                             &forward,
                                             &reverse,
                                             ).is_some();
-            f_reachability[i] = forward.local_states[i][0].unwrap().energy_used != IMPOSSIBLE_LOCAL_STATE.energy_used && forward.local_states[i][1].unwrap().energy_used != IMPOSSIBLE_LOCAL_STATE.energy_used;
-            r_reachability[i] = reverse.local_states[i][0].unwrap().energy_used != IMPOSSIBLE_LOCAL_STATE.energy_used && reverse.local_states[i][1].unwrap().energy_used != IMPOSSIBLE_LOCAL_STATE.energy_used;
-
+            f_reachability[i] = forward.cost[i].iter().any(|&x| f32::is_finite(x));
+            r_reachability[i] = reverse.cost[i].iter().any(|&x| f32::is_finite(x));
             if self.randomizer.game_data.vertex_isv.keys[i].2 == 0 {
                 bi_reachability_collapsed.push(bi_reachability[i]);
                 f_reachability_collapsed.push(f_reachability[i]);
