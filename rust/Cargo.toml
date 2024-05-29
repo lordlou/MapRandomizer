@@ -1,6 +1,6 @@
 [package]
 name = "pysmmaprando"
-version = "0.111.1"
+version = "0.111.2"
 edition = "2021"
 autobins = false
 
