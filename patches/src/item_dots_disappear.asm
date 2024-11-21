@@ -8,6 +8,8 @@ lorom
 !bank_82_freespace_start = $82FD00
 !bank_82_freespace_end = $82FD80
 
+incsrc "constants.asm"
+
 ;org $8293E2
 ;    jsr load_pause_map_hook
 
@@ -71,6 +73,8 @@ unpause_hook:
 
 message_box_hook:
     jsl update_tilemap
+    lda #$0000
+    sta !last_samus_map_y  ; clear Samus map Y coordinate, to force mini-map to be redrawn
     
     ; run hi-jacked instructions:
     sep #$20
@@ -85,6 +89,8 @@ reload_map_hook:
 
 door_unlocked_hook:
     sta $7ED8B0,x ; run hi-jacked instruction (store new door unlocked bit)
+    lda #$0000
+    sta !last_samus_map_y  ; reset Samus map Y coordinate, to trigger minimap to update
     jsl update_tilemap
     rtl
 

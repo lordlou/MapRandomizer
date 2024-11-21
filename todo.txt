@@ -1,16 +1,121 @@
-v104:
-- DONE?: handle framesRemaining: "auto".
+v115:
+- DONE: move input ROM into modals
+- DONE: validate input ROM
+- DONE: clean JSON API for /randomize
+- DONE: review spoiler zoom PR
+- DONE: fix error when customizing item pool (preset not set)
+- Make f_allItemsSpawn not be a flag?
+- review spoiler flag PR
+- DONE: make relevant flags only show logically collected flags
+- fix: 1st zebetite destroyable without clearing objectives: http://localhost:8080/logic/room/238/2/2/38
+- DONE: fix issue with comeInWithSpringBallBounce not checking speedbooster: https://discord.com/channels/1053421401354285129/1053434532973510748/1301251210606809130
+- DONE: improve reproducibility:
+  - try processing region files in a deterministic order
+- DONE: add pause & area times to credits
+- DONE: investigate issue with door lock skips not being in logic?:
+  - sam's seed: https://dev.maprando.com/seed/Y9zWgfcGD/
+- issue with Single Chamber door sometimes closing in wrong position: https://discord.com/channels/1053421401354285129/1053434532973510748/1300191178595110943
+- DONE: fix main hall elevator frames:
+  - takes at least 47 energy with fast elevators.
+- DONE: use RandomizerSettings in maprando-cli and maprando-test
+- DONE: set up script to automate syncing logic changes
+  - DONE: update skill assumption presets and full-settings presets
+- DONE: simplify DifficultyConfig
+- reduce Medium shortcharge tiles to 25? (will apply in bottom of Crateria Supers)
+- simplify SeedData
+- presets:
+  - show built-in preset on seed page if verified
+  - download settings preset from seed page
+    - remove custom name from settings JSON
+- built-in presets: default, and season 2 racing
+- new sm-json-data tests:
+  - leaveWithSpark should have shinespark in requires
+  - heated room strats should have heat frames
+  - resetRoom should reset obstacles
+- implement implicit canHorizontalShinespark for comeInWithSpark, also canMidairShinespark?
+
+TODO:
+- remove framesRequired/framesRemaining from comeInShinecharged/leaveShinecharged schema
+  - replace with "shineChargeFrames" logical requirement, and add test to ensure it is included.
+- sparking up a quicksand room causes OOB death, do we want that?
+  - hitbox expands after shinespark crash.
+- maybe add canTrickyDodgeEnemies to more places, e.g. Morph Ball Room?
+- map hub: fast travel
+- partial farms
+- link to logic pages from video site?
+- adjust auto-formatting for unlocksDoors
+- have auto-formatting also auto-order object properties by schema order
+- handle steep starting down tile better: only should affect short-charging, not other uses of runways
+- fix bug where dachora despawns global zeela in Dachora Room.
+  - probably caused by escape.asm: missing ",x" in stz, also check for Landing Site room ID so that it won't affect Dachora Room
+- show transition arrows in connecting areas when map is revealed
+- fix: g-mode immobile strats show Beyond on logic pages
+- Fix glass tunnel PLM drawing: https://github.com/amoebaOfDoom/subversion/blob/master/Project/ASM/PLM%20draw%20fix.asm
+- prevent empty tiles (grid lines only) from showing as explored on mini-map?
+- model energy usage in the escape.
+  - can be necessary to ensure beatability of seeds with reduced items and disabled escape refill.
+- possible QoL: while pause menu is fading in, press R to immediately initiate switching to equipment screen
+- add option to reroll seeds with not enough difficult required tricks?
+- instructions on gmode and artificial morph
+- fix g4 start location problem: https://discord.com/channels/1053421401354285129/1053434532973510748/1230346387628101643
+- fix issue with Low/Off QoL Chozo Desolate hanging the randomizer (won't place SpaceJump).
+- fix x-ray graphical glitches (seen in MemesAreHealthy seed):
+  - affecting top row of HUD, etc.
+- map room teleports?
+- update protogen sprite?
+- look into faster decompression:
+  - decompressor: https://github.com/tewtal/SHVC-LZSA2/blob/main/src/asar/lzsa2.asm
+  - compressor: https://github.com/emmanuel-marty/lzsa
+- override crystal flash helpers, for complementary suits
+- fix weapon PowerBomb logic:
+  - take into account that double hit is not possible with PowerBombPeriphery
+  - take into account multiplier
+- fix escape door staying open when entering from left (should close in MB1->MB2 cutscene?)
+- Ensure game is logically beatable (f_DefeatedMotherBrain) as a check at the end of seed generation
+  - Big Boy Room before Mother Brain Room can cause problems on low difficulty settings
+- Remove unneeded items from last step in Desolate.
+- heated elevator: mark with red platform?
+- Debug eddie desolate seed:
+  - https://maprando.com/seed/tPRO8Krh2LxvnQvA0HZzaw/
+  - Why placed Grapple and Wasteland ETank?
+- debug door lock logic:
+  - door requiring heat frames to unlock from unheated side: http://localhost:8080/seed/UCp7ZDC5H6ZSmDlKOtYBXw/data/visualizer/index.html
+- fix randomizer failing with all starting items.
+- in logic pages From/To node selections, improve contrast for grayed-out nodes.
+- reduced items?: new item progression preset & options
+- investigate possible respin bug: turnaround spin-jump doesn't work after shooting up?: 
+  - https://discord.com/channels/1053421401354285129/1073621773184159764/1205894290350407700
+- fix vanilla map music when "Random" start puts you in room with no music change (plays title screen music).
 - add more "carry shinecharge" strats.
 - handle `unlocksDoors`?
-- heated shinespark tiles, update preset shinespark tiles
-- main street shinespark frames need some looking into: "frames": 35 doesn't make sense?
-- spoiler map: fix escape route
 - make sure cross-room notable strats actually check the setting for the notable
-- make "f_DefeatedBombTorizo" free
+- fix issue with pause map scrolling beyond bounds
+- adjust elevator heatFrames when fast elevators enabled
+- spoiler map: show pop-up when hovering over step, to show additional collectible items (with their quantities) and instructions
+  to double-click for details.
+- fix issue with pause map scrolling beyond bounds
+- add lower-detail partial map option, that hides more room-internal details including passages, doorways, elevator platforms
+- consider putting reverse croc speedway into escape logic (using runway data from sm-json-data)
+- consider building SOCD resolution into the randomizer (possibly with options for how it should work?)
+  - maybe also a way to toggle between two controller layouts
+  - maybe a way to bind directions to other inputs
+  - maybe a way to bind diagonal to individual button
+- add more leaveWithSpark strats in elevator rooms (including vertical?)
+- add test in sm-json-data to check that "shinespark" occurs in requires for "leaveWithSpark" strats.
+- set up offline script to generate BPS patch for each mosaic room/theme combination
+- UN farming room gate requirements:
+   - even on expert, it's still needing wave or a tank
+- add option for additional shinecharge tile lenience for cross-room shortcharge
+- should pink/orange door colors (on map) be changed to be less similar?
+- rework QoL presets?:
+  - keep same map options between Low and Default?
+- consider making shaktool room one-way in map generation (so Reverse Shaktool strat could be moved up to Medium)
+- in credits, show time spent in pause map
+- have pause map mark most recent save (like in vanilla)
 - fix OOB when leaving Kraid Room from right during fight
-- set up functional testing to check seed generation succeeds in reasonable time across random settings.
-
-priority:
+- main street shinespark frames need some looking into: "frames": 35 doesn't make sense?
+- convert area arrows vs. letters to customization option
+- remove implicit g-mode go back through door strats for up doors.
 - add leaveRunningBlue exit condition (matching with comeInShinecharging)
 - refine GT logic: not in logic with 7E+4R and 5 Supers, Grapple.
 - clean up how door locks are modeled (including gray doors)
@@ -24,7 +129,9 @@ priority:
   - could work better with music: continue playing same song or start from beginning if different
   - could retain game timer shown in credits
   - could retain map progress
-  - could get overwritten when using a save station, to prevent accidental quickloads from losing lots of progress
+  - could expire after a certain number of door transitions (e.g. 4?) or when using a save station
+     - prevent accidental quickloads from losing lots of progress
+     - retain incentive to use real save stations
 - add door flags to refine logic
 - logic:
   - mama turtle right item is basic with no items. is this ok?
@@ -104,8 +211,8 @@ priority:
   - or maybe make objective X's fade after collection?
 - help buttons for rest of settings (e.g. explain boss proficiency calculations)
 - logic simulator
-
-later:
+- consider marking last save (and backup saves) with map icons in pause map.
+- consider inverting the two colors of not-filled reserve tank in HUD?
 - handle sba attacks in "enemyKill"
 - "fast cutscenes" QoL option?: 
   - fast big boy cutscene
@@ -175,9 +282,6 @@ later:
 - enforce tech dependencies:
   - e.g. enabling "canPreciseWalljump" should enable dependency "canWalljump"
   - disabling "canWalljump" should disable dependent "canPreciseWalljump"
-- gravity seems to provide 50% heat reduction on elevator ride? (Remove this.)
-   - https://clips.twitch.tv/RepleteShyManateeTBTacoLeft-Ip5vQynrc0SQYQUj
-   - maybe during acid chozo drain too?
 - change how cross-room logic works?:
   - unify cross-room strats to go under links, with annotations on the cross-room state (in new strat properties)
   - replaces "initiateRemotely", allows obstacles and one-way cross-room paths to be handled properly
@@ -266,7 +370,6 @@ later:
   - then for the item placement, have the graph traversal treat that flag not as free but as whatever difficulty it was.
 - fix graphics in door transitions?
 - fix (sometimes?) glitched right door in GT. X-Ray showed a plasma beam inside it
-- adjust elevator heatFrames when fast elevators enabled
 - make quick reload work while in pause menu?
 - refine cross room shinesparks:
     - slopes
@@ -322,8 +425,6 @@ later:
 - fix suit graphics not showing after getting suit (consequence of skipping animation)?
 - have forced mode take into account return path?
   - probably bad idea, because returning may not be required (before getting another item that makes it easier).
-- Do something about Crocomire funny map behavior (especially when entering from left door)?
-- "Random" objective?
 
 
 maybe someday?:

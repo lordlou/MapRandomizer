@@ -3,8 +3,14 @@ lorom
 
 incsrc "constants.asm"
 
-!bank_84_free_space_start = $84FD00
-!bank_84_free_space_end = $84FE80
+!bank_80_free_space_start = $80D240
+!bank_80_free_space_end = $80D340
+
+!bank_84_free_space_start = $84F730
+!bank_84_free_space_end = $84F800
+
+!bank_85_free_space_start = $859980
+!bank_85_free_space_end = $859B00
 
 
 ; Increment saves count when using save station
@@ -19,6 +25,10 @@ org $A2AB3C
 org $82DC95
     jsl hook_death : nop : nop
 
+; Increment deaths count when escape timer runs out
+org $90E0F2
+    jsl hook_timeout : nop : nop
+
 ; Increment reset count on boot-up
 org $808455
     jsl hook_boot
@@ -26,6 +36,128 @@ org $808455
 ; Capture final time when entering ship to leave the planet
 org $a2ab13
     jsl hook_game_end
+
+org !bank_80_free_space_start
+area_timer:
+    phb
+    phk
+    plb
+    ldx $0998
+    cpx #$001F                    ; pre-game load state?
+    beq .pre_game
+    cpx #$0006                    ; pre-game = 0-5
+    bcs .load_area
+.pre_game
+    lda #$0006                    ; area 6 (pre-game)
+    bra .update_area
+    
+.load_area
+    lda $1f5b
+    cmp #$0006                    ; only areas 0-5 valid
+    bcs .leave_area_timer
+    cpx #$000D                    ; $0D
+    bcc .update_area              ; to
+    cpx #$0012                    ; $11 = pause screen
+    bcs .update_area
+    lda #$FFFF                    ; pause timer
+
+.update_area
+    inc
+    asl
+    asl
+    tax
+    lda !stat_pause_time,X
+    inc
+    sta !stat_pause_time,X
+    bne .leave_area_timer
+    lda !stat_pause_time+2,X
+    inc
+    sta !stat_pause_time+2,X
+
+.leave_area_timer
+    lda !nmi_timeronly            ; check unpause bit
+    beq .not_unpause
+    plb
+    rts                           ; return to timer-only NMI 
+
+.not_unpause
+    plb
+    jmp $95fc                     ; restore regs, rti
+
+nmi_timer_hook:
+    pha
+    phb
+    phk
+    plb
+    lda !nmi_timeronly
+    beq .normal_nmi
+    phx
+    phy
+    jsr inc_skipcount             ; area timer func (skip $5b8 inc)
+    ply
+    plx
+    plb
+    pla
+    rti                           ; leave NMI
+
+.normal_nmi
+    plb
+    pla
+    phb                           ; replaced code
+    phd
+    pha
+    jmp $958c                     ; resume NMI
+
+enable_nmi_hook:
+    stz !nmi_timeronly
+    php
+    sep #$20
+    lda #$80
+    bit $84                       ; NMI already enabled?
+    beq .not_enabled
+    plp
+    rtl
+
+.not_enabled
+    plp
+    php                           ; replaced code
+    phb
+    phk
+    jmp $834e
+
+disable_nmi_hook:
+    inc !nmi_timeronly
+    rtl
+
+warnpc !bank_80_free_space_end
+
+; NMI hook to check for timer-only mode
+org $809589
+    jmp nmi_timer_hook
+    
+; Disable NMI func
+org $80835D
+    jmp disable_nmi_hook
+    
+; Enable NMI func
+org $80834B
+    jmp enable_nmi_hook
+
+; Boot logo NMI override
+org $8b916b
+    lda #$81
+
+; Boot init CPU NMI override
+org $80875d
+    lda #$81
+
+; Common boot NMI override
+org $8084b3
+    nop : nop : nop : nop : nop
+
+; Start game NMI override
+org $8281a7
+    lda #$81
 
 ; RTA timer based on VARIA patch by total & ouiche
 org $8095e5
@@ -49,6 +181,7 @@ org $808FA3 ;; overwrite unused routine
 .inc:
     ; increment vanilla 16-bit timer (used by message boxes)
     inc $05b8
+inc_skipcount:
     ; increment 32-bit timer in SRAM:
     lda !stat_timer
     inc
@@ -58,12 +191,8 @@ org $808FA3 ;; overwrite unused routine
     inc
     sta !stat_timer+2
 .end:
-    ply
-    plx
-    pla
-    pld
-    plb
-    rti
+    jmp area_timer
+
 warnpc $808FC1 ;; next used routine start
 
 !idx_ETank = #$0000
@@ -284,7 +413,7 @@ org $84EE00  ; Morph, shot block
 org $84EE41  ; ReserveTank, shot block
     dw collect_ReserveTank
 
-org !bank_84_free_space_start
+org !bank_85_free_space_start
 
 hook_save_station:
     jsl $868097  ; run hi-jacked Instruction
@@ -309,6 +438,15 @@ hook_death:
     LDA #$0000
     rtl
 
+hook_timeout:
+    lda !stat_deaths
+    inc
+    sta !stat_deaths
+    ; run hi-jacked instructions:
+    LDX #$01FE             ;\
+    LDA #$7FFF 
+    rtl
+
 hook_boot:
     lda !stat_resets
     inc
@@ -326,6 +464,10 @@ hook_game_end:
     lda !stat_timer+2
     sta !stat_final_time+2    
     
+    ; set area to -1 so timers stop
+    lda #$FFFF
+    sta $1f5b
+
     pla
     rtl
 
@@ -349,111 +491,119 @@ collect_item:
 
 .skip:
     plx
+    rtl
+
+warnpc !bank_85_free_space_end
+
+org !bank_84_free_space_start
+
+collect_item_wrapper:
+    jsl collect_item
     rts
 
 collect_ETank:
     lda !idx_ETank
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $8968
 
 collect_Missile:
     lda !idx_Missile
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $89A9
 
 collect_Super:
     lda !idx_Super
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $89D2
 
 collect_PowerBomb:
     lda !idx_PowerBomb
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $89FB
 
 collect_Bombs:
     lda !idx_Bombs
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88F3
 
 collect_Charge:
     lda !idx_Charge
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88B0
 
 collect_Ice:
     lda !idx_Ice
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88B0
 
 collect_HiJump:
     lda !idx_HiJump
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88F3
 
 collect_SpeedBooster:
     lda !idx_SpeedBooster
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88F3
 
 collect_Wave:
     lda !idx_Wave
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88B0
 
 collect_Spazer:
     lda !idx_Spazer
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88B0
 
 collect_SpringBall:
     lda !idx_SpringBall
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88F3
 
 collect_Varia:
     lda !idx_Varia
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88F3
 
 collect_Gravity:
     lda !idx_Gravity
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88F3
 
 collect_XRayScope:
     lda !idx_XRayScope
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $8941
 
 collect_Plasma:
     lda !idx_Plasma
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88B0
 
 collect_Grapple:
     lda !idx_Grapple
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $891A
 
 collect_SpaceJump:
     lda !idx_SpaceJump
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88F3
 
 collect_ScrewAttack:
     lda !idx_ScrewAttack
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88F3
 
 collect_Morph:
     lda !idx_Morph
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $88F3
 
 collect_ReserveTank:
     lda !idx_ReserveTank
-    jsr collect_item
+    jsr collect_item_wrapper
     jmp $8986
 
 warnpc !bank_84_free_space_end

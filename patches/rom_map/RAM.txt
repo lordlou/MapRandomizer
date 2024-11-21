@@ -7,6 +7,13 @@ $1F62: map area backup in pause menu (like $079F)
 $1F64: escape refill complete
 $1F66: map switch direction in pause menu
 $1F68: temporary value in hazard_markers.asm
+$1F70: spin lock enabled flag (spin_lock.asm)
+$1F72: last samus X map position
+$1F74: last samus Y map position
+$1F76: beam door type: (0=Charge, 1=Ice, 2=Wave, 3=Spazer, 4=Plasma)
+$1F78: beam graphics base address (in bank $EA)
+$1F7A: loadback ready (haven't left room since saving)
+$1F7C: timer-only NMI
 $7ED823: randomizer-specific event flags:
   $0001: bowling statue activated
   $0002: pit room door unlocked

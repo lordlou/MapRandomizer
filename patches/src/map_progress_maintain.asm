@@ -1,8 +1,13 @@
 arch snes.cpu
 lorom
 
-!bank_90_freespace_start = $90F700
-!bank_90_freespace_end = $90F780
+!map_station_reveal_type = $90F700  ; 0 = Full reveal,  1 = Partial reveal
+!map_reveal_tile_table = $90FA00  ; must match reference in patch.rs
+!bank_90_freespace_start = $90F702
+!bank_90_freespace_end = $90F800
+
+
+incsrc "constants.asm"
 
 ; In the game header, expand SRAM from 8 KB to 16 KB.
 org $80FFD8
@@ -23,17 +28,59 @@ org $848CA6
     jsl activate_map_station_hook
     nop : nop
 
-; Hook for normal routine to mark tiles explored (at current Samus location)
-org $90A98B
-    jsr mark_progress
+; Continue marking map tiles revealed/explored even if mini-map is disabled:
+org $90A923
+    nop : nop
 
-; Hook for special routine to mark tiles (used when entering boss rooms)
-org $90A8E8
-    jsr mark_tile_explored_hook
+; Hook routine that marks the tile above Samus as explored (in Terminator and Croc Speedway)
+org $90AB6D
+    jsr hook_mark_tile_above
+
+; Hook for normal routine to mark tiles explored (at current Samus location)
+; This will also check if mini-map is disabled, and if so, skip the rest of the mini-map drawing routine.
+org $90A98B
+    jmp mark_progress
+
+org !map_station_reveal_type
+    dw $0000  ; default: full reveal
 
 org !bank_90_freespace_start
 mark_progress:
+    lda $12  ; Samus X map coordinate
+    cmp !last_samus_map_x
+    bne .moved
+    lda $16  ; Samus Y map coordinate
+    cmp !last_samus_map_y
+    bne .moved
+
+    ; Samus hasn't moved to a new map tile, so skip updating the mini-map.
+    ; Only update the flashing to mark Samus' location (unless minimap is disabled)
+    rep #$30 : dex  ; run hi-jacked instructions
+    lda $05F7
+    bne .minimap_disabled  
+
+    lda $05B5         ;\
+    and #$0008        ;} If [8-bit frame counter] & 8 = 0:
+    bne .flash_off    ;/
+    lda $7EC680       ;\
+    and #$E3FF        ;} give Samus position in mini-map palette 0 (orange color)
+    sta $7EC680       ;/
+    bra .done
+.flash_off:
+    lda $7EC680       ;\
+    ora #$0800        ;} give Samus position in mini-map palette 2 (explored map color)
+    sta $7EC680       ;/
+.done:
+    plp
+    rtl
+
+.moved:
+    ; Samus has moved to a different map tile, so update the mini-map:
     phx
+    lda $12
+    sta !last_samus_map_x
+    lda $16
+    sta !last_samus_map_y
 
     ; convert X from within-area byte index (between $00 and $ff) to an overall byte index (between $00 and $5ff)
     ; (accumulator is 8-bit)
@@ -48,40 +95,101 @@ mark_progress:
     ora $AC04,y         ; A |= $80 >> Y
     sta $702000,x
 
+    lda $702700,x
+    ora $AC04,y         ; A |= $80 >> Y
+    sta $702700,x
+
     plx
     rep #$30 : dex  ; run hi-jacked instructions
-    rts
+
+    lda $05F7
+    bne .minimap_disabled
+    jmp $A98E
+.minimap_disabled:
+    plp
+    rtl
 
 ; When map station is activated, fill all map revealed bits for the area:
 activate_map_station_hook:
     LDA #$0001 : STA $0789   ; run hi-jacked instructions (set map flag)
-    
+
+    phb
+    pea $9090
+    plb
+    plb
+
+    ; reveal specific tiles in other area maps (e.g. area transition arrows/letters)
+    lda $1F5B
+    asl
+    tax          ; X <- map_area * 2
+    lda !map_reveal_tile_table, x
+    tay          ; Y <- [map_reveal_tile_table + map_area * 2]
+
+.cross_area_reveal_loop:
+    lda $0000,y
+    beq .done_cross_area_reveal
+    tax            ; X <- address of word containing tile to reveal (relative to base at $702000 and $702700)
+    lda $0002,y    ; A <- bitmask of tile to reveal
+    ora $702000,x
+    sta $702000,x
+    lda $0002,y
+    ora $702700,x
+    sta $702700,x
+    iny : iny : iny : iny
+    bra .cross_area_reveal_loop
+
+.done_cross_area_reveal:
+    plb
+
+    ; now reveal the current area's map:
     lda $1F5B
     xba
     tax          ; X <- map area * $100
     ldy $0080    ; Y <- loop counter (number of words to fill with #$FFFF)
-.loop    
+
+    lda !map_station_reveal_type
+    bne .partial_only_loop
+
+.loop:
     lda #$FFFF
     sta $702000, x
+    sta $702700, x
     inx
     inx
     dey
     bne .loop
-    
     rtl
 
+.partial_only_loop:
+    lda #$FFFF
+    sta $702700, x
+    ; fully reveal specific tiles that contain area-transition markers,
+    ; since those would not show correctly in the partially-revealed palette:
+    lda $829727, x
+    ora $702000, x
+    sta $702000, x
+    inx
+    inx
+    dey
+    bne .partial_only_loop
+    rtl
 
-mark_tile_explored_hook:
-    STA $07F7,x   ; run hi-jacked instruction (mark tile explored)
+hook_mark_tile_above:
+    ; run hi-jacked instruction (mark explored tile)
+    sta $07F3,x
 
-    ; Also mark tile revealed (persists after deaths/reloads)
-    lda $1F5B  ; load current area
+    ; convert X from within-area byte index (between $00 and $ff) to an overall byte index (between $00 and $5ff)
+    ; (accumulator is 8-bit)
+    txa
     xba
-    txa  ; only low 8-bits of X transferred to low 8 bits of A
-    tax  ; full 16-bits of A transferred to X:  X <- area * $100 + offset
-    lda $702000,x
+    lda $1F5B
+    xba
+    tax
+    
+    ; mark revealed tile:
+    lda $702000-4, x
     ora $AC04,y
-    sta $702000,x
+    sta $702000-4, x
 
     rts
 
@@ -118,9 +226,6 @@ org $82945C      ; We keep this instruction in the same place so that item_dots_
     ASL A                  ;|
     TAX                    ;|
     LDX $1F5B              ;\
-    LDA $7ED908,x          ;|
-    AND #$00FF             ;} If area map collected: go to BRANCH_MAP_COLLECTED
-    BNE .BRANCH_MAP_COLLECTED
     SEP #$20
 
     ; X := X << 8
@@ -136,88 +241,69 @@ org $82945C      ; We keep this instruction in the same place so that item_dots_
     STA $06
     LDA $702000, x         ; load first set of map tile revealed bits (persisted across deaths/reloads)
     STA $26
+    LDA $702700, x         ; load first set of map tile partial revealed bits (persisted across deaths/reloads)
+    STA $28
 
     CLC
 
-.LOOP_WITHOUT_MAP_DATA:
+.LOOP:
 ;    ROL $07F7,x               ;\
     ROL $06
     BCS .BRANCH_EXPLORED_MAP_TILE ;} If [$07F7 + [X]] & 80h >> [$12] != 0: go to BRANCH_EXPLORED_MAP_TILE
     ROL $26
     BCS .BRANCH_REVEALED_MAP_TILE
+    ROL $28
+    BCS .BRANCH_PARTIAL_REVEALED_MAP_TILE
+
     REP #$20
     LDA #$001F             ;\
     STA [$03],y            ;} [$03] + [Y] = 001Fh (blank tile)
 
-.BRANCH_NEXT_WITHOUT_MAP_DATA:
+.BRANCH_NEXT:
     SEP #$20
     INY                    ;\
     INY                    ;} Y += 2
     INC $12                ; Increment $12
     LDA $12                ;\
     CMP #$08               ;} If [$12] < 8: go to LOOP
-    BMI .LOOP_WITHOUT_MAP_DATA ;/
+    BMI .LOOP ;/
     STZ $12                ; $12 = 0
     INX                    ; Increment X
     lda $7ECD52, x         ; load next set of map tile explored bits
     sta $06
     lda $702000, x         ; load next set of map tile revealed bits (persisted across deaths/reloads)
     sta $26
+    lda $702700, x         ; load next set of map tile partial revealed bits (persisted across deaths/reloads)
+    sta $28
     txa
-    bne .LOOP_WITHOUT_MAP_DATA     ;} If [X] % $100 != 0: go to LOOP
+    bne .LOOP     ;} If [X] % $100 != 0: go to LOOP
     PLP
     RTS                    ; Return
 
 .BRANCH_REVEALED_MAP_TILE:
+    ROL $28
     REP #$30
     LDA [$00],y            ;\
     STA [$03],y            ;/
-    BRA .BRANCH_NEXT_WITHOUT_MAP_DATA     ; Go to BRANCH_NEXT_WITHOUT_MAP_DATA
+    BRA .BRANCH_NEXT     ; Go to BRANCH_NEXT
+
+.BRANCH_PARTIAL_REVEALED_MAP_TILE:
+    REP #$30
+    LDA [$00],y            ;\
+    AND #$EFFF             ; Use palette 3 (instead of 6)
+    ORA #$0400             ; 
+    STA [$03],y            ;/
+    BRA .BRANCH_NEXT     ; Go to BRANCH_NEXT
 
 .BRANCH_EXPLORED_MAP_TILE:
     ROL $26
+    ROL $28
     REP #$30
-    LDA [$00],y            ;\
+    LDA [$00],y            ;\ Use palette 2 (instead of 6)
     AND #$EFFF             ;} [$03] + [Y] = [[$00] + [Y]] & ~1000h
     STA [$03],y            ;/
-    BRA .BRANCH_NEXT_WITHOUT_MAP_DATA     ; Go to BRANCH_NEXT_WITHOUT_MAP_DATA
+    BRA .BRANCH_NEXT     ; Go to BRANCH_NEXT
 
-.BRANCH_MAP_COLLECTED:
-    REP #$30
-    LDA #$0000             ;\
-    STA $0B                ;|
-    LDA #$07F7             ;} $09 = $00:07F7 (map tiles explored)
-    STA $09                ;/
-    LDA [$09]              ;\
-    XBA                    ;} $28 = [[$09]] << 8 | [[$09] + 1]
-    STA $28                ;/
-    INC $09                ;\
-    INC $09                ;} $09 += 2
-    LDY #$0000             ; Y = 0 (tilemap index)
-    LDX #$0010             ; X = 10h
-
-.LOOP_WITH_MAP_DATA
-    LDA [$00],y            ; A = [[$00] + [Y]]
-    ASL $28                ;\
-    BCC .not_explored       ;} If [$28] & (1 << [X]-1) != 0:
-    AND #$EFFF             ; A &= ~1000h
-.not_explored:
-    STA [$03],y            ; [$03] + [Y] = [A]
-    DEX                    ; Decrement X
-    BNE .next                ; If [X] = 0:
-    LDX #$0010             ; X = 10h
-    LDA [$09]              ;\
-    XBA                    ;} $28 = [[$09]] << 8 | [[$09] + 1]
-    STA $28                ;/
-    INC $09                ;\
-    INC $09                ;} $09 += 2
-.next:
-    INY                    ;\
-    INY                    ;} Y += 2
-    CPY #$1000             ;\
-    BMI .LOOP_WITH_MAP_DATA    ;} If [Y] < 1000h: go to LOOP_WITH_MAP_DATA
-    PLP
-    RTS
 
 warnpc $829628
 
@@ -243,17 +329,17 @@ org $90AB18 : ORA #$3800  ; row 2, was: ORA #$2C00
 ; Patch HUD mini-map drawing to use map revealed bits instead of map data bits
 ; Vanilla logic: tile is non-blank if map station obtained AND map data bit is set
 ; New logic: tile is non-blank if map revealed bit is set
-; (We make minimal changes to the code here, leaving redundant computations, to minimize changes to timings)
+; (There's some redundant code here; it could be optimized.)
 org $90AAAC : BRA $03   ; Row 0
 org $90AAD3 : BRA $03   ; Row 1
 org $90AB10 : BRA $03   ; Row 2
 
-; Patch "Determine map scroll limits" to be based on map revealed bits instead of map explored bits:
+; Patch "Determine map scroll limits" to be based on map partial revealed bits instead of map explored bits:
 org $829EC6
     lda $1F5B
     clc
     xba
-    adc #$2000
+    adc #$2700
     sta $06
     lda #$0070
     sta $08         ; $06 <- $702000 + area index * $100

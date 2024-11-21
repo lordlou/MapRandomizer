@@ -1,5 +1,6 @@
 .idea/
 maps/
+!maps/vanilla
 models/
 rust/rando/target/
 venv/
@@ -15,6 +16,10 @@ package-lock.json
 **/*.smc
 tmp/
 patches/ips/items_test*.ips
+patches/mosaic
 **/FlameGraph/
 **/perf.data
 **/out.perf-folded
+compressed_data/
+map-rando-videos/
+map-rando-videos-pgdump/

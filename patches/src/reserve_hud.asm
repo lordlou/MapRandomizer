@@ -9,6 +9,9 @@
 
 lorom
 
+!bank_84_free_space_start = $84F490
+!bank_84_free_space_end = $84F4A0
+
 ; Definitions
 !samus_max_reserves = $09D4
 !samus_reserves = $09D6
@@ -62,14 +65,14 @@ org $809B4E
 
 org $80D340
 TABLE_NEW_TILES: ; Order matters!
-    db $00, $00, $00, $00, $00, $00, $00, $00, $7F, $7F, $40, $7F, $40, $7F, $00, $00 ; One Reserve | Empty | Left
-    db $00, $00, $00, $00, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $FC, $00, $00 ; One Reserve | Empty | Right
+    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $7F, $3F, $7F, $3F, $7F, $00, $00 ; One Reserve | Empty | Left
+    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $FC, $FC, $FC, $FC, $FC, $00, $00 ; One Reserve | Empty | Right
     db $00, $00, $00, $00, $00, $00, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; One Reserve | Full | Left
     db $00, $00, $00, $00, $00, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; One Reserve | Full | Right
-    db $7F, $7F, $40, $7F, $40, $7F, $00, $00, $7F, $7F, $40, $7F, $40, $7F, $00, $00 ; Two Reserve | Empty/Empty | Left
-    db $FC, $FC, $00, $FC, $00, $FC, $00, $00, $FC, $FC, $00, $FC, $00, $FC, $00, $00 ; Two Reserve | Empty/Empty | Right
-    db $7F, $7F, $40, $7F, $40, $7F, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; Two Reserve | Full/Empty | Left
-    db $FC, $FC, $00, $FC, $00, $FC, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; Two Reserve | Full/Empty | Right
+    db $00, $7F, $3F, $7F, $3F, $7F, $00, $00, $00, $7F, $3F, $7F, $3F, $7F, $00, $00 ; Two Reserve | Empty/Empty | Left
+    db $00, $FC, $FC, $FC, $FC, $FC, $00, $00, $00, $FC, $FC, $FC, $FC, $FC, $00, $00 ; Two Reserve | Empty/Empty | Right
+    db $00, $7F, $3F, $7F, $3F, $7F, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; Two Reserve | Full/Empty | Left
+    db $00, $FC, $FC, $FC, $FC, $FC, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; Two Reserve | Full/Empty | Right
     db $00, $7F, $3F, $40, $3F, $40, $00, $00, $00, $7F, $3F, $40, $3F, $40, $00, $00 ; Two Reserve | Full/Full | Left
     db $00, $FC, $FC, $00, $FC, $00, $00, $00, $00, $FC, $FC, $00, $FC, $00, $00, $00 ; Two Reserve | Full/Full | Right
 FUNCTION_DRAW_RESERVE_HUD:
@@ -244,67 +247,40 @@ FCST_PAINT_COLUMNS:
     ; Y has address
     LDA !affect_right_tile
     BNE FCST_PAINT_COLUMN_0
-    ; Draw the unique left side first bar, always
-FCST_PAINT_COLUMN_LEFT:
-    LDA !affect_upper_bar
-    BNE FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_UPPER
-FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_LOWER:
-    LDA !healthCheck_Lower ; If we reach here, we're checking the bottom bar
-    BRA FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_CHECK
-FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_UPPER:
-    LDA !healthCheck_Upper
-    ; BRA FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_CHECK
-FCST_PAINT_COLUMN_LEFT_HIGHLIGHT_CHECK:
-    CLC : ADC #$0008
-    CMP !samus_reserves
-    BMI FCST_PAINT_COLUMN_LEFT_SPECIAL  ; If current reserve has more than 8 energy
-    JMP FCST_PAINT_COLUMN_1_SKIP_CHECK  ; If current reserve has 1 to 8 energy
-FCST_PAINT_COLUMN_LEFT_SPECIAL:
-    LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
-    LDA $0002,y : AND #$BFBF : ORA #$4000 : STA $0002,y
-    LDA $0004,y : AND #$BFBF : ORA #$4000 : STA $0004,y
-    JMP FCST_PAINT_COLUMN_2
+    JMP FCST_PAINT_COLUMN_2_SKIP_CHECK
 FCST_PAINT_COLUMN_0:
-    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_1
-    LDA $0000,y : AND #$7F7F : ORA #$8000 : STA $0000,y
+    INX #4 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_1
     LDA $0002,y : AND #$7F7F : ORA #$0080 : STA $0002,y
     LDA $0004,y : AND #$7F7F : ORA #$0080 : STA $0004,y
 FCST_PAINT_COLUMN_1:
-    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_2
-FCST_PAINT_COLUMN_1_SKIP_CHECK:
-    LDA $0000,y : AND #$BFBF : ORA #$4000 : STA $0000,y
+    INX #9 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_2
     LDA $0002,y : AND #$BFBF : ORA #$0040 : STA $0002,y
     LDA $0004,y : AND #$BFBF : ORA #$0040 : STA $0004,y
 FCST_PAINT_COLUMN_2:
-    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_3
-    LDA $0000,y : AND #$DFDF : ORA #$2000 : STA $0000,y
+    INX #9 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_3
+FCST_PAINT_COLUMN_2_SKIP_CHECK:
     LDA $0002,y : AND #$DFDF : ORA #$0020 : STA $0002,y
     LDA $0004,y : AND #$DFDF : ORA #$0020 : STA $0004,y
 FCST_PAINT_COLUMN_3:
-    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_4
-    LDA $0000,y : AND #$EFEF : ORA #$1000 : STA $0000,y
+    INX #9 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_4
     LDA $0002,y : AND #$EFEF : ORA #$0010 : STA $0002,y
     LDA $0004,y : AND #$EFEF : ORA #$0010 : STA $0004,y
 FCST_PAINT_COLUMN_4:
-    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_5
-    LDA $0000,y : AND #$F7F7 : ORA #$0800 : STA $0000,y
+    INX #9 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_5
     LDA $0002,y : AND #$F7F7 : ORA #$0008 : STA $0002,y
     LDA $0004,y : AND #$F7F7 : ORA #$0008 : STA $0004,y
     LDA !affect_right_tile : BEQ FCST_PAINT_COLUMN_5 ; Right side tiles stop here
     JMP FCST_DMA_SPECIAL_TILE
 FCST_PAINT_COLUMN_5:
-    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_6
-    LDA $0000,y : AND #$FBFB : ORA #$0400 : STA $0000,y
+    INX #9 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_6
     LDA $0002,y : AND #$FBFB : ORA #$0004 : STA $0002,y
     LDA $0004,y : AND #$FBFB : ORA #$0004 : STA $0004,y
 FCST_PAINT_COLUMN_6:
-    INX #8 : CPX !samus_reserves : BPL FCST_PAINT_COLUMN_7
-    LDA $0000,y : AND #$FDFD : ORA #$0200 : STA $0000,y
+    INX #9 : CPX !samus_reserves : BPL FCST_DMA_SPECIAL_TILE
     LDA $0002,y : AND #$FDFD : ORA #$0002 : STA $0002,y
     LDA $0004,y : AND #$FDFD : ORA #$0002 : STA $0004,y
 FCST_PAINT_COLUMN_7:
-    INX #8 : CPX !samus_reserves : BPL FCST_DMA_SPECIAL_TILE
-    LDA $0000,y : AND #$FEFE : ORA #$0100 : STA $0000,y
+    INX #9 : CPX !samus_reserves : BPL FCST_DMA_SPECIAL_TILE
     LDA $0002,y : AND #$FEFE : ORA #$0001 : STA $0002,y
     LDA $0004,y : AND #$FEFE : ORA #$0001 : STA $0004,y
 FCST_DMA_SPECIAL_TILE:
@@ -357,11 +333,12 @@ FUNCTION_PAUSE_REPAINT_HELPER:
 org $848986
     JSR HOOK_RESERVE_PICKUP
 
-org $84F710
+org !bank_84_free_space_start
 HOOK_RESERVE_PICKUP:
     LDA #$FFFF : STA !samus_previous_reserves
     LDA $09D4 ; Original code
     RTS
+warnpc !bank_84_free_space_end
 
 ; When enterng and leaving Kraid's room, the original tiles are drawn for a few frames, so make them empty
 org $E2C330

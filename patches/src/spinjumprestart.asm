@@ -1,10 +1,12 @@
 ; Based on https://github.com/theonlydude/RandomMetroidSolver/blob/master/patches/common/src/spinjumprestart.asm
 ; Developed by Kejardon
+; Note: this version reworks the transition tables to save space but introduces some deviations from vanilla behavior 
+; (aside from the respin changes); it's no longer used in the randomizer but kept for reference.
 
 LoRom
 
-!bank_90_free_space_start = $90F780
-!bank_90_free_space_end = $90F800
+!bank_90_free_space_start = $90F980
+!bank_90_free_space_end = $90FA00
 
 org !bank_90_free_space_start
 handle_spinjump:

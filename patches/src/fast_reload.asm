@@ -6,9 +6,13 @@
 !deathhook82 = $82DDC7 ;$82 used for death hook (game state $19)
 
 ;free space: make sure it doesnt override anything you have
-!freespace82_start = $82FE00
-!freespace82_end = $82FE80
-!button_combo = $82FE7E   ; This should be inside free space, and also consistent with reference in customize.rs
+!bank_85_free_space_start = $859880
+!bank_85_free_space_end = $859980
+!bank_82_free_space_start = $82FE00
+!bank_82_free_space_end = $82FE80
+
+!spin_lock_button_combo = $82FE7C   ; This should be inside free space, and also consistent with reference in customize.rs
+!reload_button_combo = $82FE7E   ; This should be inside free space, and also consistent with reference in customize.rs
 !freespacea0 = $a0fe00 ;$A0 used for instant save reload
 
 !QUICK_RELOAD = $1f60 ;dont need to touch this
@@ -44,9 +48,17 @@ warnpc $82DDF1
 org $82897A
     jsl hook_main
 
+; Hook save station usage
+org $848D16
+    jsl hook_save_station
+
+; Hook Ship save usage
+org $85811E
+    jsl hook_ship_save
+
 ; $08, $14, $15, $16, $17
 
-org !freespace82_start
+org !bank_85_free_space_start
 
 hook_main:
     lda $0998
@@ -88,13 +100,30 @@ check_reload:
     cmp #$E86A
     beq .noreset
 
+    ; Check newly pressed shot (to disable spin lock):
+    lda $8F
+    bit $09B2
+    beq .no_shot
+    lda #$0000
+    sta !spin_lock_enabled  ; shot button is newly pressed, so disable spin lock
+.no_shot:
+
+    ; Check spin-lock input combination (to enable spin lock):
+    lda $8B
+    and !spin_lock_button_combo
+    cmp !spin_lock_button_combo
+    bne .no_spin_lock
+    lda #$0001
+    sta !spin_lock_enabled  ; spin lock button combination was pressed, so enable spin lock
+.no_spin_lock:
+
     lda $8B      ; Controller 1 input
-    and !button_combo   ; L + R + Select + Start (or customized reset inputs)
-    cmp !button_combo
+    and !reload_button_combo   ; L + R + Select + Start (or customized reset inputs)
+    cmp !reload_button_combo
     bne .noreset ; If any of the inputs are not currently held, then do not reset.
 
     lda $8F      ; Newly pressed controller 1 input
-    and !button_combo   ; L + R + Select + Start
+    and !reload_button_combo   ; L + R + Select + Start
     bne .reset   ; Reset only if at least one of the inputs is newly pressed
 .noreset
     PLA
@@ -103,14 +132,24 @@ check_reload:
 .reset:
     PLA
     PLP
-    jsr deathhook
+    jsl deathhook_wrapper
     RTL
 
+warnpc !bank_85_free_space_end
 
-org !button_combo
+org !bank_82_free_space_start
+
+deathhook_wrapper:
+    jsr deathhook
+    rtl
+
+warnpc !spin_lock_button_combo
+
+org !spin_lock_button_combo
+    dw $0870
+
+org !reload_button_combo
     dw $0303  ; L + R + Select + Start  (overridable by the customizer)
-
-warnpc !freespace82_end
 
 ; Hook setting up game
 org $80a088
@@ -128,6 +167,10 @@ org $80a113
 org $91e164
     jsl setup_samus : nop : nop
 
+org $82E309
+    jsl hook_door_transition
+    nop : nop
+
 ; Free space somewhere for hooked code
 org !freespacea0
 setup_music:
@@ -140,6 +183,8 @@ setup_music:
 
 setup_game_1:
 	jsl $82be17       ; Stop sounds
+    lda #$ffff
+    sta !loadback_ready   ; Set the state that allows loading back to previous save.
     lda !QUICK_RELOAD
     bne .quick
     lda #$ffff      ; Do regular things
@@ -215,8 +260,8 @@ setup_samus:
 
 ; Determine which save slot to load from, and load it:
 load_save_slot:
-    lda $0E18       ; Check if we are on an elevator ride
-    bne .current      ; If so, just load the current save (in spite of Samus facing forward, don't go back to previous save.)
+    lda !loadback_ready   ; Check if we are still in the room where we last saved
+    beq .current      ; If not, just load the current save (in spite of Samus possibly facing forward, e.g. due to elevator ride.)
     lda $0A1C       ; Check if Samus is still facing forward (initial state after loading)
     beq .forward     
     cmp #$009B
@@ -255,4 +300,31 @@ load_save_slot:
     sta !stat_loadbacks
     rtl
 
+hook_door_transition:
+    ; Unset the state that would allow loading back to previous save if facing forward.
+    ; This is to prevent unintended loadbacks when using elevators.
+    stz !loadback_ready
+    ; run hi-jacked instructions
+    lda #$E310
+    sta $099C
+    rtl
+
+hook_save_station:
+    lda #$FFFF
+    sta !loadback_ready
+    ; run hi-jacked instructions
+    lda $079F
+    asl
+    rtl
+
+hook_ship_save:
+    pha
+    lda #$FFFF
+    sta !loadback_ready
+    pla
+    ; run hi-jacked instruction:
+    jsl $809049
+    rtl
+
 warnpc $A18000
+

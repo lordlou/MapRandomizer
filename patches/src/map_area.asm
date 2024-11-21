@@ -7,7 +7,7 @@ lorom
 !bank_82_freespace_end = $82FA80
 !etank_color = $82FFFE   ; must match addess customize.rs (be careful moving this, will probably break customization on old versions)
 !bank_a7_freespace_start = $A7FFC0
-!bank_a7_freespace_end = $A88000
+!bank_a7_freespace_end = $A7FFE0
 !bank_e8_freespace_start = $E88000
 !bank_e8_freespace_end = $E98000
 
@@ -20,6 +20,31 @@ lorom
 ;!unexplored_light_gray = #$35ad
 !unexplored_light_gray = #$4631
 !area_explored_mask = $702600
+
+
+; pause map colors for palettes 2 (explored) and 6 (unexplored):
+; 
+; 0: transparent (black, but grid lines from layer 2 can show through)
+; 1: cool room color (dark gray for unexplored, or dark area-themed color for explored)
+; 2: hot room color (ligh gray for unexplored, or light area-themed color for explored)
+; 3: white (walls/passages)
+; 4: black
+; 5: unused
+; 6: orange door, tourian arrow
+; 7: pink door
+; 8: blue: maridia arrow
+; 9: yellow: wrecked ship arrow
+; 10: red: norfair arrow
+; 11: purple: crateria arrow
+; 12: white (item dots)
+; 13: black (door lock shadows covering wall)
+; 14: green door, brinstar arrows
+; 15: gray door
+;
+; Palette 3 is used for partially revealed tiles (i.e. showing outline of visited rooms),
+; and essentially replaces all colors with black except for 3 (which remains white) and
+; 13, which becomes white in order to not give away the presence of a door lock.
+
 
 ;;; Hijack map usages of area ($079F) with new area ($1F5B)
 org $8085A7  ; Load mirror of current area's map explored
@@ -215,6 +240,11 @@ fix_map_palette:
     sta $7EC0DE
     sta $7EC05E
 
+    ; Partially revealed tiles: black color for item dots, door locks
+    lda #$0000
+    sta $7EC07A
+    sta $7EC06E
+
     lda #$0000  ; run hi-jacked instruction
     rts
 
@@ -229,6 +259,12 @@ fix_equipment_palette:
     lda #$318C
     sta $7EC0DE
     sta $7EC05E
+
+    ; Fix colors used for partially revealed tiles on map screen
+    lda #$7FFF
+    sta $7EC07A
+    lda #$5EF7
+    sta $7EC06E
 
     lda #$0001 ; run hi-jacked instruction
     rts
@@ -641,6 +677,7 @@ simple_scroll_setup:
 
     RTS
 
+print pc
 warnpc !bank_82_freespace_end
 
 org !bank_e8_freespace_start

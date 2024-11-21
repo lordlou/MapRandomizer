@@ -7,18 +7,19 @@ body {
 a {
 	color: white;	
 }
+img {
+	touch-action: none;
+}
 #map {
 	position: absolute;
 	width: 1776px;
 	image-rendering: pixelated;
 	top: 0;
 	left: 0;
-	transform: translate(var(--tx), var(--ty));
 }
 #path-overlay {
 	position: absolute;
 	pointer-events: none;
-	transform: translate(var(--tx), var(--ty));
 }
 #obscure-overlay {
 	position: absolute;
@@ -34,7 +35,6 @@ a {
 }
 #overlay {
 	position: absolute;
-	transform: translate(var(--tx), var(--ty));
 	z-index: 2;
 }
 #grid-overlay {
@@ -59,11 +59,12 @@ a {
 }
 #sidebar-info {
 	position: fixed;
-	max-height: 500px;
+	max-height: 600px;
 	overflow-y: auto;
 	pointer-events: auto;
 	top: 16px;
 	left: 16px;
+	touch-action: auto;
 }
 .sidebar-title {
 	font-size: x-large;
@@ -102,6 +103,7 @@ a {
 .step-whole-map {
 	font-size: small;
 	font-weight: bold;
+	margin-right: 8px;
 }
 .hidden {
 	display: none;

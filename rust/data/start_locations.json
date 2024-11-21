@@ -362,8 +362,7 @@
     {
         "name": "Construction Zone Top",
         "room_id": 39,
-        "node_id": 4,
-        "door_load_node_id": 1,
+        "node_id": 1,
         "x": 8,
         "y": 8
     },
@@ -604,7 +603,7 @@
     {
         "name": "Red Tower Bottom",
         "room_id": 66,
-        "node_id": 8,
+        "node_id": 7,
         "door_load_node_id": 3,
         "x": 8,
         "y": 154
@@ -883,7 +882,7 @@
     {
         "name": "Single Chamber Left",
         "room_id": 103,
-        "node_id": 1,
+        "node_id": 4,
         "x": 12.5,
         "y": 26,
         "requires": ["canHeatRun", {"heatFrames": 40}]
@@ -1665,7 +1664,7 @@
         "x": 64.5,
         "y": 8,
         "spicy": true,
-        "requires": [{"spikeHits": 1}, "canHorizontalDamageBoost", "canPreciseWalljump"],
+        "requires": [{"spikeHits": 1}, "canHorizontalDamageBoost", "canTrickyJump", "canPreciseWalljump"],
         "camera_offset_x": -12,
         "devNote": ["This is as far right as we can adjust the camera without activating the Mochtroid."]
     },
@@ -1708,7 +1707,7 @@
         "name": "East Sand Hole",
         "room_id": 208,
         "node_id": 2,
-        "door_load_node_id": 1,
+        "door_load_node_id": 2,
         "x": 25,
         "y": 11
     },
@@ -1983,7 +1982,7 @@
     {
         "name": "Metroid Room 1 Right",
         "room_id": 226,
-        "node_id": 1,
+        "node_id": 2,
         "x": 87,
         "y": 12
     },
@@ -2083,21 +2082,6 @@
         "node_id": 2,
         "x": 92,
         "y": 10
-    },
-    {
-        "name": "Statues Room Top",
-        "room_id": 27,
-        "node_id": 1,
-        "x": 13.5,
-        "y": 10
-    },
-    {
-        "name": "Statues Room Bottom",
-        "room_id": 27,
-        "node_id": 1,
-        "x": 8,
-        "y": 21,
-        "camera_offset_y": -4
     },
     {
         "name": "Terminator Room",
@@ -2256,7 +2240,14 @@
         "camera_offset_x": 2,
         "camera_offset_y": -6,
         "requires": [
-            "canPreciseWalljump"
+            {"or": [
+                "canPreciseWalljump",
+                {"and": [
+                    "h_canBackIntoCorner",
+                    "canInsaneJump",
+                    "canDownGrab"
+                ]}
+            ]}
         ]
     },
     {
@@ -2434,7 +2425,7 @@
         "name": "West Sand Hole",
         "room_id": 209,
         "node_id": 2,
-        "door_load_node_id": 1,
+        "door_load_node_id": 2,
         "x": 17,
         "y": 12,
         "camera_offset_x": -6,

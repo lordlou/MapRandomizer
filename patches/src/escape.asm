@@ -7,10 +7,14 @@
 lorom
 arch snes.cpu
 
+!bank_82_free_space_start = $82FF10
+!bank_82_free_space_end = $82FF30
 !bank_84_free_space_start = $84F380
-!bank_84_free_space_end = $84F600
+!bank_84_free_space_end = $84F480
 !bank_8b_free_space_start = $8BF900
 !bank_8b_free_space_end = $8BF940
+!bank_8f_free_space_start = $8FF600
+!bank_8f_free_space_end = $8FF700
 !bank_a7_free_space_start = $A7FF82
 !bank_a7_free_space_end = $A7FFC0
 
@@ -79,6 +83,19 @@ org $84cf75
 ;;; CODE in bank 84 (PLM)
 org $84f900
 
+; This function is referenced in beam_doors.asm, so it needs to be here at $84F900.
+escape_hyper_door_check:
+    %checkEscape() : bcc .nohit
+    lda $1d77,x
+    bit #$0008                  ; check for plasma (hyper = wave+plasma)
+    beq .nohit
+    sec                         ; set carry flag
+    bra .end
+.nohit:
+    clc                         ; reset carry flag
+.end:
+    rts
+
 ;;; returns zero flag set if in the escape and projectile is hyper beam
 escape_hyper_check:
     %checkEscape() : bcc .nohit
@@ -89,18 +106,6 @@ escape_hyper_check:
     bra .end
 .nohit:
     lda #$0001                  ; reset zero flag
-.end:
-    rts
-
-escape_hyper_door_check:
-    %checkEscape() : bcc .nohit
-    lda $1d77,x
-    bit #$0008                  ; check for plasma (hyper = wave+plasma)
-    beq .nohit
-    sec                         ; set carry flag
-    bra .end
-.nohit:
-    clc                         ; reset carry flag
 .end:
     rts
 
@@ -188,7 +193,7 @@ escape_setup:
 
     rts
 
-org $8ff500
+org !bank_8f_free_space_start
 ;;; CODE (in bank 8F free space)
 
 room_setup:
@@ -313,7 +318,7 @@ post_kraid_music:
 ;    dw  $B7B7
 ;    rts
 
-warnpc $8ff700
+warnpc !bank_8f_free_space_end
 
 ; hi-jack post-kraid elevator music (so that it won't play during the escape)
 org $A7C81E
@@ -541,6 +546,7 @@ org !bank_84_free_space_start
     CLC
     RTL
 
+print pc
 warnpc !bank_84_free_space_end
 
 ; hook for when dachora hits block above it
@@ -568,3 +574,22 @@ item_bits:
     dw $0001, $0020, $0004, $1000, $0002, $0008, $0100, $0200, $2000, $4000, $8000, $0400
 
 warnpc !bank_8b_free_space_end
+
+org $82DFFA
+    jsr enemy_gfx_load_hook
+
+org !bank_82_free_space_start
+enemy_gfx_load_hook:
+    pha
+    %checkEscape() : bcc .skip
+    pla
+    cmp #$1C00
+    bcc .done
+    pea $1C00  ; Clamp VRAM update size to $1C00 to prevent overwriting timer graphics
+.skip:
+    pla
+.done:
+    sta $05C3  ; run hi-jacked instruction (set VRAM update size)
+    rts
+warnpc !bank_82_free_space_end
+

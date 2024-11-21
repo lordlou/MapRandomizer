@@ -1,2 +1,7 @@
 .git
 rust/target/
+seeds/
+models/
+tmp/
+map-rando-videos/
+map-rando-videos-pgdump/

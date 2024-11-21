@@ -27,51 +27,63 @@ rooms = [
         name='Aqueduct',
         sub_area=SubArea.PINK_MARIDIA,
         rom_address=0x7D5A7,
-        twin_rom_address=0x7D408,
         map=[
-            [0, 0, 1, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0],
             [1, 1, 1, 1, 1, 1],
             [1, 1, 1, 1, 1, 1],
             [1, 1, 1, 1, 1, 1],
-            [0, 0, 1, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0],
-            [0, 0, 1, 0, 0, 0],
         ],
         door_ids=[
-            DoorIdentifier(LEFT, 0, 5, 0x1A708, 0x1A4C8, 0),  # Crab Shaft
-            DoorIdentifier(LEFT, 0, 6, 0x1A744, 0x1A828, 0),  # Aqueduct Save Room
-            DoorIdentifier(RIGHT, 5, 5, 0x1A738, 0x1A7D4, 0),  # Below Botwoon Energy Tank
-            DoorIdentifier(DOWN, 2, 9, 0x1A600, 0x1A678, None),  # Oasis
-            DoorIdentifier(DOWN, 1, 6, 0x1A714, 0x1A6D8, None, SAND),  # West Aqueduct Quicksand Room
-            DoorIdentifier(DOWN, 3, 6, 0x1A720, 0x1A6F0, None, SAND),  # East Aqueduct Quicksand Room
-            DoorIdentifier(UP, 0, 4, 0x1A72C, 0x1A768, 1),  # Botwoon Hallway
-            DoorIdentifier(UP, 2, 0, 0x1A60C, 0x1A5AC, None),  # Plasma Spark Room (toilet)
+            DoorIdentifier(LEFT, 0, 1, 0x1A708, 0x1A4C8, 0),  # Crab Shaft
+            DoorIdentifier(LEFT, 0, 2, 0x1A744, 0x1A828, 0),  # Aqueduct Save Room
+            DoorIdentifier(RIGHT, 5, 1, 0x1A738, 0x1A7D4, 0),  # Below Botwoon Energy Tank
+            DoorIdentifier(DOWN, 1, 2, 0x1A714, 0x1A6D8, None, SAND),  # West Aqueduct Quicksand Room
+            DoorIdentifier(DOWN, 3, 2, 0x1A720, 0x1A6F0, None, SAND),  # East Aqueduct Quicksand Room
+            DoorIdentifier(UP, 0, 0, 0x1A72C, 0x1A768, 1),  # Botwoon Hallway
         ],
-        parts=[[0, 1, 2, 6], [4], [5], [3, 7]],
+        parts=[[0, 1, 2, 5], [3], [4]],
         transient_part_connections=[(0, 1), (0, 2)],  # sand
-        missing_part_connections=[(1, 0), (2, 0), (0, 3), (3, 0)],
+        missing_part_connections=[(1, 0), (2, 0)],
         items=[
-            Item(4, 4, 0x7C603),
-            Item(5, 4, 0x7C609),
+            Item(4, 0, 0x7C603),
+            Item(5, 0, 0x7C609),
         ],
         node_tiles={
-            1: [(0, 5)],
-            2: [(0, 6), (1, 6), (2, 6), (3, 6), (4, 6), (5, 6)],
-            3: [(1, 6)],
-            4: [(3, 6)],
-            5: [(3, 4), (3, 5), (4, 5), (5, 5)],
-            6: [(0, 4)],
-            7: [(4, 4)],
-            8: [(5, 4)],
-            9: [(0, 4), (1, 4), (2, 4), (1, 5), (2, 5), (2, 5)],
-            # TODO: add toilet
-        },
-        twin_node_tiles={
-            1: [(2, 0), (2, 1), (2, 2), (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (2, 8), (2, 9)],
-            2: [(2, 0), (2, 1), (2, 2), (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (2, 8), (2, 9)],
+            1: [(0, 1)],
+            2: [(0, 2), (1, 2), (2, 2), (3, 2), (4, 2), (5, 2)],
+            3: [(1, 2)],
+            4: [(3, 2)],
+            5: [(3, 0), (3, 1), (4, 1), (5, 1)],
+            6: [(0, 0)],
+            7: [(4, 0)],
+            8: [(5, 0)],
+            9: [(0, 0), (1, 0), (2, 0), (1, 1), (2, 1), (2, 1)],
+            10: [(0, 2)],
+            11: [(0, 2)],
+        }
+    ),
+    Room(
+        name='Toilet',
+        sub_area=SubArea.PINK_MARIDIA,
+        rom_address=0x7D408,
+        map=[
+            [1],
+            [1],
+            [0],
+            [0],
+            [0],
+            [0],
+            [0],
+            [0],
+            [1],
+            [1],
+        ],
+        door_ids=[
+            DoorIdentifier(DOWN, 0, 9, 0x1A600, 0x1A678, None),  # Oasis
+            DoorIdentifier(UP, 0, 0, 0x1A60C, 0x1A5AC, None),  # Plasma Spark Room (toilet)
+        ],
+        node_tiles={
+            1: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, 8), (0, 9)],
+            2: [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, 8), (0, 9)],
         },
     ),
     Room(
@@ -105,9 +117,6 @@ rooms = [
         node_tiles={
             1: [(0, 0)],
             2: [(1, 0)],
-            3: [(0, 0)],
-            4: [(0, 0)],
-            5: [(0, 0)],
         },
     ),
     Room(
@@ -118,8 +127,8 @@ rooms = [
         door_ids=[
             DoorIdentifier(LEFT, 0, 0, 0x1A84C, 0x1A918, 0),  # Botwoon's Room
             DoorIdentifier(RIGHT, 6, 0, 0x1A870, 0x1A8DC, 0),  # Halfie Climb Room
-            DoorIdentifier(DOWN, 2, 0, 0x1A858, None, None, SAND),  # Botwoon Quicksand Room (left)
-            DoorIdentifier(DOWN, 3, 0, 0x1A864, None, None, SAND),  # Botwoon Quicksand Room (right)
+            DoorIdentifier(DOWN, 2, 0, 0x1A864, None, None, SAND),  # Botwoon Quicksand Room (left)
+            DoorIdentifier(DOWN, 3, 0, 0x1A858, None, None, SAND),  # Botwoon Quicksand Room (right)
         ],
         parts=[[0, 1], [2], [3]],
         transient_part_connections=[(0, 1), (0, 2)],  # sand
@@ -202,6 +211,7 @@ rooms = [
         node_tiles={
             1: [(0, 0)],
             2: [(0, 0)],
+            3: [(0, 0)],
         },
     ),
     Room(
@@ -254,7 +264,6 @@ rooms = [
         node_tiles={
             1: [(0, 1), (1, 1)],
             2: [(0, 0), (1, 0)],
-            3: [(0, 1), (1, 1)],
         },
     ),
     Room(
@@ -306,7 +315,9 @@ rooms = [
             1: [(0, 0)],
             2: [(4, 1)],
             3: [(0, 1)],
-            4: [(1, 0), (1, 1), (2, 0), (2, 1), (3, 0), (3, 1), (4, 0)],
+            4: [(3, 0), (4, 0)],
+            5: [(2, 0), (2, 1), (3, 1)],
+            6: [(1, 0), (1, 1)]
         },
     ),
     Room(
@@ -333,6 +344,7 @@ rooms = [
             3: [(2, 2), (3, 2), (2, 3), (3, 3)],
             4: [(2, 1)],
             5: [(2, 0)],
+            6: [(2, 1)],  # Hidden Fake Kassiuz Room Junction
         },
     ),
     Room(
@@ -371,9 +383,11 @@ rooms = [
         transient_part_connections=[(1, 0)],  # sand
         missing_part_connections=[(0, 1)],
         node_tiles={
-            1: [(0, 0), (1, 0)],
-            2: [(2, 0), (3, 0)],
-            3: [(1, 0), (2, 0)],
+            1: [(0, 0)],
+            2: [(3, 0)],
+            3: [(2, 0)],
+            4: [(2, 0)],
+            5: [(1, 0)],
         },
     ),
     Room(
@@ -411,8 +425,8 @@ rooms = [
         door_ids=[
             DoorIdentifier(DOWN, 0, 0, 0x1A8AC, None, None, SAND),  # Below Botwoon Energy Tank (left)
             DoorIdentifier(DOWN, 1, 0, 0x1A8B8, None, None, SAND),  # Below Botwoon Energy Tank (right)
-            DoorIdentifier(UP, 0, 0, None, 0x1A858, None, SAND),  # Botwoon Energy Tank Room (left)
-            DoorIdentifier(UP, 1, 0, None, 0x1A864, None, SAND),  # Botwoon Energy Tank Room (right)
+            DoorIdentifier(UP, 0, 0, None, 0x1A864, None, SAND),  # Botwoon Energy Tank Room (left)
+            DoorIdentifier(UP, 1, 0, None, 0x1A858, None, SAND),  # Botwoon Energy Tank Room (right)
         ],
         parts=[[0], [1], [2], [3]],
         transient_part_connections=[(2, 0), (3, 1)],  # sand
@@ -508,6 +522,7 @@ rooms = [
             2: [(1, 1)],
             3: [(0, 0)],
             4: [(1, 0)],
+            5: [(0, 0)],
         },
     ),
     Room(
@@ -576,6 +591,8 @@ rooms = [
             1: [(0, 0)],
             2: [(0, 0)],
             3: [(0, 0)],
+            4: [(0, 0)],
+            5: [(0, 0)],
         },
     ),
     Room(
@@ -649,6 +666,7 @@ rooms = [
             1: [(0, 5)],
             2: [(0, 4)],
             3: [(0, 0), (0, 1), (0, 2), (0, 3)],
+            4: [(0, 3)],
         },
     ),
     Room(
@@ -759,8 +777,7 @@ rooms = [
         ],
         node_tiles={
             1: [(0, 0)],
-            2: [(2, 0), (3, 0)],
-            3: [(1, 0)],
+            2: [(1, 0), (2, 0), (3, 0)],
         },
     ),
     Room(
@@ -801,6 +818,7 @@ rooms = [
             2: [(0, 1)],
             3: [(0, 1)],
             4: [(0, 0)],
+            5: [(0, 0)],
         },
     ),
 ]

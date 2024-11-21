@@ -10,6 +10,8 @@ arch 65816
 !BTRoomFlag  = $7ed86c		; some free RAM for the flag
 !PickedUp    = #$bbbb
 
+incsrc "constants.asm"
+
 org $82E664 
     JSL handle_door_transition
 
@@ -21,14 +23,17 @@ org $8488a7
 ; Left-side Bomb-Torizo-type door
 org $84BA4C             
 bt_door_left:
-.wait_trigger
-    dw $0002, $A683
-    dw btcheck_inst, .wait_trigger  ; Go to .wait_trigger unless the condition is triggered (item collected or boss hurt)
+    dw $8A24, .triggered   ; Set link instruction to .triggered
+    dw $86C1, bt_pre_inst  ; Pre-instruction = go to link instruction if door is triggered
+    dw $0001, $A683
+.wait_trigger:
+    dw $86B4               ; Sleep
+.triggered:
     dw $0026, $A683    ; After the condition is triggered, wait a bit before closing (time reduced by 2, to make up for extra 2 in next instruction)
-.wait_clear
+.wait_clear:
     dw $0002, $A683    ; Wait for Samus not to be in the doorway (to avoid getting stuck)
     dw left_doorway_clear, .wait_clear  
-.closing
+.closing:
     dw $8C19        ; Queue sound 8, sound library 3, max queued sounds allowed = 6 (door closed)
     db $08    
     dw $0002, $A6FB
@@ -54,14 +59,30 @@ up_bt_door:
 down_bt_door:
     dw $C794, $BF42, btdoor_setup_down
 
+bt_pre_inst:
+    jsr btcheck
+    bne .not_triggered
+    lda $7EDEBC,x    ;\
+    sta $1D27,x      ;} PLM instruction list pointer = [PLM link instruction]
+    lda #$0001       ;\
+    sta $7EDE1C,x    ;} PLM instruction timer = 1
+    lda #$86D0       ;\
+    sta $1CD7,x      ;} Clear pre-instruction
+.not_triggered:
+    rts              ; Return
+
 btdoor_setup_right:
-.wait_trigger
-    dw $0002, $A677
-    dw btcheck_inst, .wait_trigger  ; Go to .wait_trigger unless the condition is triggered (item collected or boss hurt)
+    dw $8A24, .triggered   ; Set link instruction to .triggered
+    dw $86C1, bt_pre_inst  ; Pre-instruction = go to link instruction if door is triggered
+    dw $0001, $A677
+.wait_trigger:
+    dw $86B4               ; Sleep
+.triggered:
     dw $0026, $A677    ; After the condition is triggered, wait a bit before closing (time reduced by 2, to make up for extra 2 in next instruction)
-.wait_clear
+.wait_clear:
     dw $0002, $A677    ; Wait for Samus not to be in the doorway (to avoid getting stuck)
     dw right_doorway_clear, .wait_clear  
+.closing:
     dw $8C19
     db $08    ; Queue sound 8, sound library 3, max queued sounds allowed = 6 (door closed)
     dw $0002, $A6CB
@@ -72,10 +93,14 @@ btdoor_setup_right:
 
 
 btdoor_setup_up:
-.wait_trigger
-    dw $0002, $A69B
-    dw btcheck_inst, .wait_trigger  ; Go to .wait_trigger unless the condition is triggered (item collected or boss hurt)
+    dw $8A24, .triggered   ; Set link instruction to .triggered
+    dw $86C1, bt_pre_inst  ; Pre-instruction = go to link instruction if door is triggered
+    dw $0001, $A69B
+.wait_trigger:
+    dw $86B4               ; Sleep
+.triggered:
     dw $0026, $A69B    ; After the condition is triggered, wait a bit before closing (time reduced by 2, to make up for extra 2 in next instruction)
+.closing:
     dw $8C19
     db $08    ; Queue sound 8, sound library 3, max queued sounds allowed = 6 (door closed)
     dw $0002,$A75B
@@ -85,10 +110,14 @@ btdoor_setup_up:
     dw $8724, $BFAB
 
 btdoor_setup_down:
-.wait_trigger
-    dw $0002, $A68F
-    dw btcheck_inst, .wait_trigger  ; Go to .wait_trigger unless the condition is triggered (item collected or boss hurt)
+    dw $8A24, .triggered   ; Set link instruction to .triggered
+    dw $86C1, bt_pre_inst  ; Pre-instruction = go to link instruction if door is triggered
+    dw $0001, $A68F
+.wait_trigger:
+    dw $86B4               ; Sleep
+.triggered:
     dw $0026, $A68F    ; After the condition is triggered, wait a bit before closing (time reduced by 2, to make up for extra 2 in next instruction)
+.closing:
     dw $8C19
     db $08    ; Queue sound 8, sound library 3, max queued sounds allowed = 6 (door closed)
     dw $0002,$A72B
@@ -201,6 +230,7 @@ handle_door_transition:
     pha
     lda #$0000
     sta !BTRoomFlag
+    sta !last_samus_map_y  ; clear Samus map Y coordinate, to force mini-map to be drawn in next room
     pla
 
     jsl $808EF4            ; run hi-jacked instruction
@@ -261,6 +291,17 @@ org $A5954D
     jsl draygon_hurt
     nop : nop
 
+; The Ridley "time frozen AI" (during reserve trigger) falls through to the hurt AI.
+; But we don't want it to trigger the gray door to close, so we make it skip over that part:
+org $A6B291
+    jsl ridley_time_frozen
+    bra ridley_odd_frame_counter
+
+warnpc $A6B297
+
+org $A6B2BA
+ridley_odd_frame_counter:
+
 org $A6B297
     jsl ridley_hurt
     nop : nop
@@ -306,6 +347,14 @@ draygon_hurt:
     ; run hi-jacked instruction
     ldy #$A277
     ldx $0E54
+    rtl
+
+ridley_time_frozen:
+    ; run hi-jacked instructions
+    lda #$0001
+    sta $0FA4
+    ; there's nothing more we need to do. 
+    ; We just needed to make space for the "BRA" instruction that comes after returning.
     rtl
 
 ridley_hurt:
