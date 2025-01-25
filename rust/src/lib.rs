@@ -1336,8 +1336,14 @@ impl IntoPy<PyObject> for IndexedVec<(RoomId, NodeId, ObstacleMask)> {
 
 #[pymethods]
 impl Randomizer {
-    fn ap_get_vertex_info_by_id(&self, room_id: RoomId, node_id: NodeId) -> VertexInfo {
-        self.get_vertex_info_by_id(room_id, node_id)
+    fn ap_get_vertex_area_names(&self) -> Vec<String> {
+        let mut vertex_area_names = Vec::new();
+        for &(room_id, node_id, obstacles) in self.game_data.vertex_isv.keys.iter() {
+            if obstacles == 0 { 
+                vertex_area_names.push(self.get_vertex_info_by_id(room_id, node_id).area_name)
+            }
+        }
+        vertex_area_names
     }
 }
 

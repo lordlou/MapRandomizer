@@ -349,13 +349,11 @@ struct SelectItemsOutput {
     other_items: Vec<Item>,
 }
 
-#[pyclass]
 pub struct VertexInfo {
-    area_name: String,
+    pub area_name: String,
     room_id: usize,
     room_name: String,
     room_coords: (usize, usize),
-    #[pyo3(get)]
     node_name: String,
     node_id: usize,
 }
