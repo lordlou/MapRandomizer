@@ -19,7 +19,6 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python }}
-          architecture: x64
       - uses: dtolnay/rust-toolchain@stable
       - name: Build wheels - ${{ matrix.target }}
         uses: PyO3/maturin-action@v1
