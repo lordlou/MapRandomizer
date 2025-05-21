@@ -18,6 +18,10 @@ use std::path::{Path, PathBuf};
 use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
 
+use pyo3::prelude::*;
+use std::io::Read;
+use std::io::Cursor;
+
 pub const TECH_ID_CAN_WALLJUMP: TechId = 76;
 pub const TECH_ID_CAN_HEAT_RUN: TechId = 6;
 pub const TECH_ID_CAN_MID_AIR_MORPH: TechId = 32;
@@ -1178,9 +1182,9 @@ pub struct TitleScreenData {
     pub map_station: TitleScreenImage,
 }
 
-pub fn read_image(path: &Path) -> Result<Array3<u8>> {
-    let img = ImageReader::open(path)
-        .with_context(|| format!("Unable to open image: {}", path.display()))?
+pub fn read_image(path: &Path, game_data: &GameData) -> Result<Array3<u8>> {
+    let img = ImageReader::new(Cursor::new(game_data.read_to_bytes(path).unwrap()))
+        .with_guessed_format()?
         .decode()
         .with_context(|| format!("Unable to decode image: {}", path.display()))?
         .to_rgb8();
@@ -1394,8 +1398,12 @@ struct MapTileDataFile {
 // more structured; combine maps with the same keys; also maybe unify the room geometry data
 // with sm-json-data and cut back on the amount of different
 // keys/IDs/indexes for rooms, nodes, and doors.
+#[pyclass]
 #[derive(Default)]
 pub struct GameData {
+    pub apworld_path: Option<String>,
+    cached_mosaic_patches: Vec<u8>,
+    cached_mosaic_patches_map: Option<JsonValue>,
     sm_json_data_path: PathBuf,
     pub tech_isv: IndexedVec<TechId>,
     pub notable_isv: IndexedVec<(RoomId, NotableId)>,
@@ -1487,15 +1495,6 @@ impl<T: Hash + Eq> IndexedVec<T> {
     }
 }
 
-fn read_json(path: &Path) -> Result<JsonValue> {
-    let file = File::open(path).with_context(|| format!("unable to open {}", path.display()))?;
-    let json_str = std::io::read_to_string(file)
-        .with_context(|| format!("unable to read {}", path.display()))?;
-    let json_data =
-        json::parse(&json_str).with_context(|| format!("unable to parse {}", path.display()))?;
-    Ok(json_data)
-}
-
 // TODO: Take steep slopes into account here:
 pub fn get_effective_runway_length(used_tiles: f32, open_end: f32) -> f32 {
     used_tiles + open_end * 0.5
@@ -1515,8 +1514,85 @@ struct RequirementContext<'a> {
 }
 
 impl GameData {
+    pub fn read_to_string(&self, path: &Path) -> Result<String> {
+        match &self.apworld_path {
+            Some(apworldpath) => {
+                println!("apworldpath {}", apworldpath);
+                let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
+                let mut archive = zip::ZipArchive::new(zipfile).unwrap();
+                let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
+                println!("path_str {}", path_str.as_str());
+                for names in archive.file_names() {
+                    println!("archive.file_names() {:?}", names);
+                }
+                std::io::read_to_string(archive.by_name(path_str.as_str()).unwrap())
+                    .with_context(|| format!("unable to read {}", path_str.as_str()))
+            },
+            None => std::io::read_to_string(File::open(path).with_context(|| format!("unable to open {}", path.display())).unwrap())
+                    .with_context(|| format!("unable to read {}", path.display()))
+        }
+    }
+
+    pub fn read_to_bytes(&self, path: &Path) -> Result<Vec<u8>> {
+        match &self.apworld_path {
+            Some(apworldpath) => {
+                println!("apworldpath {}", apworldpath);
+                let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
+                let mut archive = zip::ZipArchive::new(zipfile).unwrap();
+                let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
+                println!("path_str {}", path_str.as_str());
+                for names in archive.file_names() {
+                    println!("archive.file_names() {:?}", names);
+                }
+                let mut zip_file = archive.by_name(path_str.as_str()).unwrap();
+                let mut bytes = Vec::with_capacity(zip_file.size() as usize);
+                zip_file.read_to_end(&mut bytes).unwrap();
+                Ok(bytes)
+            },
+            None => Ok(std::fs::read(path)?)
+        }
+    }
+
+    pub fn read_to_bytes_with_cache(&self, path: &str) -> Result<Vec<u8>> {
+        let patches_map = self.cached_mosaic_patches_map.as_ref().unwrap();
+        let entry = &patches_map[path];
+        let offset: usize = entry["offset"].as_usize().unwrap();
+        let size: usize = entry["size"].as_usize().unwrap();
+        Ok(self.cached_mosaic_patches[offset..(offset+size)].to_vec())
+    }
+
+    pub fn glob_filepaths(&self, glob_pattern: &str, contains_path: &str, extension: &str) -> Vec<PathBuf> {
+        let mut filepaths = vec![];
+        match &self.apworld_path {
+            Some(apworldpath) => {
+                let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
+                let archive = zip::ZipArchive::new(zipfile).unwrap();
+                for filename in archive.file_names() {
+                    if filename.contains(contains_path) && filename.ends_with(extension) {
+                        filepaths.push(PathBuf::from(filename));
+                    }   
+                }
+                filepaths
+            },
+            None => {
+                for entry in glob::glob(glob_pattern).unwrap() {
+                    if entry.as_ref().unwrap().to_str().unwrap().ends_with(extension) {
+                        filepaths.push(PathBuf::from(entry.unwrap().as_path()));
+                    }
+                }
+                filepaths
+            }
+        }
+    }
+
+    fn read_json(&self, path: &Path) -> Result<JsonValue> {
+        let json_str = self.read_to_string(path)?;
+        let json_data = json::parse(&json_str).with_context(|| format!("unable to parse {}", path.display()))?;
+        Ok(json_data)
+    }
+
     fn load_tech(&mut self) -> Result<()> {
-        let mut full_tech_json = read_json(&self.sm_json_data_path.join("tech.json"))?;
+        let mut full_tech_json = self.read_json(&self.sm_json_data_path.join("tech.json"))?;
         ensure!(full_tech_json["techCategories"].is_array());
         full_tech_json["techCategories"].members_mut().find(|x| x["name"] == "Shots").unwrap()["techs"].push(json::object!{
             "id": 10001,
@@ -1705,7 +1781,7 @@ impl GameData {
     }
 
     fn load_items_and_flags(&mut self) -> Result<()> {
-        let item_json = read_json(&self.sm_json_data_path.join("items.json"))?;
+        let item_json = self.read_json(&self.sm_json_data_path.join("items.json"))?;
 
         for item_name in Item::VARIANTS {
             self.item_isv.add(&item_name.to_string());
@@ -1729,7 +1805,7 @@ impl GameData {
     }
 
     fn load_weapons(&mut self) -> Result<()> {
-        let weapons_json = read_json(&self.sm_json_data_path.join("weapons/main.json"))?;
+        let weapons_json = self.read_json(&self.sm_json_data_path.join("weapons/main.json"))?;
         ensure!(weapons_json["weapons"].is_array());
         for weapon_json in weapons_json["weapons"].members() {
             let name = weapon_json["name"].as_str().unwrap();
@@ -1764,7 +1840,7 @@ impl GameData {
 
     fn load_enemies(&mut self) -> Result<()> {
         for file in ["main.json", "bosses/main.json"] {
-            let enemies_json = read_json(&self.sm_json_data_path.join("enemies").join(file))?;
+            let enemies_json = self.read_json(&self.sm_json_data_path.join("enemies").join(file))?;
             ensure!(enemies_json["enemies"].is_array());
             for enemy_json in enemies_json["enemies"].members() {
                 let enemy_name = enemy_json["name"].as_str().unwrap();
@@ -1859,7 +1935,7 @@ impl GameData {
     }
 
     fn load_helpers(&mut self) -> Result<()> {
-        let helpers_json = read_json(&self.sm_json_data_path.join("helpers.json"))?;
+        let helpers_json = self.read_json(&self.sm_json_data_path.join("helpers.json"))?;
         ensure!(helpers_json["helperCategories"].is_array());
         for category_json in helpers_json["helperCategories"].members() {
             ensure!(category_json["helpers"].is_array());
@@ -2724,23 +2800,34 @@ impl GameData {
 
     fn load_regions(&mut self) -> Result<()> {
         let region_pattern =
-            self.sm_json_data_path.to_str().unwrap().to_string() + "/region/**/*.json";
+            self.sm_json_data_path.to_str().unwrap().to_string();
+        let files = [
+            "/region/brinstar/blue.json",
+            "/region/brinstar/green.json",
+            "/region/brinstar/kraid.json",
+            "/region/brinstar/pink.json",
+            "/region/brinstar/red.json",
+            "/region/crateria/central.json",
+            "/region/crateria/east.json",
+            "/region/crateria/west.json",
+            "/region/lowernorfair/east.json",
+            "/region/lowernorfair/west.json",
+            "/region/maridia/inner-green.json",
+            "/region/maridia/inner-pink.json",
+            "/region/maridia/inner-yellow.json",
+            "/region/maridia/outer.json",
+            "/region/norfair/crocomire.json",
+            "/region/norfair/east.json",
+            "/region/norfair/west.json",
+            "/region/tourian/main.json",
+            "/region/wreckedship/main.json"
+        ];
         let mut room_json_map: HashMap<usize, JsonValue> = HashMap::new();
-        for entry in glob::glob(&region_pattern).unwrap() {
-            if let Ok(path) = entry {
-                let path_str = path.to_str().with_context(|| {
-                    format!("Unable to convert path to string: {}", path.display())
-                })?;
-                if path_str.contains("ceres") || path_str.contains("roomDiagrams") {
-                    continue;
-                }
-
-                let room_json = read_json(&path)?;
-                room_json_map.insert(room_json["id"].as_usize().unwrap(), room_json);
-            } else {
-                bail!("Error processing region path: {}", entry.err().unwrap());
-            }
-        }
+        for entry in files {
+            let path_str = region_pattern.clone() + entry;
+            let room_json = self.read_json(Path::new(&path_str))?;
+            room_json_map.insert(room_json["id"].as_usize().unwrap(), room_json);
+        } 
 
         let mut room_id_vec: Vec<usize> = room_json_map.keys().cloned().collect();
         room_id_vec.sort();
@@ -4588,7 +4675,7 @@ impl GameData {
         for entry in glob::glob(&connection_pattern)? {
             if let Ok(path) = entry {
                 if !path.to_str().unwrap().contains("ceres") {
-                    self.process_connections(&read_json(&path)?)?;
+                    self.process_connections(&self.read_json(&path)?)?;
                 }
             } else {
                 bail!("Error processing connection path: {}", entry.err().unwrap());
@@ -4919,16 +5006,10 @@ impl GameData {
 
     pub fn load_title_screens(&mut self, path: &Path) -> Result<()> {
         info!("Loading title screens");
-        let file_it = path.read_dir().with_context(|| {
-            format!(
-                "Unable to read title screen directory at {}",
-                path.display()
-            )
-        })?;
-        for file in file_it {
-            let file = file?;
-            let filename = file.file_name().into_string().unwrap();
-            let img = read_image(&file.path())?;
+        let files = self.glob_filepaths(path.join("*.png").to_str().unwrap(), path.strip_prefix("worlds/").unwrap_or(path).to_str().unwrap(), "png");
+        for file in files {
+            let filename = file.file_name().unwrap().to_str().unwrap();
+            let img = read_image(file.as_path(), self)?;
 
             if filename.starts_with("TL") {
                 self.title_screen_data.top_left.push(img);
@@ -5004,8 +5085,17 @@ impl GameData {
         reduced_flashing_path: &Path,
         strat_videos_path: &Path,
         map_tile_path: &Path,
+        apworld_path: Option<String>
     ) -> Result<GameData> {
         let mut game_data = GameData::default();
+
+        game_data.apworld_path = apworld_path;
+        // All Mosaic bps files are packed into a single file to speed up IO with zipfile, cached here
+        let mosaic_patches_path = Path::new("worlds/sm_map_rando/data/patches/mosaic/mosaic_patches.data");
+        let mosaic_patches_map_path = Path::new("worlds/sm_map_rando/data/patches/mosaic/mosaic_patches_map.json");
+        game_data.cached_mosaic_patches = game_data.read_to_bytes(&mosaic_patches_path).unwrap();
+        game_data.cached_mosaic_patches_map = Some(game_data.read_json(&mosaic_patches_map_path).unwrap());
+
         game_data.sm_json_data_path = sm_json_data_path.to_owned();
 
         game_data.load_reduced_flashing_patch(reduced_flashing_path)?;

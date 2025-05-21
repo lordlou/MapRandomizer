@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use crate::patch::compress::compress;
-use maprando_game::{read_image, IndexedVec};
+use maprando_game::{read_image, IndexedVec, GameData};
 
 use super::{decompress::decompress, pc2snes, snes2pc, PcAddr, Rom};
 use anyhow::{bail, ensure, Result};
@@ -337,15 +337,15 @@ impl<'a> TitlePatcher<'a> {
         Ok(())
     }
 
-    pub fn patch_title_foreground(&mut self) -> Result<()> {
+    pub fn patch_title_foreground(&mut self, game_data: &GameData) -> Result<()> {
         // Start by loading the vanilla tiles & spritemap, for "Super Metroid" title:
         let mut tiles = self.read_compressed_tiles(snes2pc(0x9580D8))?;
         let mut spritemap = self.read_spritemap(snes2pc(0x8C879D))?;
 
         // Now we will patch the tiles & spritemap by adding "Map Rando" to the same sprite.
         // First load the image:
-        let image_path = Path::new("../gfx/title/maprando.png");
-        let img = read_image(image_path)?;
+        let image_path = Path::new("worlds/sm_map_rando/data/gfx/title/maprando.png");
+        let img = read_image(image_path, game_data)?;
         assert!(img.dim() == (224, 256, 3));
 
         // We don't modify the palette, just reuse colors from the existing palette.

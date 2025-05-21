@@ -1572,7 +1572,7 @@ impl<'a> Patcher<'a> {
                 );
                 continue;
             }
-            title_patcher.patch_title_foreground()?;
+            title_patcher.patch_title_foreground(self.game_data)?;
             title_patcher.patch_title_gradient()?;
             title_patcher.patch_title_blue_light()?;
             println!(
