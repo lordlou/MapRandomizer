@@ -1,6 +1,6 @@
 ; From https://github.com/theonlydude/RandomMetroidSolver/blob/master/patches/common/src/vanilla_bugfixes.asm
 ;
-; Authors: total, PJBoy, strotlog, ouiche, Maddo, NobodyNada
+; Authors: total, PJBoy, strotlog, ouiche, Maddo, NobodyNada, Stag Shot
 
 ;;; Some vanilla bugfixes
 ;;; compile with asar
@@ -10,8 +10,10 @@ lorom
 
 !bank_80_free_space_start = $80D200
 !bank_80_free_space_end = $80D240
-!item_plm_start = #$DF89
-!item_plm_end = #$F100
+!bank_86_free_space_start = $86F4B0
+!bank_86_free_space_end = $86F4D0
+
+incsrc "constants.asm"
 
 ; Fix the crash that occurs when you kill an eye door whilst a eye door projectile is alive
 ; See the comments in the bank logs for $86:B6B9 for details on the bug
@@ -210,3 +212,88 @@ check_item_plm:
 warnpc $848398
 org $848398
 special_xray_end:
+
+; Fix 32 sprite bug/crash that can occur during door transition
+; Possible when leaving Kraid mid-fight, killing Shaktool with wave-plasma, etc.
+; Documented by PJBoy: https://patrickjohnston.org/bank/B4#fBD97
+org $b4bda3
+    bpl $f8 ; was bne $f8
+
+; Fix auto-reserve / pause bug
+;
+; This patch will initiate the death sequence if pause hit with auto-reserve enabled
+; on exact frame that leads to crash.
+;
+; (thanks to Benox50 for his initial patch)
+
+!bank_82_free_space_start = $82fbf0
+!bank_82_free_space_end = $82fc30
+
+org $828cea
+    jsr pause_func                ; pause func
+
+org $82db80
+    jmp fix_reserve               ; health == 0, auto-reserve enabled, reserve health > 0
+
+org !bank_82_free_space_start
+pause_func:
+    lda $998
+    cmp #$001b                    ; game state already set to reserve on crash frame?
+    bne .leave
+    lda #$8000                    ; init death sequence (copied from $82db80)
+    sta $a78
+    lda #$0011
+    jsl $90f084
+    lda #$0013
+    sta $998
+    sep #$20
+    lda #$0f                      ; restore screen brightness
+    sta $51
+    rep #$30
+    rts
+
+.leave
+    inc $998                      ; replaced code
+    rts
+
+fix_reserve:
+    lda $998
+    cmp #$0013                    ; death seq already initiated?
+    bcc .leave_2
+    plp                           ; if so, leave func
+    rts
+
+.leave_2
+    lda #$8000                    ; replaced code
+    jmp $db83
+
+warnpc !bank_82_free_space_end
+
+; Fix for powamp projectile bug
+;
+; Rare hardlock can occur if powamp killed using contact damage and errant projectiles are spawned 
+; with coords 0,0. These projectiles can potentially collide OOB with uninitialized RAM leading to 
+; the hardlock. Fix is to delete projectiles spawned with 0,0 enemy coords.
+;
+; Characterized by somerando
+
+org $86d252
+    jsr powamp_fix          ; AI initialization hook
+    
+org !bank_86_free_space_start
+powamp_fix:
+    pha
+    bne .no_fix             ; x = 0?
+    lda $f7e,x
+    bne .no_fix             ; y = 0?
+    lda #$d218
+    sta $1b47,y             ; Enemy projectile instruction list pointer = $D218 (delete)
+    lda #$0001
+    sta $1b8f,y
+
+.no_fix
+    pla
+    sta $1a4b,y             ; replaced code
+    rts
+
+warnpc !bank_86_free_space_end

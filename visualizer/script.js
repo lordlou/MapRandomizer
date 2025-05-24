@@ -1,182 +1,155 @@
-const offsets = { 
-	"Morph Ball Room: Left Item": [2, 2],
-	"Morph Ball Room: Right Item": [4, 2],
-	"Cathedral: Hidden Item": [2, 1],
-	"The Precious Room: Top Right Hidden Item": [1, 0],
-	"Mama Turtle Room: Hidden Right Item": [2, 1],
-	"Mama Turtle Room: Top Item": [1, 0],
-	"Brinstar Reserve Tank Room: Middle Visible Item": [0.75, 0],
-	"Brinstar Reserve Tank Room: Right Hidden Item": [1.25, 0],
-	"Brinstar Reserve Tank Room: Chozo Item": [0, 0],
-	"Lower Norfair Fireflea Room: Firefleas Item": [2, 5],
-	"Main Street: Morph Tunnel Item": [1, 2],
-	"Main Street: Speed Blocked Item": [0, 3],
-	"Gauntlet Energy Tank Room: Item": [5, 0],
-	"Wrecked Ship Main Shaft: Item": [0, 5],
-	"Pseudo Plasma Spark Room: Hidden Item": [2, 2],
-	"Assembly Line: Item": [2, 0],
-	"Warehouse Kihunter Room: Hidden Item": [2, 0],
-	"Billy Mays Room: Pedestal Item": [0.25, 0],
-	"Billy Mays Room: Hidden Item": [-0.25, 0],
-	"Norfair Reserve Tank Room: Hidden Platform Item": [0.5, 0],
-	"Green Hill Zone: Item (Through the Pipe)": [3, 1],
-	"Crocomire's Room: Item": [7, 0],
-	"Blue Brinstar Energy Tank Room: Hidden Ceiling Item": [1, 2],
-	"Blue Brinstar Energy Tank Room: Right Item": [2, 2],
-	"Three Musketeers' Room: Hidden Item": [0, 2],
-	"Alpha Power Bomb Room: Chozo Item": [1, 0],
-	"Alpha Power Bomb Room: Hidden Left Item": [0, 0],
-	"Aqueduct: Top Right Right Item": [5, 0],
-	"Aqueduct: Top Right Left Item": [4, 0],
-	"Screw Attack Room: Item": [0, 2],
-	"Bubble Mountain: Bottom Right Item": [1, 3],
-	"Watering Hole: Left Item": [-0.25, 2],
-	"Watering Hole: Right Item": [0.25, 2],
-	"Speed Booster Hall: Hidden Item": [11, 1],
-	"West Sand Hole: Top Left - Right Item": [0.25, 0],
-	"West Sand Hole: Top Left - Left Item": [-0.25, 0],
-	"East Sand Hole: Top Left Item": [0, 0],
-	"East Sand Hole: Right Item": [1, 1],
-	"Post Crocomire Missile Room: Item": [3, 0],
-	"Double Chamber: Item": [1, 0],
-	"Beta Power Bomb Room: Item": [0, 1],
-	"West Ocean: Bottom Left Underwater Item": [0, 5],
-	"West Ocean: Left Morph Maze Item": [0, 2],
-	"West Ocean: Top Hidden Item (Above Trippers)": [1, 0],
-	"Early Supers Room: Lower Item": [1, 1],
-	"Early Supers Room: Top Left Item": [0, 0],
-	"Plasma Room: Item": [1, 2],
-	"Green Pirates Shaft: Left Item": [-0.25, 1],
-	"Green Pirates Shaft: Right Item": [0.25, 1],
-	"Spring Ball Room: Item": [1, 1],
-	"Pink Brinstar Power Bomb Room: Item": [0, 1],
-	"Pit Room: Item": [0, 1],
-	"Mickey Mouse Room: Item": [2, 1],
-	"Grapple Beam Room: Item": [0, 2],
-	"Golden Torizo's Room: Hidden Right Item": [1, 0],
-	"Golden Torizo's Room: Top Left Item": [0, 0],
-	"Wrecked Ship East Super Room: Item (Behind the Bomb Wall)": [3, 0],
-	"Botwoon Energy Tank Room: Item": [3, 0],
-	"Terminator Room: Item": [0, 2],
-	"Post Crocomire Jump Room: Item": [4, 0],
-	"Green Bubbles Missile Room: Item": [1, 0],
-	"Lower Norfair Spring Ball Maze Room: Item": [2, 0],
-	"Crateria Power Bomb Room: Item": [1, 0],
-	"Green Brinstar Main Shaft: Right Etecoon Shaft - Item": [3, 7],
-	"Crateria Super Room: Item": [3, 0],
-	"Spore Spawn Super Room: Item": [1, 8],
-	"Hi Jump Energy Tank Room: Top Right Item": [1, 0],
-	"Hi Jump Energy Tank Room: Top Left Item": [0, 0],
-	"Big Pink: Top Item (Above Hopper Pit)": [2, 3],
-	"Big Pink: Middle Item": [2, 6],
-	"Big Pink: Bottom Chozo Item": [2, 7],
-	"Bowling Alley: Bottom Chozo Item": [3, 2],
-	"Bowling Alley: Top Right Item": [5, 0],
-};
-let item_plm = {
-	"ETank": 0,
-	"Missile": 1,
-	"Super": 2,
-	"PowerBomb": 3,
-	"Bombs": 4,
-	"Charge": 5,
-	"Ice": 6,
-	"HiJump": 7,
-	"SpeedBooster": 8,
-	"Wave": 9,
-	"Spazer": 10,
-	"SpringBall": 11,
-	"Varia": 12,
-	"Gravity": 13,
-	"XRayScope": 14,
-	"Plasma": 15,
-	"Grapple": 16,
-	"SpaceJump": 17,
-	"ScrewAttack": 18,
-	"Morph": 19,
-	"ReserveTank": 20,
-	"WallJump": 21,
-};
-let item_rank = {
-	"Varia": 1,
-	"Gravity": 2,
-	"Morph": 3,
-	"SpaceJump": 4,
-	"ScrewAttack": 5,
-	"WallJump": 6,
-	"Bombs": 7,
-	"HiJump": 8,
-	"SpeedBooster": 9,
-	"SpringBall": 10,
-	"Grapple": 11,
-	"XRayScope": 12,
-	"Charge": 13,
-	"Ice": 14,
-	"Wave": 15,
-	"Spazer": 16,
-	"Plasma": 17,
-	"ETank": 18,
-	"ReserveTank": 19,
-	"Super": 20,
-	"PowerBomb": 21,
-	"Missile": 22,
-}
-let roomFlags = {
-	"Bomb Torizo Room": ["f_DefeatedBombTorizo", "Defeat Bomb Torizo"],
-	"Botwoon's Room": ["f_DefeatedBotwoon", "Defeat Botwoon"],
-	"Crocomire's Room": ["f_DefeatedCrocomire", "Defeat Crocomire"],
-	"Draygon's Room": ["f_DefeatedDraygon", "Defeat Draygon"],
-	"Golden Torizo's Room": ["f_DefeatedGoldenTorizo", "Defeat Golden Torizo"],
-	"Kraid Room": ["f_DefeatedKraid", "Defeat Kraid"],
-	"Mother Brain Room": ["f_DefeatedMotherBrain", "Defeat Mother Brain"],
-	"Phantoon's Room": ["f_DefeatedPhantoon", "Defeat Phantoon"],
-	"Ridley's Room": ["f_DefeatedRidley", "Defeat Ridley"],
-	"Spore Spawn Room": ["f_DefeatedSporeSpawn", "Defeat Spore Spawn"],
-	"Metroid Room 1": ["f_KilledMetroidRoom1", "Clear Metroid Room 1"],
-	"Metroid Room 2": ["f_KilledMetroidRoom2", "Clear Metroid Room 2"],
-	"Metroid Room 3": ["f_KilledMetroidRoom3", "Clear Metroid Room 3"],
-	"Metroid Room 4": ["f_KilledMetroidRoom4", "Clear Metroid Room 4"],
-	"Glass Tunnel": ["f_MaridiaTubeBroken", "Break Maridia Tube"],
-	"Shaktool Room": ["f_ShaktoolDoneDigging", "Clear Shaktool Room"],
-	"Acid Statue Room": ["f_UsedAcidChozoStatue", "Use Acid Statue"],
-	"Bowling Alley": ["f_UsedBowlingStatue", "Use Bowling Statue"],
-	"Pit Room": ["f_ClearedPitRoom", "Clear Pit Room"],
-	"Baby Kraid Room": ["f_ClearedBabyKraidRoom", "Clear Baby Kraid Room"],
-	"Plasma Room": ["f_ClearedPlasmaRoom", "Clear Plasma Room"],
-	"Metal Pirates Room": ["f_ClearedMetalPiratesRoom", "Clear Metal Pirates Room"],
-	"Parlor And Alcatraz": ["f_ZebesAwake", "Awaken Zebes"],
-	"Climb": ["f_ZebesAwake", "Awaken Zebes"],
-	"Construction Zone": ["f_ZebesAwake", "Awaken Zebes"],
-	"The Final Missile": ["f_ZebesAwake", "Awaken Zebes"],
-	"Morph Ball Room": ["f_ZebesAwake", "Awaken Zebes"],
-	"Blue Brinstar Energy Tank Room": ["f_ZebesAwake", "Awaken Zebes"],
-};
-
 function lookupOffset(room, node) {
 	key = room + ": " + node
 	return offsets[key];
 }
+let createDiv = (html) => {
+	const div = document.createElement('div');
+	div.innerHTML = html;
+	return div;
+};
+let createHtmlElement = (html) => {
+	const template = document.createElement('template');
+	template.innerHTML = html;
+	return template.content.firstChild;
+};
+let icon = id => {
+	let el = document.createElement("span");
+	el.className = "ui-icon";
+	el.style.backgroundPositionX = `-${id * 16}px`;
+	return el;
+}
+
+screen.orientation.onchange = ev => {
+	const h = screen.availHeight;
+	if (h < 600+32)
+		document.getElementById("sidebar-info").style.maxHeight = h-32 + "px";
+	else
+		document.getElementById("sidebar-info").style.maxHeight = "600px";
+}
+
+document.getElementById("ship").onchange = ev => {
+	document.getElementById("gunship").style.visibility = ev.target.checked ? "visible" : "hidden";
+}
+document.getElementById("start").onchange = ev => {
+	document.getElementById("helm").style.visibility = ev.target.checked ? "visible" : "hidden";
+}
+
+let startitems = 0;
+let startbase = {x:0,y:0};
+function moveStart() {
+	if (startitems == 0)
+		return;
+
+	var l = 0;
+	var e = document.getElementById("f_DefeatedBombTorizo");
+	var itemson = document.getElementById("items").checked;
+	if (startitems>2) {
+		if (e.style.visibility == "visible")
+			l++;
+		if (itemson)
+			l++;
+	} else {
+		if (itemson)
+			l = startitems;
+	}
+	e = document.getElementById("helm");
+	let ox = 0;
+	let oy = 0;
+	if (l==1) {
+		// TODO: adjust by only 6 but shift the item over the opposite way as well.
+		ox -= 12;
+	} else if (l==2) {
+		oy += 6;
+	}
+	e.style.left = startbase.x+ox+ "px";
+	e.style.top = startbase.y+oy+ "px";
+}
+function toggleitemvis(ev) {
+	togglevis(ev);
+	moveStart();
+	
+	var e = document.getElementById("f_DefeatedBombTorizo");
+	if (e === null)
+		return;
+	var x= Number(e.style.left.substring(0, e.style.left.length-2));
+	if (ev.target.checked) {
+		e.style.left = x + 6 + "px";
+	} else {
+		e.style.left = x - 6 + "px";
+	}
+}
+function toggleflagvis(ev) {
+	var e = document.getElementById("f_DefeatedBombTorizo");
+	if (e === null)
+		return;
+	var eVis = e.style.visibility;
+	togglevis(ev);
+	moveStart();
+	if (e.style.visibility != eVis) {
+		var i = document.getElementById("Bomb Torizo Room: Item");
+		if (i) {
+			var x= Number(i.style.left.substring(0, i.style.left.length-2));
+			if (e.style.visibility == "visible") {
+				i.style.left = x - 6 + "px";
+			} else {
+				i.style.left = x + 6 + "px";
+			}
+		}
+	}
+}
+function toggleobjectives(ev) {
+	var on = ev.target.checked;
+	for (var e of document.getElementsByClassName("objectives"))
+		e.src = on ? e.classList[1] + "obj.png" : e.classList[1] + ".png";
+}
+function togglevis(ev) {
+	var toggles = document.getElementsByClassName(ev.target.id);
+	for (var e of toggles) {
+		e.style.visibility = ev.target.checked ? "visible" : "hidden";
+	}
+}
+document.getElementById("settingsCog").onclick = ev => {
+	let f = document.getElementById("settingsForm")
+	f.style.display = f.style.display == "none" ? "block" : "none";
+}
+loadForm(document.getElementById("settingsForm"));
+loadForm(document.getElementById("helpForm"));
+if (!document.getElementById("showonce").checked)
+	document.getElementById("msg-wrap").style.display = "flex";
+
+let ctx = document.getElementById("spoiler-overlay").getContext("2d");
+let grid = document.getElementById("grid");
+let pat = ctx.createPattern(grid, "repeat");
+ctx.fillStyle = pat;
+ctx.fillRect(0,0,592,592);
+
 
 fetch(`../spoiler.json`).then(c => c.json()).then(c => {
+	flagtypes["objectives"] = c.objectives;
+	flagtypes["objectives"].push("f_DefeatedMotherBrain");
 	// generate map
 	let map = new Array(72 * 72).fill(-1);
+	let toiletTiles = new Array();
+	let toiletbistep = -1;
+	let toiletstep = -1;
 	for (let i in c.all_rooms) {
 		let v = c.all_rooms[i];
 		for (let y = 0; y < v.map.length; y++) {
 			for (let x = 0; x < v.map[y].length; x++) {
 				if (v.map[y][x] != 0) {
+					if (v.room == "Toilet") {
+						if (toiletbistep < v.map_bireachable_step[y][x])
+							toiletbistep = v.map_bireachable_step[y][x];
+						if (toiletstep < v.map_bireachable_step[y][x])
+							toiletstep = v.map_bireachable_step[y][x];
+						toiletTiles.push((v.coords[1] + y) * 72 + (v.coords[0] + x));
+					}
 					map[(v.coords[1] + y) * 72 + (v.coords[0] + x)] = +i;
 				}
 			}
 		}
 	}
 	let step_limit = null;
-	let icon = id => {
-		let el = document.createElement("span");
-		el.className = "ui-icon";
-		el.style.backgroundPositionX = `-${id * 16}px`;
-		return el;
-	}
 	let update_selected = () => {
 		if (document.getElementById(`step-null`) !== null) {
 			document.getElementById(`step-null`).classList.remove("selected");
@@ -215,6 +188,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 				let j = items[item_idx];
 				if (!seen.has(j.item)) {
 					let el = icon(item_plm[j.item]);
+					el.id = j.item;
 					el.className = "ui-icon-hoverable";
 					el.onclick = ev => {
 						show_item_details(j.item, j.location, i, j);
@@ -256,62 +230,822 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			document.getElementById("msg-wrap").style.display = "flex";
 			e.stopPropagation();
 		}
-		// help_button.onmouseup = () => {
-		// 	return true;
-		// }
-		// help_button.onclick = () => {
-		// 	return false;
-		// }
 		step_div.appendChild(step_number);
 		step_div.appendChild(help_button);
 
 		si.appendChild(step_div);
-		update_selected();
+		gen_obscurity();
 	}
-	show_overview();
-	window.gen_obscurity = (sl) => {
+	window.gen_obscurity = (sl=step_limit) => {
 		step_limit = sl;
 		update_selected();
-
-		// generate obscurity overlay
+		let spoileron = document.getElementById("spoilers").checked;
+		// generate obscurity+spoiler overlay
 		let ov = document.getElementById("obscure-overlay");
 		let ctx = ov.getContext("2d");
-		let img = ctx.createImageData(72, 72);
+		let img = ctx.createImageData(72,72);
+		let so = document.getElementById("spoiler-overlay");
+		let sctx = so.getContext("2d");
 
-		if (step_limit === null) {
-			ctx.putImageData(img, 0, 0);
-			return;
+		if (!spoileron) {
+			while (document.getElementsByClassName("spoil").length > 0)
+			{
+				let e_spoils = document.getElementsByClassName("spoil");
+				for (let e of e_spoils)
+					while (e.classList.contains("spoil"))
+						e.classList.remove("spoil");
+			}
 		}
-		for (let i = 0; i < 72 * 72; i++) {
-			img.data[i * 4 + 3] = 0xD8; // mostly opaque
+
+		if (step_limit === null || spoileron)
+			sl = c.summary.length;
+
+		for (let i = 1;i<c.summary.length;i++) {
+			let stepdiv = document.getElementById(`step-${i}`);
+			if (stepdiv === null)
+				continue;
+			let items = stepdiv.getElementsByClassName("ui-icon-hoverable");
+			for (let e of items)
+			{
+				if (!spoileron && i > sl)
+					e.style.backgroundPositionX= `-${item_plm["Hidden"] * 16}px`;
+				else
+					e.style.backgroundPositionX= `-${item_plm[e.id] * 16}px`;
+			}
 		}
-		for (let v of c.all_rooms) {
-			for (let y = 0; y < v.map.length; y++) {
-				for (let x = 0; x < v.map[y].length; x++) {
-					if (v.map[y][x] == 1) {
-						let addr = (v.coords[1] + y) * 72 + (v.coords[0] + x);
-						if (v.map_bireachable_step[y][x] < step_limit) {
-							img.data[addr * 4 + 3] = 0x00; // transparent
-						} else if (v.map_reachable_step[y][x] < step_limit) {
-							img.data[addr * 4 + 3] = 0x7F; // semiopaque
-						} else {
-							img.data[addr * 4 + 3] = 0xD8; // mostly opaque
+
+		for (let i=0;i<c.summary.length;i++) {
+			if (i<sl) {
+				for (let v of c.details[i].items) {
+					let e = document.getElementById(v.location.room+": "+v.location.node);
+					if (e) {
+						e.style.backgroundPositionX= `-${item_plm[e.classList[0]] * 16}px`;
+						if (!e.classList.contains("spoil"))
+							e.classList.add("spoil");
+					}
+				}
+				for (let v of c.details[i].flags){
+					let e =document.getElementById(v.flag);
+					if (e && !e.classList.contains("spoil"))
+						e.classList.add("spoil");
+				}
+			} else {
+				for (let v of c.details[i].items) {
+					let e = document.getElementById(v.location.room+": "+v.location.node);
+					if (e) {
+						if (!spoileron && v.reachable_step > sl){
+							e.style.backgroundPositionX= `-${item_plm["Hidden"] * 16}px`;
+						}
+						else {
+							e.style.backgroundPositionX= `-${item_plm[e.classList[0]] * 16}px`;
 						}
 					}
 				}
 			}
 		}
+
+		let grid = document.getElementById("grid");
+		let pat = ctx.createPattern(grid, "repeat");
+		sctx.fillStyle = pat;
+		sctx.fillRect(0,0,592,592);
+		if (step_limit !== null && c.summary.length !=0) {
+			for (let i = 0; i < 72 * 72; i++) {
+				img.data[i * 4 + 3] = 0xd8; // Mostly opaque
+			}
+		}
+		for (let v of c.all_rooms) {
+			let explored = 0;
+			let tiles = 0;
+			let tilesExplored = new Array();
+			for (let y = 0; y < v.map.length; y++) {
+				for (let x = 0; x < v.map[y].length; x++) {
+					if (v.map[y][x] == 1) {
+						tiles++;
+						let addr = (v.coords[1] + y) * 72 + (v.coords[0] + x);
+						let sx = (v.coords[0] + x+1)*8;
+						let sy = (v.coords[1] + y+1)*8;
+						if (v.map_bireachable_step[y][x] < step_limit || step_limit === null
+						   || (toiletTiles.includes(addr) && (toiletbistep < step_limit || toiletstep < step_limit)) ) {
+							if (v.room == "Landing Site" && x==4 && y==4) {
+								let e = document.getElementById("gunship");
+								e.classList.add("spoil");
+							}
+							img.data[addr * 4 + 3] = 0x00; // transparent
+							sctx.clearRect(sx,sy,8,8);
+							explored++;
+						} else if (v.map_reachable_step[y][x] < step_limit) {
+							img.data[addr * 4 + 3] = 0x7F; // semiopaque
+							sctx.clearRect(sx,sy,8,8);
+							explored++;
+						} else {
+							if (spoileron) {
+								sctx.clearRect(sx,sy,8,8);
+								img.data[addr * 4 + 3] = 0xD8; // mostly opaque
+							}
+							else {
+								tilesExplored.push([sx,sy]);
+							}
+						}
+					}
+				}
+			}
+			if (explored && explored != tiles && !spoileron) {
+				let outline = document.getElementById("outline");
+				for (let s of tilesExplored) {
+					sctx.drawImage(outline, s[0],s[1], 8, 8, s[0], s[1], 8, 8);
+				}
+			}
+		}
 		ctx.putImageData(img, 0, 0);
 	}
-	gen_obscurity(null);
+	
+	let show_item_details = (item_name, loc, i, j) => {
+		if (j !== null) {
+			document.getElementById("path-overlay").innerHTML = ""
+			showRoute(j.return_route, "yellow");
+			showRoute(j.obtain_route);
+		}
+		let si = document.getElementById("sidebar-info");
+		si.scrollTop = 0;
+		si.innerHTML = "";
+		if (j !== null) {
+			step_limit = c.details[i].step;
+			let title = document.createElement("div");
+			title.className = "sidebar-title";
+			title.innerHTML = `STEP ${step_limit}`;
+			si.appendChild(title);
+		}
 
+		if (j !== null) {
+			gen_obscurity(step_limit);
+
+			let previous_header = document.createElement("div");
+			previous_header.className = "category";
+			previous_header.innerHTML = "PREVIOUSLY COLLECTIBLE";
+			si.appendChild(previous_header);
+
+			let ss = c.details[i].start_state;
+			
+			let non_unique_item_list = document.createElement("div");
+			non_unique_item_list.className = "item-list";
+			let s = [ss.max_missiles, ss.max_supers, ss.max_power_bombs, Math.floor(ss.max_energy / 100), ss.max_reserves / 100];
+			let co = [ss.collectible_missiles, ss.collectible_supers, ss.collectible_power_bombs, null, null];
+			let ic = [1, 2, 3, 0, 20];
+			for (let i in s) {
+				if (s[i] > 0) {
+					non_unique_item_list.appendChild(icon(ic[i]));
+					let count = document.createElement("span");
+					if (co[i] !== null) {
+						count.innerHTML = s[i] + " / " + co[i] + " ";
+					} else {
+						count.innerHTML = s[i] + " ";
+					}
+					non_unique_item_list.appendChild(count);
+				}
+			}
+			si.appendChild(non_unique_item_list);
+
+			let unique_item_list = document.createElement("div");
+			unique_item_list.className = "item-list";
+			for (let i of ss.items) {
+				if (i == "Nothing") { continue; }
+				if (!ic.includes(item_plm[i])) {
+					unique_item_list.appendChild(icon(item_plm[i]));
+				}
+			}
+			si.appendChild(unique_item_list);
+			
+			flagIcons(si, ss.flags);
+
+			let collectible_header = document.createElement("div");
+			collectible_header.className = "category";
+			collectible_header.innerHTML = "COLLECTIBLE ON THIS STEP";
+			si.appendChild(collectible_header);
+
+
+			item_list = document.createElement("div");
+			item_list.className = "item-list";
+			let items = c.details[i].items;
+			sortedItemIdxs = Array.from(items.keys()).sort((a, b) => item_rank[items[a].item] - item_rank[items[b].item]);
+			for (item_idx of sortedItemIdxs) {
+				let item = items[item_idx];
+				let icon_el = icon(item_plm[item.item]);
+				icon_el.className = "ui-icon-hoverable";
+				icon_el.onclick = ev => {
+					show_item_details(item.item, item.location, i, item);
+				}
+				if (item == j) {
+					icon_el.classList.add("selected")
+				}
+				item_list.appendChild(icon_el);
+			}
+			si.appendChild(item_list);
+		}
+
+		if (i !== null)
+			flagIcons(si, c.summary[i].flags, j);
+
+		let item_info = document.createElement("div");
+		let item_difficulty = "";
+		if (j !== null && j.difficulty !== null && j.difficulty !== undefined) {
+			item_difficulty = ` (${j.difficulty})`
+		}
+		item_info.appendChild(createHtmlElement(`<div class="sidebar-item-name">${item_name}${item_difficulty}</div>`));
+		item_info.appendChild(createHtmlElement(`<div class="category">LOCATION</div>`));
+		item_info.appendChild(createDiv(`${loc.room}: ${loc.node}<br><small>${loc.area}</small>`));
+		if (j !== null) {
+			let ss = c.details[i].start_state;
+			item_info.appendChild(createHtmlElement(`<div class="category">OBTAIN ROUTE</div>`));
+			routeData(item_info, j.obtain_route, ss);
+				
+			item_info.appendChild(createHtmlElement(`<div class="category">RETURN ROUTE</div>`));
+			routeData(item_info, j.return_route);
+		}
+		si.appendChild(item_info);
+	}
+	function consumableData(k, ss=null) {
+		let remstr = ss == null ? "still needed" : "remaining";
+		let out = "";
+		if (k.energy_used !== undefined) {
+			if (ss == null)
+				out += `Energy ${remstr}: ${k.energy_used + 1}<br>`;
+			else
+				out += `Energy ${remstr}: ${ss.max_energy - k.energy_used}<br>`;
+		}
+		if (k.reserves_used !== undefined) {
+			if (ss == null)
+				out += `Reserves ${remstr}: ${k.reserves_used}<br>`;
+			else
+				out += `Reserves ${remstr}: ${ss.max_reserves - k.reserves_used}<br>`;
+		}
+		if (k.missiles_used !== undefined) {
+			if (ss == null)
+				out += `Missiles ${remstr}: ${k.missiles_used}<br>`;
+			else
+				out += `Missiles ${remstr}: ${ss.max_missiles - k.missiles_used}<br>`;
+		}
+		if (k.supers_used !== undefined) {
+			if (ss == null)
+				out += `Supers ${remstr}: ${k.supers_used}<br>`;
+			else
+				out += `Supers ${remstr}: ${ss.max_supers - k.supers_used}<br>`;
+		}
+		if (k.power_bombs_used !== undefined) {
+			if (ss == null)
+				out += `PBs ${remstr}: ${k.power_bombs_used}<br>`;
+			else
+				out += `PBs ${remstr}: ${ss.max_power_bombs - k.power_bombs_used}<br>`;
+		}
+		return out;
+	}
+	function routeData(p, route, ss=null) {
+		let lastRoom=null, lastNode=null;
+		for (let k of route) {
+			let strat_url = `/logic/room/${k.room_id}/${k.from_node_id}/${k.to_node_id}/${k.strat_id}`;
+			let nodeStr;
+			let out = "";
+
+			if (ss == null)	{
+				out = consumableData(k);
+				if (out != "") {
+					p.appendChild(createHtmlElement(`<small>${out}</small>`));
+				}
+			}
+
+			if (k.strat_id !== null) {
+				nodeStr = `<a style="text-decoration:none" href="${strat_url}">${k.room}: ${k.node}</a><br>`;
+			} else {
+				nodeStr = `${k.room}: ${k.node}<br>`;
+			}
+			if (k.room != lastRoom || k.node != lastNode || k.strat_id !== null) {
+				p.appendChild(createDiv(nodeStr));
+				lastRoom = k.room;
+				lastNode = k.node;
+			}
+			out = "";
+			if (!k.strat_name.startsWith("Base ") && k.strat_name != "Base" && k.strat_name != "Leave Normally") {
+				if (k.strat_notes) {
+					let title = "";
+					for (let i of k.strat_notes) {
+						title += `${i} `;
+					}
+					if (k.strat_id !== null) {
+						out += `Strat: <a href=${strat_url}><abbr title="${title}">${k.strat_name}</abbr></a><br>`;
+					} else {
+						out += `Strat: <abbr title="${title}">${k.strat_name}</abbr><br>`;
+					}
+				} else {
+					if (k.strat_id !== null) {
+						out += `Strat: <a href=${strat_url}>${k.strat_name}</a><br>`;
+					} else {
+						out += `Strat: ${k.strat_name}<br>`;
+					}
+				}
+			}
+			if (out != "") {
+				p.appendChild(createHtmlElement(`<small>${out}</small>`));
+			}
+			if (ss != null)	{
+				out = consumableData(k, ss);
+				if (out != "") {
+					p.appendChild(createHtmlElement(`<small>${out}</small>`));
+				}
+			}
+			
+			if (k.relevant_flags) {
+				let flagContainer = document.createElement("small");
+				let flagSpan0 = document.createElement("span");
+				flagSpan0.innerText = "Relevant flags: ";
+				flagContainer.appendChild(flagSpan0);
+				for (let f in k.relevant_flags) {
+					if (f != 0) {
+						let flagSeparator = document.createElement("span");
+						flagSeparator.innerText = ", ";
+						flagContainer.appendChild(flagSeparator);
+					}
+					let flagA = document.createElement("a");
+					let flagSpan = document.createElement("span");
+					flagSpan.innerText = k.relevant_flags[f];
+					flagA.appendChild(flagSpan);
+					flagA.href = "#";
+					flagA.onclick = function () {
+						showFlag(c.details, k.relevant_flags[f]);
+					};
+					flagContainer.appendChild(flagA);
+				}
+				flagContainer.appendChild(document.createElement("br"));
+				p.appendChild(flagContainer);
+			}
+		}
+	}
+	function flagIcons(p, flags, j=null) {
+		for (i in flags) {
+			let x = flags[i]
+			let f = x;
+			if (x.flag != null)
+				f = x.flag;
+
+			if (f == "f_TourianOpen" || f == "f_MotherBrainGlassBroken" || f == "f_AllItemsSpawn" || f == "f_AcidChozoWithoutSpaceJump" || f.includes("f_KilledZebetites"))
+				continue;
+
+			let e = document.createElement("img");
+			e.src = f + ".png";
+			
+			e.className = "ui-flag"
+			if (j && j.flag && j.flag == f)
+				e.classList.add("selected");
+			e.onclick = ev => {
+				showFlag(c.details, f);
+			}
+			p.appendChild(e);
+		}
+	}
+	function showFlag(details, flagName) {
+		for (let stepNum in details) {
+			let stepData = details[stepNum];
+			for (let flagData of stepData.flags) {
+				if (flagData.flag == flagName) {
+					show_item_details(flagName, flagData.location, stepNum, flagData);
+				}
+			}
+		}
+		if (flagName == "f_DefeatedMotherBrain") {
+			showEscape();
+		}
+	}
+	function showEscape() {
+		let path = "";
+		for (let i of c.escape.animals_route ?? []) {
+			for (let k of [i.from, i.to]) {
+				let x = k.x * 24 + 24 + 12;
+				let y = k.y * 24 + 24 + 12;
+				path += `${path == "" ? "M" : "L"}${x} ${y} `;
+			}
+		}
+		for (let i of c.escape.ship_route) {
+			for (let k of [i.from, i.to]) {
+				let x = k.x * 24 + 24 + 12;
+				let y = k.y * 24 + 24 + 12;
+				path += `${path == "" ? "M" : "L"}${x} ${y} `;
+			}
+		}
+		document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
+		document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="cyan" fill="none" stroke-linejoin="round" stroke-width="2"/>`
+	}
+	function showRoute(to, color="white") {
+		if (to == null || to.length == 0)
+			return;
+
+		path = "";
+		for (let k of to) {
+			if (k.coords) {
+				let x = k.coords[0] * 24 + 24 + 12;
+				let y = k.coords[1] * 24 + 24 + 12;
+				path += `${path == "" ? "M" : "L"}${x} ${y} `;
+			}
+		}
+		document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
+		document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="${color}" fill="none" stroke-linejoin="round" stroke-width="2"/>`
+	}
+	function hideRoom() {
+		var el = document.getElementById("room-info");
+		el.classList.add("hidden")
+		el.innerText = "";
+	}
+	function hubRoute() {
+		document.getElementById("path-overlay").innerHTML = ""
+		// escape mode
+		if (c.summary.length ==0)
+			return;
+
+		gen_obscurity(1);
+
+		if (c.hub_obtain_route.length == 0)
+			return;
+		
+		showRoute(c.hub_return_route, "yellow");
+		showRoute(c.hub_obtain_route);
+
+
+		let si = document.getElementById("sidebar-info")
+		si.scrollTop = 0;
+		si.innerHTML = "";
+		let title = document.createElement("div");
+		title.className = "sidebar-title";
+		title.innerHTML = `Hub route`;
+		si.appendChild(title);
+		
+
+		let previous_header = document.createElement("div");
+		previous_header.className = "category";
+		previous_header.innerHTML = "PREVIOUSLY COLLECTED";
+		si.appendChild(previous_header);
+
+		let ss = c.details[0].start_state;
+		
+		let item_list = document.createElement("div");
+		item_list.className = "item-list";
+		let s = [ss.max_missiles, ss.max_supers, ss.max_power_bombs, Math.floor(ss.max_energy / 100), ss.max_reserves / 100];
+		let ic = [1, 2, 3, 0, 20];
+		for (let i in s) {
+			if (s[i] > 0) {
+				item_list.appendChild(icon(ic[i]));
+				let count = document.createElement("span");
+				count.innerHTML = s[i] + " ";
+				item_list.appendChild(count);
+			}
+		}
+		for (let i of ss.items) {
+			if (i == "Nothing") { continue; }
+			if (!ic.includes(item_plm[i])) {
+				item_list.appendChild(icon(item_plm[i]));
+			}
+		}
+		si.appendChild(item_list);
+		
+		flagIcons(si, ss.flags);
+		let item_info = document.createElement("div");
+		item_info.appendChild(createHtmlElement(`<div class="category">OBTAIN ROUTE</div>`));
+		routeData(item_info, c.hub_obtain_route);
+				
+		item_info.appendChild(createHtmlElement(`<div class="category">RETURN ROUTE</div>`));
+		routeData(item_info, c.hub_return_route);
+		si.appendChild(item_info);
+	}
+
+
+	let helmx = 0, helmy = 0;
+	starticon: {
+		let sr = null, e = null, ri = c.start_location.room_id, ni = c.start_location.node_id, i=-1, x=0, y=0;
+		let n = c.start_location.name;
+
+
+		for (i in c.all_rooms) {
+			if (ri ==c.all_rooms[i].room_id )
+			{
+				// only used when start location == hub
+				x = c.all_rooms[i].coords[0]*24 + 24 + Math.floor(c.start_location.x / 16) * 24;
+				y = c.all_rooms[i].coords[1]*24 + 24 + Math.floor(c.start_location.y / 16) * 24;
+				break;
+			}
+		}
+		if (n == "Ship") {
+			i = 1;
+			x = c.all_rooms[i].coords[0]*24+24;
+			y = c.all_rooms[i].coords[1]*24+24;
+			x += 96;
+			y += 72;	
+		} else if (n == "Bomb Torizo Room") {
+			startitems=3;
+		} else if (n == "") {
+			// escape
+			n = "Mother Brain Room";
+			i = 248;
+			x = c.all_rooms[i].coords[0]*24+24;
+			y = c.all_rooms[i].coords[1]*24+24;
+		} else if (n == "Homing Geemer Room") {
+			i = 26;
+			x = c.all_rooms[i].coords[0]*24+24;
+			y = c.all_rooms[i].coords[1]*24+24;
+			x += 120;
+			y += 48;
+		} else if (n == "East Pants Room") {
+			i = 138;
+			x = c.all_rooms[i].coords[0]*24+24;
+			y = c.all_rooms[i].coords[1]*24+24;
+			x += 24;
+			y += 24;
+		}
+
+		sr = c.all_rooms[i];
+		startbase.x = x;
+		startbase.y = y;
+		for (i in c.all_items) {
+			let loc = c.all_items[i].location;
+			if (loc.room_id == ri) {
+				let os = lookupOffset(loc.room, loc.node);
+				let lx = loc.coords[0]*24 + 24;
+				let ly = loc.coords[1]*24 + 24;
+				if (os) {
+					lx += Math.round(os[0])*24;
+					ly += Math.round(os[1])*24;
+				}
+				if (lx == x && ly== y) {
+					if (startitems == 0) {
+						startitems++;
+					} else if (startitems ==1) {
+						startitems++;
+					}
+				}
+			}
+		}
+
+		e = document.createElement("img");
+		e.src = "helm.png";
+		e.id = "helm"
+		e.className = "start";
+		e.style.left =  x + "px";
+		e.style.top =  y + "px";
+		helmx = x;
+		helmy = y;
+		e.style.visibility = document.getElementById("start").checked ? "visible" : "hidden";
+		if (c.summary.length == 0) {
+			e.onclick = ev => {
+				showEscape();
+			}
+		}
+		else {
+			e.onclick = ev => {
+				hubRoute();
+			}
+		}
+		e.onpointermove = ev => {
+			hideRoom();
+		}
+		document.getElementById("overlay").appendChild(e);
+		e = document.createElement("div");
+		e.className = "popup";
+		e.innerHTML = `<b>Starting Location</b><br><small>${sr.room}</small><br>`;
+		e.style.left = x+24+ "px";
+		e.style.top = y+ "px";
+		document.getElementById("overlay").appendChild(e);
+	}
+		
+	shipicon: {
+		sr = c.all_rooms[1];
+		e = document.createElement("img");
+		e.src = "gunship.png";
+		e.id = "gunship"
+		e.className = "ship";
+		
+		x = sr.coords[0]*24+116;
+		y = sr.coords[1]*24+124;
+		e.style.left = x+"px";
+		e.style.top = y+"px";
+		e.style.visibility = document.getElementById("ship").checked ? "visible" : "hidden";
+		e.onclick = ev => {
+			document.getElementById("path-overlay").innerHTML = ""
+			show_overview();
+			showEscape();
+			gen_obscurity(null);
+		}
+		e.onpointermove = ev => {
+			hideRoom();
+		}
+		document.getElementById("overlay").appendChild(e);
+		e = document.createElement("div");
+		e.className = "popup";
+		e.innerHTML = `<b>Ship</b><br><small>${sr.room}</small><br>`;
+		e.style.left = x + 48 +"px";
+		e.style.top = y + "px";
+		document.getElementById("overlay").appendChild(e);
+	}
+
+	flags: 
+	if (c.summary.length != 0) {
+		for (i in roomFlags) {
+			e = document.createElement("img");
+			let rf = roomFlags[i];
+			let f = rf[0];
+			let obj = false;
+			if (f == "f_ZebesAwake")
+				continue;
+
+			for (j in c.all_rooms)	{
+				if (c.all_rooms[j].room == i)
+					break;
+			}
+			sr = c.all_rooms[j];
+			e.className = "flag";
+			e.id = f;
+			let fc = null;
+			for (ic in flagtypes) {
+				for (x of flagtypes[ic]) {
+					if (x == f) {
+						e.classList.add(ic);
+						
+						if (ic == "objectives")
+							obj = true;
+						else {
+							fc = ic;
+							e.style.visibility =  document.getElementById(ic).checked ? "visible" : "hidden";
+						}
+						break;
+					}
+				}
+			}
+			if (obj && document.getElementById("objectives").checked)
+				e.src = fc + "obj.png"
+			else
+				e.src = fc + ".png"
+			
+			ox = 0;
+			if (f == "f_DefeatedBombTorizo"  && document.getElementById("items").checked)
+				ox += 6;
+			e.style.left = (sr.coords[0]+rf[2])*24+24+ox+"px";
+			e.style.top = (sr.coords[1]+rf[3])*24+24+"px";
+
+			let reach_step = -1;
+			let v = -1;
+			for (v in c.details){
+				for (let vf of c.details[v].flags){
+					if (vf.flag == f){
+						reach_step = Number(vf.reachable_step);
+						break;
+					}
+				}
+				if (reach_step != -1)
+					break;
+			}
+			e.onclick = ev => {
+				if (document.getElementById("spoilers").checked || document.getElementById("spoilers").checked || step_limit === null || step_limit > v)
+					showFlag(c.details, f);
+				else if (step_limit >=  reach_step) {
+					el.innerText = "Not in logic for current step.";
+					el.style.left = ev.target.style.left + 16 + "px";
+					el.style.top = ev.target.style.top + "px";
+					el.classList.remove("hidden");
+				}
+			}
+			e.onpointermove = ev => {
+				hideRoom();
+				if (!document.getElementById("spoilers").checked && step_limit !== null && step_limit >= reach_step && step_limit <= Number(v)) {
+					el.innerText = "Not in logic for current step.";
+					el.style.left = ev.target.style.left + 16 + "px";
+					el.style.top = ev.target.style.top + "px";
+					el.classList.remove("hidden");
+				}
+			}
+			document.getElementById("overlay").appendChild(e);
+
+			e = document.createElement("div");
+			e.className = "popup";
+			e.innerHTML = `<b>${rf[1]}</b><br><small>${sr.room}</small><br>`;
+			if (obj == true)
+				e.innerHTML += "Objective<br>";
+			let fin = false;
+			out:
+			for (i in c.summary) {
+				for (j in c.summary[i].flags) {
+					if (c.summary[i].flags[j]['flag'] == f) {
+						e.innerHTML += `Step: ${c.summary[i].step}<br>`;
+						fin = true;
+						break out;
+					}
+				}
+			}
+			if (!fin) {
+				e.innerHTML += "Route unavailable<br>";
+			}
+			e.style.left = (sr.coords[0]+rf[2]) * 24+48 + "px";
+			e.style.top = (sr.coords[1]+rf[3])*+24+24 + "px";
+			document.getElementById("overlay").appendChild(e);
+		}
+	}
+
+	items: {
+		for (let v of c.all_items) {
+			if (v.item == "Nothing") { continue; }
+			let os = lookupOffset(v.location.room, v.location.node);
+			if (os) {
+				v.location.coords[0] += os[0];
+				v.location.coords[1] += os[1];
+			}
+			e = document.createElement("div");
+			e.className = v.item;
+			e.classList.add("icon");
+			e.classList.add("items");
+			
+			e.id = v.location.room+": "+v.location.node;
+
+			let checked = document.getElementById("items").checked;
+			e.style.visibility =  checked ? "visible" : "hidden";
+
+			let ox = 0;
+			if (e.id == "Bomb Torizo Room: Item" && document.getElementById("f_DefeatedBombTorizo").style.visibility == "visible") 
+				ox -=6;
+			e.style.left = v.location.coords[0] * 24 + 24 + 4 + ox + "px";
+			e.style.top = v.location.coords[1] * 24 + 24 + 4 + "px";
+				
+			e.style.backgroundPositionX = `-${item_plm[v.item] * 16}px`;
+			let i = null;
+			let j = null;
+			for (let l in c.details) {
+				for (let k of c.details[l].items) {
+					if (k.location.room_id == v.location.room_id && k.location.node_id == v.location.node_id) {
+						i = l;
+						j = k;
+						break;
+					}
+				}
+				if (i !== null)
+					break;
+			}
+			let reach_step = j !== null ? j.reachable_step : null;
+			let step = Number(i);
+			e.onclick = ev => {
+				if (document.getElementById("spoilers").checked || step_limit === null || step_limit > i) {
+					show_item_details(v.item, v.location, i, j);
+				}
+			};
+			e.onpointermove = ev => {
+				hideRoom();
+				if (!document.getElementById("spoilers").checked && step_limit !== null && step_limit <= step && step_limit >= reach_step) {
+					el.innerHTML = `<b>${v.item}</b><br><small>${v.location.room}</small><br>Not in logic on this step`;
+					el.style.left = ev.target.style.left + 16 + "px";
+					el.style.top = ev.target.style.top + "px";
+					el.classList.remove("hidden");
+				}
+			}
+			document.getElementById("overlay").appendChild(e);
+			e = document.createElement("div");
+			e.className = "popup";
+			e.innerHTML = `<b>${v.item}</b><br><small>${v.location.room}</small><br>`;
+			let fin = false;
+			out:
+			for (let i in c.details) {
+				for (let j of c.details[i].items) {
+					if (j.location.room_id == v.location.room_id && j.location.node_id == v.location.node_id) {
+						e.innerHTML += `Step: ${c.details[i].step}<br>`;
+						fin = true;
+						break out;
+					}
+				}
+			}
+			if (!fin) {
+				e.innerHTML += "Route unavailable<br>";
+			}
+			e.style.left = v.location.coords[0] * 24 + 56 + "px";
+			e.style.top = v.location.coords[1] * 24 + 8 + "px";
+			document.getElementById("overlay").appendChild(e);
+			if (screen.availHeight < 600+32)
+			document.getElementById("sidebar-info").style.maxHeight = screen.availHeight-32 + "px";
+		}
+	}
+
+	// input
+	let page_x = -helmx+document.documentElement.clientWidth/2;
+	let page_y = -helmy+document.documentElement.clientHeight/2;
 	let el = document.getElementById("room-info");
-
 	let dragged = false;
-	var scale = 1, page_x = 0, page_y = 0, dm = 0;
+	let scale = 1, dm = 0;
 	let m = document.getElementById("map");
 	let evCache = [];
 	let odist = -1;
+
+	transfo();
+	moveStart();
+	show_overview();
+	if (c.summary.length == 0)
+	{
+		gen_obscurity(null);
+		showEscape();
+	}
+	else
+		gen_obscurity(1);
+	
+	document.getElementById("map").style.visibility = "visible";
+
 	function transfo() {
 		document.getElementById("zoom").style.transform =
 		`translate(${page_x}px, ${page_y}px) scale(${scale})`;
@@ -322,11 +1056,22 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		if (x >= 0 && x < 72 && y >= 0 && y < 72) {
 			let tile = map[y * 72 + x];
 			if (tile >= 0) {
-				el.innerText = c.all_rooms[tile].room;
-				el.dataset.roomId = c.all_rooms[tile].room_id;
+				let v = c.all_rooms[tile];
+				let i = y -v.coords[1];
+				let j = x -v.coords[0];
+				if (step_limit != null && v.map_reachable_step[i][j] >= step_limit) {
+					el.classList.add("hidden");
+					el.innerText = "";
+					return;
+				}
+				el.innerText = v.room;
+				el.dataset.roomId = v.room_id;
 				el.style.left = ev.offsetX + 16 + "px";
 				el.style.top = ev.offsetY + "px";
 				el.classList.remove("hidden");
+				if (el.innerText.length != "" && c.hub_location_name.includes(el.innerText)) {
+					el.innerHTML += " (Hub)";
+				}
 				return;
 			}
 		}
@@ -334,65 +1079,16 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		el.innerText = "";
 	}
 	function click() {
-		if (el.innerText in roomFlags) {
-			let flagPair = roomFlags[el.innerText];
-			let flagName = flagPair[0];
-			showFlag(c.details, flagName);
-			if (el.innerText == "Mother Brain Room") {
-				let path = "";
-				for (let i of c.escape.animals_route ?? []) {
-					for (let k of [i.from, i.to]) {
-						let x = k.x * 24 + 24 + 12;
-						let y = k.y * 24 + 24 + 12;
-						path += `${path == "" ? "M" : "L"}${x} ${y} `;
-					}
-				}
-				for (let i of c.escape.ship_route) {
-					for (let k of [i.from, i.to]) {
-						let x = k.x * 24 + 24 + 12;
-						let y = k.y * 24 + 24 + 12;
-						path += `${path == "" ? "M" : "L"}${x} ${y} `;
-					}
-				}
-				document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
-				document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="cyan" fill="none" stroke-linejoin="round" stroke-width="2"/>`
-			}
-		} else {
-			if (!dragged) {
-				// deselect
-				show_overview();
-				document.getElementById("path-overlay").innerHTML = ""
-			}
+		if (!dragged) {
+			// deselect
+			show_overview();
+			document.getElementById("path-overlay").innerHTML = ""
 		}
 	}
 	function dblclick() {
 		if (!el.classList.contains("hidden")) {
 			window.open("/logic/room/" + el.dataset.roomId);
 		}
-	}
-	function zm(x, y, delta) {
-		const scaleOld = scale;
-		var z = document.getElementById("zoom");
-
-		scale *= Math.exp(-delta * 0.0005);
-		scale = Math.min(Math.max(0.25, scale), 100);
-
-		var xorg = x - page_x - z.offsetWidth/2;
-		var yorg = y - page_y - z.offsetHeight/2;
-
-		var xnew = xorg / scaleOld;
-		var ynew = yorg / scaleOld;
-		
-		xnew *= scale;
-		ynew *= scale;
-
-		var xdiff = xorg -xnew;
-		var ydiff = yorg -ynew;
-
-		page_x += xdiff;
-		page_y += ydiff;
-
-		transfo();
 	}
 	function up(ev) {
 		if (dragged)
@@ -415,7 +1111,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			odist = Math.sqrt(dx**2+dy**2);
 		}
 	}
-	let fclick = true, timer = null;
+	let fclick = true, timer = null, oldroom = null;
 	m.onpointerup = ev => {
 		if (ev.button != 0)
 			return;
@@ -423,7 +1119,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			ev.preventDefault();
 		
 		if (evCache.length == 1) {
-			let oldroom = el.innerText;
+			
 			hover(ev);
 			click();
 			if (fclick) {
@@ -431,12 +1127,14 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 					fclick = true;
 				}, 500);
 				fclick = false;
+				oldroom = el.innerText;
 			} else {	
 				fclick = true;
 				if (timer)
 					clearTimeout(timer);
 				if (oldroom == el.innerText)
 					dblclick();
+				oldroom = null;
 			}
 		}
 		up(ev);
@@ -481,324 +1179,32 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 	m.onwheel = ev => {
 		zm(ev.x, ev.y, ev.deltaY);
 	}
-	let createDiv = (html) => {
-		const div = document.createElement('div');
-		div.innerHTML = html;
-		return div;
-	};
-	let createHtmlElement = (html) => {
-		const template = document.createElement('template');
-		template.innerHTML = html;
-		return template.content.firstChild;
-	};
-	let show_item_details = (item_name, loc, i, j) => {
-		if (j !== null) {
-			let path = "";
-			for (let k of j.return_route) {
-				if (k.coords) {
-					let x = k.coords[0] * 24 + 24 + 12;
-					let y = k.coords[1] * 24 + 24 + 12;
-					path += `${path == "" ? "M" : "L"}${x} ${y} `;
-				}
-			}
-			document.getElementById("path-overlay").innerHTML = `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
-			document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="yellow" fill="none" stroke-linejoin="round" stroke-width="2"/>`
-			path = "";
-			for (let k of j.obtain_route) {
-				if (k.coords) {
-					let x = k.coords[0] * 24 + 24 + 12;
-					let y = k.coords[1] * 24 + 24 + 12;
-					path += `${path == "" ? "M" : "L"}${x} ${y} `;
-				}
-			}
-			document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="black" fill="none" stroke-linejoin="round" stroke-width="4"/>`
-			document.getElementById("path-overlay").innerHTML += `<path d="${path}" stroke="white" fill="none" stroke-linejoin="round" stroke-width="2"/>`
-		}
-		let si = document.getElementById("sidebar-info");
-		si.scrollTop = 0;
-		si.innerHTML = "";
-		if (j !== null) {
-			step_limit = c.details[i].step;
-			let title = document.createElement("div");
-			title.className = "sidebar-title";
-			title.innerHTML = `STEP ${step_limit}`;
-			si.appendChild(title);
-		}
-
-		if (j !== null) {
-			gen_obscurity(step_limit);
-
-			let previous_header = document.createElement("div");
-			previous_header.className = "category";
-			previous_header.innerHTML = "PREVIOUSLY COLLECTIBLE";
-			si.appendChild(previous_header);
-
-			let ss = c.details[i].start_state;
-			let s = [ss.max_missiles, ss.max_supers, ss.max_power_bombs, Math.floor(ss.max_energy / 100), ss.max_reserves / 100];
-			let ic = [1, 2, 3, 0, 20];
-			for (let i in s) {
-				if (s[i] > 0) {
-					si.appendChild(icon(ic[i]));
-					let count = document.createElement("span");
-					count.innerHTML = s[i] + " ";
-					si.appendChild(count);
-				}
-			}
-			for (let i of ss.items) {
-				if (i == "Nothing") { continue; }
-				if (!ic.includes(item_plm[i])) {
-					si.appendChild(icon(item_plm[i]));
-				}
-			}
-
-			let collectible_header = document.createElement("div");
-			collectible_header.className = "category";
-			collectible_header.innerHTML = "COLLECTIBLE ON THIS STEP";
-			si.appendChild(collectible_header);
-
-			let item_list = document.createElement("div");
-			item_list.className = "item-list";
-			let items = c.details[i].items;
-			sortedItemIdxs = Array.from(items.keys()).sort((a, b) => item_rank[items[a].item] - item_rank[items[b].item]);
-			for (item_idx of sortedItemIdxs) {
-				let item = items[item_idx];
-				let icon_el = icon(item_plm[item.item]);
-				icon_el.className = "ui-icon-hoverable";
-				icon_el.onclick = ev => {
-					show_item_details(item.item, item.location, i, item);
-				}
-				if (item == j) {
-					icon_el.classList.add("selected")
-				}
-				item_list.appendChild(icon_el);
-			}
-			si.appendChild(item_list);
-		}
-
-		let item_info = document.createElement("div");
-		let item_difficulty = "";
-		if (j !== null && j.difficulty !== null && j.difficulty !== undefined) {
-			item_difficulty = ` (${j.difficulty})`
-		}
-		item_info.appendChild(createHtmlElement(`<div class="sidebar-item-name">${item_name}${item_difficulty}</div>`));
-		item_info.appendChild(createHtmlElement(`<div class="category">LOCATION</div>`));
-		item_info.appendChild(createDiv(`${loc.room}: ${loc.node}<br><small>${loc.area}</small>`));
-		if (j !== null) {
-			let ss = c.details[i].start_state;
-			item_info.appendChild(createHtmlElement(`<div class="category">OBTAIN ROUTE</div>`));
-			let lastRoom = null;
-			let lastNode = null;
-			for (let k of j.obtain_route) {
-				let strat_url = `/logic/room/${k.room_id}/${k.from_node_id}/${k.to_node_id}/${k.strat_id}`;
-				let nodeStr;
-				if (k.strat_id !== null) {
-					nodeStr = `<a style="text-decoration:none" href="${strat_url}">${k.room}: ${k.node}</a><br>`;
-				} else {
-					nodeStr = `${k.room}: ${k.node}<br>`;
-				}
-				if (k.room != lastRoom || k.node != lastNode || k.strat_id !== null) {
-					item_info.appendChild(createDiv(nodeStr));
-					lastRoom = k.room;
-					lastNode = k.node;
-				}
-				let out = "";
-				if (!k.strat_name.startsWith("Base ") && k.strat_name != "Base" && k.strat_name != "Leave Normally") {
-					if (k.strat_notes) {
-						let title = "";
-						for (let i of k.strat_notes) {
-							title += `${i} `;
-						}
-						out += `Strat: <a href=${strat_url}><abbr title="${title}">${k.strat_name}</abbr></a><br>`;
-					} else {
-						out += `Strat: <a href=${strat_url}>${k.strat_name}</a><br>`;
-					}
-				}
-				if (k.energy_used !== undefined) {
-					out += `Energy remaining: ${ss.max_energy - k.energy_used}<br>`;
-				}
-				if (k.reserves_used !== undefined) {
-					out += `Reserves remaining: ${ss.max_reserves - k.reserves_used}<br>`;
-				}
-				if (k.missiles_used !== undefined) {
-					out += `Missiles remaining: ${ss.max_missiles - k.missiles_used}<br>`;
-				}
-				if (k.supers_used !== undefined) {
-					out += `Supers remaining: ${ss.max_supers - k.supers_used}<br>`;
-				}
-				if (k.power_bombs_used !== undefined) {
-					out += `PBs remaining: ${ss.max_power_bombs - k.power_bombs_used}<br>`;
-				}
-				if (out != "") {
-					item_info.appendChild(createDiv(`<small>${out}</small>`));
-				}
-				if (k.relevant_flags) {
-					let flagContainer = document.createElement("small");
-					let flagSpan0 = document.createElement("span");
-					flagSpan0.innerText = "Relevant flags: ";
-					flagContainer.appendChild(flagSpan0);
-					for (let f in k.relevant_flags) {
-						if (f != 0) {
-							let flagSeparator = document.createElement("span");
-							flagSeparator.innerText = ", ";
-							flagContainer.appendChild(flagSeparator);
-						}
-						let flagA = document.createElement("a");
-						let flagSpan = document.createElement("span");
-						flagSpan.innerText = k.relevant_flags[f];
-						flagA.appendChild(flagSpan);
-						flagA.href = "#";
-						flagA.onclick = function () {
-							showFlag(c.details, k.relevant_flags[f]);
-						};
-						flagContainer.appendChild(flagA);
-					}
-					flagContainer.appendChild(document.createElement("br"));
-					item_info.appendChild(flagContainer);
-				}
-			}
-			item_info.appendChild(createHtmlElement(`<div class="category">RETURN ROUTE</div>`));
-			lastRoom = null;
-			lastNode = null;
-			for (let k of j.return_route) {
-				let out = "";
-				if (k.energy_used !== undefined) {
-					out += `Energy still needed: ${k.energy_used + 1}<br>`;
-				}
-				if (k.reserves_used !== undefined) {
-					out += `Reserves still needed: ${k.reserves_used}<br>`;
-				}
-				if (k.missiles_used !== undefined) {
-					out += `Missiles still needed: ${k.missiles_used}<br>`;
-				}
-				if (k.supers_used !== undefined) {
-					out += `Supers still needed: ${k.supers_used}<br>`;
-				}
-				if (k.power_bombs_used !== undefined) {
-					out += `PBs still needed: ${k.power_bombs_used}<br>`;
-				}
-				if (out != "") {
-					item_info.appendChild(createHtmlElement(`<small>${out}</small>`));
-				}
-
-				let strat_url = `/logic/room/${k.room_id}/${k.from_node_id}/${k.to_node_id}/${k.strat_id}`;
-				let nodeStr;
-				if (k.strat_id !== null) {
-					nodeStr = `<a style="text-decoration:none" href="${strat_url}">${k.room}: ${k.node}</a><br>`;
-				} else {
-					nodeStr = `${k.room}: ${k.node}<br>`;
-				}
-				if (k.room != lastRoom || k.node != lastNode || k.strat_id !== null) {
-					item_info.appendChild(createDiv(nodeStr));
-					lastRoom = k.room;
-					lastNode = k.node;
-				}
-				out = "";
-				if (!k.strat_name.startsWith("Base ") && k.strat_name != "Base" && k.strat_name != "Leave Normally") {
-					if (k.strat_notes) {
-						let title = "";
-						for (let i of k.strat_notes) {
-							title += `${i} `;
-						}
-						out += `Strat: <a href=${strat_url}><abbr title="${title}">${k.strat_name}</abbr></a><br>`;
-					} else {
-						out += `Strat: <a href=${strat_url}>${k.strat_name}</a><br>`;
-					}
-				}
-				if (out != "") {
-					item_info.appendChild(createHtmlElement(`<small>${out}</small>`));
-				}
-				if (k.relevant_flags) {
-					let flagContainer = document.createElement("small");
-					let flagSpan0 = document.createElement("span");
-					flagSpan0.innerText = "Relevant flags: ";
-					flagContainer.appendChild(flagSpan0);
-					for (let f in k.relevant_flags) {
-						if (f != 0) {
-							let flagSeparator = document.createElement("span");
-							flagSeparator.innerText = ", ";
-							flagContainer.appendChild(flagSeparator);
-						}
-						let flagA = document.createElement("a");
-						let flagSpan = document.createElement("span");
-						flagSpan.innerText = k.relevant_flags[f];
-						flagA.appendChild(flagSpan);
-						flagA.href = "#";
-						flagA.onclick = function () {
-							showFlag(c.details, k.relevant_flags[f]);
-						};
-						flagContainer.appendChild(flagA);
-					}
-					flagContainer.appendChild(document.createElement("br"));
-					item_info.appendChild(flagContainer);
-				}
-			}
-		}
-		si.appendChild(item_info);
+	function zm(x, y, delta) {
+		const scaleOld = scale;
+		var z = document.getElementById("zoom");
+	
+		scale *= 1.0 - delta * 0.0005;
+		scale = Math.min(Math.max(0.25, scale), 100);
+	
+		var xorg = x - page_x - z.offsetWidth/2;
+		var yorg = y - page_y - z.offsetHeight/2;
+	
+		var xnew = xorg / scaleOld;
+		var ynew = yorg / scaleOld;
+		
+		xnew *= scale;
+		ynew *= scale;
+	
+		var xdiff = xorg -xnew;
+		var ydiff = yorg -ynew;
+	
+		page_x += xdiff;
+		page_y += ydiff;
+	
+		transfo();
 	}
-	function showFlag(details, flagName) {
-		for (let stepNum in details) {
-			let stepData = details[stepNum];
-			for (let flagData of stepData.flags) {
-				if (flagData.flag == flagName) {
-					show_item_details(flagName, flagData.location, stepNum, flagData);
-				}
-			}
-		}
-	}
-	items: for (let v of c.all_items) {
-		if (v.item == "Nothing") { continue; }
-		let os = lookupOffset(v.location.room, v.location.node);
-		if (os) {
-			v.location.coords[0] += os[0];
-			v.location.coords[1] += os[1];
-		}
-		let el = document.createElement("div");
-		el.className = "icon";
-		el.style.left = v.location.coords[0] * 24 + 24 + 4 + "px";
-		el.style.top = v.location.coords[1] * 24 + 24 + 4 + "px";
-		el.style.backgroundPositionX = `-${item_plm[v.item] * 16}px`;
-		let i = null;
-		let j = null;
-		for (let l in c.details) {
-			for (let k of c.details[l].items) {
-				if (k.location.room_id == v.location.room_id && k.location.node_id == v.location.node_id) {
-					i = l;
-					j = k;
-					break;
-				}
-			}
-		}
-		el.onclick = ev => {
-			show_item_details(v.item, v.location, i, j);
-		};
-		document.getElementById("overlay").appendChild(el);
-		el = document.createElement("div");
-		el.className = "popup";
-		el.innerHTML = `<b>${v.item}</b><br><small>${v.location.room}</small><br>`;
-		let fin = false;
-		out:
-		for (let i in c.details) {
-			for (let j of c.details[i].items) {
-				if (j.location.room_id == v.location.room_id && j.location.node_id == v.location.node_id) {
-					el.innerHTML += `Step: ${c.details[i].step}<br>`;
-					fin = true;
-					break out;
-				}
-			}
-		}
-		if (!fin) {
-			el.innerHTML += "Route unavailable<br>";
-		}
-		el.style.left = v.location.coords[0] * 24 + 56 + "px";
-		el.style.top = v.location.coords[1] * 24 + 8 + "px";
-		document.getElementById("overlay").appendChild(el);
-	}
-	screen.orientation.onchange = ev => {
-		const h = screen.availHeight;
-		if (h < 600+32)
-			document.getElementById("sidebar-info").style.maxHeight = h-32 + "px";
-		else
-			document.getElementById("sidebar-info").style.maxHeight = "600px";
+	document.getElementById("helpForm").onclick = ev => {
+		ev.stopPropagation();
 	}
 	if (screen.availHeight < 600+32)
 		document.getElementById("sidebar-info").style.maxHeight = screen.availHeight-32 + "px";

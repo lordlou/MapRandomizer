@@ -39,19 +39,19 @@
             </div>
 
             {% if videos.unwrap().len() > 1 %}
-            <div class="btn-group m-1" role="group">
+            <div class="btn-group flex-wrap m-1" role="group">
                 {% for i in 0..videos.unwrap().len() %} 
                 {% let video = videos.unwrap()[i] %}
                 {% let checked %}
                 {% if i == 0 %}
-                  {% let checked = "checked" %}
+                {% let checked = "checked" %}
                 {% else %} 
-                  {% let checked = "" %}
+                {% let checked = "" %}
                 {% endif %}
                 <input type="radio" class="btn-check" name="video-{{ strat.room_id }}-{{ strat.strat_id }}" id="video-{{ strat.room_id }}-{{ strat.strat_id }}-{{ i }}" autocomplete="off"
-                  onclick="selectVideo({{ strat.room_id }}, {{ strat.strat_id }}, {{ video.video_id }})" {{ checked }}>
+                onclick="selectVideo({{ strat.room_id }}, {{ strat.strat_id }}, {{ video.video_id }})" {{ checked }}>
                 <label class="btn btn-outline-secondary" for="video-{{ strat.room_id }}-{{ strat.strat_id }}-{{ i }}" 
-                  data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="{{ video.note }}">{{ i + 1 }}</label>
+                data-bs-toggle="tooltip" data-bs-placement="bottom" data-bs-title="{{ video.note }}">{{ i + 1 }}</label>
                 {% endfor %}
             </div>
             {% endif %}
@@ -60,25 +60,31 @@
             {% if strat.note.len() > 0 %}
                 <p>{{+ strat.note }}</p>
             {% endif %}
+            {% if strat.detail_note.len() > 0 %}
+                <p>{{+ strat.detail_note }}</p>
+            {% endif %}
         </div>
     </div>
 {% else %}
     {% if strat.note.len() > 0 %}
         <p>{{+ strat.note }}</p>
     {% endif %}
+    {% if strat.note.len() > 0 %}
+        <p>{{+ strat.detail_note }}</p>
+    {% endif %}
 {% endif %}
 
 {% if let Some(entrance_condition) = strat.entrance_condition %}
     <p class="mb-0">Entrance condition:</p>
-    <pre>{{+ entrance_condition }}</pre>
+    <pre class="overflow-auto" style="max-width:1100px">{{+ entrance_condition }}</pre>
 {% endif %}
 {% if strat.requires.len() > 0 %}
     <p class="mb-0">Requires:</p>
-    <pre>{{+ strat.requires }}</pre>
+    <pre class="overflow-auto" style="max-width:1100px">{{+ strat.requires }}</pre>
 {% endif %}
 {% if let Some(exit_condition) = strat.exit_condition %}
     <p class="mb-0">Exit condition:</p>
-    <pre>{{+ exit_condition }}</pre>
+    <pre class="overflow-auto" style="max-width:1100px">{{+ exit_condition }}</pre>
 {% endif %}
 {% if strat.clears_obstacles.len() > 0 %}
     <p>Clears obstacles: {{+ strat.clears_obstacles.join(", ") }}</p>
@@ -91,5 +97,9 @@
 {% endif %}
 {% if strat.unlocks_doors.as_ref().is_some() %}
     <p class="mb-0">Unlocks doors:</p>
-    <pre>{{+ strat.unlocks_doors.as_ref().unwrap() }}</pre>
+    <pre class="overflow-auto" style="max-width:1100px">{{+ strat.unlocks_doors.as_ref().unwrap() }}</pre>
+{% endif %}
+
+{% if strat.dev_note.len() > 0 %}
+<p class="d-none dev-note">Dev note: {{+ strat.dev_note }}</p>
 {% endif %}

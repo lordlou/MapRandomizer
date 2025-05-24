@@ -1,18 +1,16 @@
 mod helpers;
 
-use crate::web::{AppData, VERSION};
-use actix_easy_multipart::{bytes::Bytes, text::Text, MultipartForm};
+use crate::web::{upgrade::try_upgrade_settings, AppData, VERSION};
+use actix_easy_multipart::{text::Text, MultipartForm};
 use actix_web::{post, web, HttpRequest, HttpResponse, Responder};
-use askama::Template;
 use helpers::*;
 use log::info;
 use maprando::{
-    patch::{make_rom, Rom},
     randomize::{
-        filter_links, get_difficulty_tiers, get_objectives, randomize_doors, randomize_map_areas,
-        DifficultyConfig, Randomization, Randomizer,
+        filter_links, get_difficulty_tiers, get_objectives, order_map_areas, randomize_doors,
+        randomize_map_areas, DifficultyConfig, Randomization, Randomizer, SpoilerLog,
     },
-    settings::{parse_randomizer_settings, AreaAssignment, RandomizerSettings, StartLocationMode},
+    settings::{AreaAssignment, RandomizerSettings, StartLocationMode},
 };
 use maprando_game::LinksDataGroup;
 use rand::{RngCore, SeedableRng};
@@ -56,7 +54,8 @@ struct SeedData {
     respin: bool,
     infinite_space_jump: bool,
     momentum_conservation: bool,
-    objectives: String,
+    fanfares: String,
+    objectives: Vec<String>,
     doors: String,
     start_location_mode: String,
     map_layout: String,
@@ -64,23 +63,13 @@ struct SeedData {
     early_save: bool,
     area_assignment: String,
     wall_jump: String,
-    etank_refill: String,
     maps_revealed: String,
     vanilla_map: bool,
     ultra_low_qol: bool,
 }
 
-#[derive(Template)]
-#[template(path = "errors/missing_input_rom.html")]
-struct MissingInputRomTemplate {}
-
-#[derive(Template)]
-#[template(path = "errors/invalid_rom.html")]
-struct InvalidRomTemplate {}
-
 #[derive(MultipartForm)]
 struct RandomizeRequest {
-    rom: Bytes,
     spoiler_token: Text<String>,
     settings: Text<String>,
 }
@@ -96,20 +85,8 @@ async fn randomize(
     http_req: HttpRequest,
     app_data: web::Data<AppData>,
 ) -> impl Responder {
-    let rom = Rom::new(req.rom.data.to_vec());
-
-    if rom.data.len() == 0 {
-        return HttpResponse::BadRequest().body(MissingInputRomTemplate {}.render().unwrap());
-    }
-
-    let rom_digest = crypto_hash::hex_digest(crypto_hash::Algorithm::SHA256, &rom.data);
-    info!("Rom digest: {rom_digest}");
-    if rom_digest != "12b77c4bc9c1832cee8881244659065ee1d84c70c3d29e6eaf92e6798cc2ca72" {
-        return HttpResponse::BadRequest().body(InvalidRomTemplate {}.render().unwrap());
-    }
-
-    let mut settings: RandomizerSettings = match parse_randomizer_settings(&req.settings.0) {
-        Ok(s) => s,
+    let mut settings = match try_upgrade_settings(req.settings.0.to_string(), &app_data, true) {
+        Ok(s) => s.1,
         Err(e) => {
             return HttpResponse::BadRequest().body(e.to_string());
         }
@@ -123,7 +100,7 @@ async fn randomize(
         }
     }
     if !validated_preset {
-        settings.name = "Custom".to_string();
+        settings.name = Some("Custom".to_string());
     }
 
     let skill_settings = &settings.skill_assumption_settings;
@@ -174,7 +151,8 @@ async fn randomize(
     );
     let map_layout = settings.map_layout.clone();
     let max_attempts = 2000;
-    let max_attempts_per_map = if settings.start_location_mode == StartLocationMode::Random {
+    let max_attempts_per_map = if settings.start_location_settings.mode == StartLocationMode::Random
+    {
         10
     } else {
         1
@@ -190,7 +168,7 @@ async fn randomize(
         door_randomization_seed: usize,
         item_placement_seed: usize,
         randomization: Randomization,
-        output_rom: Rom,
+        spoiler_log: SpoilerLog,
     }
 
     let time_start_attempts = Instant::now();
@@ -207,8 +185,14 @@ async fn randomize(
         let mut map = app_data.map_repositories[&map_layout]
             .get_map(attempt_num, map_seed, &app_data.game_data)
             .unwrap();
-        if settings.other_settings.area_assignment == AreaAssignment::Random {
-            randomize_map_areas(&mut map, map_seed);
+        match settings.other_settings.area_assignment {
+            AreaAssignment::Ordered => {
+                order_map_areas(&mut map, map_seed, &app_data.game_data);
+            }
+            AreaAssignment::Random => {
+                randomize_map_areas(&mut map, map_seed);
+            }
+            AreaAssignment::Standard => {}
         }
         let objectives = get_objectives(&settings, &mut rng);
         let locked_door_data = randomize_doors(
@@ -235,22 +219,11 @@ async fn randomize(
             info!("Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_randomization_seed}, item placement seed={item_placement_seed}");
             let randomization_result =
                 randomizer.randomize(attempt_num, item_placement_seed, display_seed);
-            let randomization = match randomization_result {
+            let (randomization, spoiler_log) = match randomization_result {
                 Ok(x) => x,
                 Err(e) => {
                     info!(
                         "Attempt {attempt_num}/{max_attempts}: Randomization failed: {}",
-                        e
-                    );
-                    continue;
-                }
-            };
-            let output_rom_result = make_rom(&rom, &randomization, &app_data.game_data);
-            let output_rom = match output_rom_result {
-                Ok(x) => x,
-                Err(e) => {
-                    info!(
-                        "Attempt {attempt_num}/{max_attempts}: Failed to write ROM: {}",
                         e
                     );
                     continue;
@@ -265,7 +238,7 @@ async fn randomize(
                 door_randomization_seed,
                 item_placement_seed,
                 randomization,
-                output_rom,
+                spoiler_log,
             });
             break 'attempts;
         }
@@ -284,6 +257,7 @@ async fn randomize(
         Ok(n) => n.as_millis() as usize,
         Err(_) => panic!("SystemTime before UNIX EPOCH!"),
     };
+
     let seed_data = SeedData {
         version: VERSION,
         timestamp,
@@ -327,13 +301,21 @@ async fn randomize(
         respin: qol_settings.respin,
         infinite_space_jump: qol_settings.infinite_space_jump,
         momentum_conservation: qol_settings.momentum_conservation,
-        objectives: to_variant_name(&settings.objectives_mode)
-            .unwrap()
-            .to_string(),
+        fanfares: to_variant_name(&qol_settings.fanfares).unwrap().to_string(),
+        objectives: output
+            .randomization
+            .objectives
+            .iter()
+            .map(|x| to_variant_name(x).unwrap().to_string())
+            .collect(),
         doors: to_variant_name(&settings.doors_mode).unwrap().to_string(),
-        start_location_mode: to_variant_name(&settings.start_location_mode)
-            .unwrap()
-            .to_string(),
+        start_location_mode: if settings.start_location_settings.mode == StartLocationMode::Custom {
+            output.randomization.start_location.name.clone()
+        } else {
+            to_variant_name(&settings.start_location_settings.mode)
+                .unwrap()
+                .to_string()
+        },
         map_layout: settings.map_layout.clone(),
         save_animals: to_variant_name(&settings.save_animals).unwrap().to_string(),
         early_save: qol_settings.early_save,
@@ -341,9 +323,6 @@ async fn randomize(
             .unwrap()
             .to_string(),
         wall_jump: to_variant_name(&other_settings.wall_jump)
-            .unwrap()
-            .to_string(),
-        etank_refill: to_variant_name(&other_settings.etank_refill)
             .unwrap()
             .to_string(),
         maps_revealed: to_variant_name(&other_settings.maps_revealed)
@@ -357,10 +336,11 @@ async fn randomize(
     save_seed(
         seed_name,
         &seed_data,
+        &req.settings.0,
         &req.spoiler_token.0,
-        &rom,
-        &output.output_rom,
+        &settings,
         &output.randomization,
+        &output.spoiler_log,
         &app_data,
     )
     .await

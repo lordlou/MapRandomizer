@@ -51,16 +51,22 @@
     for (p of qolPresetsArr) {
         qolPresets[p.preset] = p;
     }
+
+    let objectivePresetsArr = {{ objective_presets_json|safe }};
+    let objectivePresets = {};
+    for (p of objectivePresetsArr) {
+        objectivePresets[p.preset] = p;
+    }
     </script>
     <div class="container col-xl-10 col-xxl-8 pb-4">
         <h3 class="mt-3 mb-2">Generate Game</h3>
         <form id="main-form" class="needs-validation" method="POST" enctype="multipart/form-data" action="/randomize" onchange="saveSettings()"  onsubmit="prepareSubmit(this); return false;">
-            <div class="form-group row">
+            <div class="form-group row my-3">
                 <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
                     {% include "help/preset.html" %}
                     <label for="full_settings_preset">Settings preset</label>
                 </div>
-                <div class="col-lg-9 mt-0">
+                <div class="col-lg-9">
                     <div class="input-group">
                         <select id="fullSettingsPreset" class="form-select" name="full_settings_preset" onchange="fullSettingsPresetChanged(this)">
                         </select>
@@ -71,13 +77,12 @@
                 </div>
             </div>
 
-            <div class="container border rounded-3 p-0 mt-3 mb-4 overflow-hidden">
-                <div class="form-group row">
-                    <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
-                        {% include "help/skill.html" %}
-                        <label for="preset">Skill assumptions</label>
-                    </div>
-                    <div class="col-lg-9 mt-0 btn-group overflow-auto" role="group">
+            <div class="form-group row my-3">
+                <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
+                    {% include "help/skill.html" %}
+                    <label for="preset">Skill assumptions</label>
+                </div>
+                <div class="col-lg-9 btn-group overflow-auto" role="group">
                     {% for p in preset_data.skill_presets.iter() %}
                     {% let name = p.preset.as_ref().unwrap() %}
                     {% if name == "Implicit" || name == "Beyond" || name == "Ignored" %}
@@ -92,132 +97,120 @@
                             >
                         <label class="btn btn-outline-primary p-2" for="preset{{+ name_no_space }}">{{+ name }}</label>
                     {% endfor %}
-                    </div>
-                </div>
-                {% include "skill_assumptions.html" %}
-            </div>
-
-            <div class="container border rounded-3 p-0 my-4">
-                <div class="form-group row">
-                    <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
-                        {% include "help/progression.html" %}
-                        <label for="preset">Item progression</label>
-                    </div>
-                    <div id="itemProgressionPreset" class="col-lg-5 btn-group mt-0" role="group">
-                        <input type="radio" class="btn-check item-preset-button" name="item_progression_preset" value="Normal"
-                            id="itemProgressionPresetNormal" autocomplete="off" 
-                            onclick="itemProgressionPresetChanged()" checked>
-                        <label class="btn btn-outline-primary" for="itemProgressionPresetNormal">Normal</label>
-
-                        <input type="radio" class="btn-check item-preset-button" name="item_progression_preset" value="Tricky"
-                            id="itemProgressionPresetTricky" autocomplete="off" 
-                            onclick="itemProgressionPresetChanged()">
-                        <label class="btn btn-outline-primary" for="itemProgressionPresetTricky">Tricky</label>
-
-                        <input type="radio" class="btn-check item-preset-button" name="item_progression_preset" value="Challenge"
-                            id="itemProgressionPresetChallenge" autocomplete="off" 
-                            onclick="itemProgressionPresetChanged()">
-                        <label class="btn btn-outline-primary" for="itemProgressionPresetChallenge">Challenge</label>
-
-                        <input type="radio" class="btn-check item-preset-button" name="item_progression_preset" value="Desolate"
-                            id="itemProgressionPresetDesolate" autocomplete="off" 
-                            onclick="itemProgressionPresetChanged()">
-                        <label class="btn btn-outline-primary" for="itemProgressionPresetDesolate">Desolate</label>
-                    </div>
-                </div>
-                <div class="accordion m-0 p-0" id="accordionItemPriority">
-                    <div class="accordion-item">
-                        <h2 class="accordion-header">
-                            <button class="accordion-button collapsed my-0 d-block text-center customize-button" style="padding-top:11px;padding-bottom:11px;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseItemPriority">
-                            Customize
-                            </button>
-                        </h2>
-                        <div id="collapseItemPriority" class="accordion-collapse collapse">
-                            {% include "item_progression.html" %}
-                        </div>
-                    </div>
+                    <button type="button" style="flex:none" class="btn btn-secondary ms-1 me-0 p-2" data-bs-toggle="modal" data-bs-target="#skillAssumptionsModal">
+                        <i class="bi bi-gear"></i>
+                    </button>    
                 </div>
             </div>
 
-            <div class="container border rounded-3 p-0 mt-4 mb-2">
-                <div class="form-group row">
-                    <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
-                        {% include "help/quality.html" %}
-                        <label for="preset">Quality-of-life options</label>
-                    </div>
-                    <div class="col-lg-5 btn-group mt-0" role="group">
-                        <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="Off"
-                            id="qualityOfLifeOff" autocomplete="off" onclick="qualityOfLifePresetChanged()">
-                        <label class="btn btn-outline-primary" for="qualityOfLifeOff">Off</label>
-                        <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="Low"
-                            id="qualityOfLifeLow" autocomplete="off" onclick="qualityOfLifePresetChanged()">
-                        <label class="btn btn-outline-primary" for="qualityOfLifeLow">Low</label>
-                        <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="Default"
-                            id="qualityOfLifeDefault" autocomplete="off" onclick="qualityOfLifePresetChanged()" checked>
-                        <label class="btn btn-outline-primary" for="qualityOfLifeDefault">Default</label>
-                        <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="High"
-                            id="qualityOfLifeHigh" autocomplete="off" onclick="qualityOfLifePresetChanged()">
-                        <label class="btn btn-outline-primary" for="qualityOfLifeHigh">High</label>
-                        <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="Max"
-                            id="qualityOfLifeMax" autocomplete="off" onclick="qualityOfLifePresetChanged()">
-                        <label class="btn btn-outline-primary" for="qualityOfLifeMax">Max</label>
-                    </div>
+            <div class="form-group row my-3">
+                <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
+                    {% include "help/progression.html" %}
+                    <label for="preset">Item progression</label>
                 </div>
-                <div class="accordion m-0 p-0" id="accordion">
-                    <div class="accordion-item">
-                        <h2 class="accordion-header">
-                            <button class="accordion-button collapsed my-0 d-block text-center customize-button" style="padding-top:11px;padding-bottom:11px;" type="button" data-bs-toggle="collapse" data-bs-target="#collapseQOL">
-                            Customize
-                            </button>
-                        </h2>
-                        <div id="collapseQOL" class="accordion-collapse collapse m-2" onchange="qualityOfLifeSettingChanged()">
-                            {% include "quality_of_life.html" %}
-                        </div>
-                    </div>
+                <div id="itemProgressionPreset" class="col-lg-7 btn-group overflow-auto" role="group">
+                    <input type="radio" class="btn-check item-preset-button" name="item_progression_preset" value="Normal"
+                        id="itemProgressionPresetNormal" autocomplete="off" 
+                        onclick="itemProgressionPresetChanged()" checked>
+                    <label class="btn btn-outline-primary" for="itemProgressionPresetNormal">Normal</label>
+
+                    <input type="radio" class="btn-check item-preset-button" name="item_progression_preset" value="Tricky"
+                        id="itemProgressionPresetTricky" autocomplete="off" 
+                        onclick="itemProgressionPresetChanged()">
+                    <label class="btn btn-outline-primary" for="itemProgressionPresetTricky">Tricky</label>
+
+                    <input type="radio" class="btn-check item-preset-button" name="item_progression_preset" value="Technical"
+                        id="itemProgressionPresetTechnical" autocomplete="off" 
+                        onclick="itemProgressionPresetChanged()">
+                    <label class="btn btn-outline-primary" for="itemProgressionPresetTechnical">Technical</label>
+
+                    <input type="radio" class="btn-check item-preset-button" name="item_progression_preset" value="Challenge"
+                        id="itemProgressionPresetChallenge" autocomplete="off" 
+                        onclick="itemProgressionPresetChanged()">
+                    <label class="btn btn-outline-primary" for="itemProgressionPresetChallenge">Challenge</label>
+
+                    <input type="radio" class="btn-check item-preset-button" name="item_progression_preset" value="Desolate"
+                        id="itemProgressionPresetDesolate" autocomplete="off" 
+                        onclick="itemProgressionPresetChanged()">
+                    <label class="btn btn-outline-primary" for="itemProgressionPresetDesolate">Desolate</label>
+
+                    <button type="button" style="flex:none" class="btn btn-secondary ms-1 me-0 p-2" data-bs-toggle="modal" data-bs-target="#itemProgressionModal">
+                        <i class="bi bi-gear"></i>
+                    </button>    
                 </div>
             </div>
 
-            <div class="form-group row">
-                <div class="col-lg-3 my-2 pt-1">
+            <div class="form-group row my-3">
+                <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
+                    {% include "help/quality.html" %}
+                    <label for="preset">Quality-of-life options</label>
+                </div>
+                <div class="col-lg-5 btn-group overflow-auto" role="group">
+                    <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="Off"
+                        id="qualityOfLifeOff" autocomplete="off" onclick="qualityOfLifePresetChanged()">
+                    <label class="btn btn-outline-primary" for="qualityOfLifeOff">Off</label>
+                    <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="Low"
+                        id="qualityOfLifeLow" autocomplete="off" onclick="qualityOfLifePresetChanged()">
+                    <label class="btn btn-outline-primary" for="qualityOfLifeLow">Low</label>
+                    <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="Default"
+                        id="qualityOfLifeDefault" autocomplete="off" onclick="qualityOfLifePresetChanged()" checked>
+                    <label class="btn btn-outline-primary" for="qualityOfLifeDefault">Default</label>
+                    <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="High"
+                        id="qualityOfLifeHigh" autocomplete="off" onclick="qualityOfLifePresetChanged()">
+                    <label class="btn btn-outline-primary" for="qualityOfLifeHigh">High</label>
+                    <input type="radio" class="btn-check qol-preset-button" name="quality_of_life_preset" value="Max"
+                        id="qualityOfLifeMax" autocomplete="off" onclick="qualityOfLifePresetChanged()">
+                    <label class="btn btn-outline-primary" for="qualityOfLifeMax">Max</label>
+                    <button type="button" style="flex:none" class="btn btn-secondary ms-1 me-0 p-2" data-bs-toggle="modal" data-bs-target="#qualityOfLifeModal">
+                        <i class="bi bi-gear"></i>
+                    </button>    
+                </div>
+            </div>
+
+            <div class="form-group row my-3">
+                <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
                     {% include "help/objectives.html" %}
                     <label for="objectives">Objectives</label>
                 </div>
-                <div id="objectives" class="col-lg-8 btn-group my-2" role="group">
-                {% for name in objectives.iter() %}
-                {% let name_no_space = name.replace(" ", "") %}
-                    <input type="radio" class="btn-check" name="objectives" value="{{+ name }}"
-                        id="objectives{{+ name_no_space }}" autocomplete="off"
-                        onchange="fullSettingsChanged()"
+                <div id="objectives" class="col-lg-9 btn-group" role="group">
+                {% for preset in preset_data.objective_presets.iter() %}
+                {% let name = preset.preset.as_ref().unwrap() %}
+                    <input type="radio" class="btn-check objective-preset-button" name="objective_preset" value="{{+ name }}"
+                        id="objectives{{+ name }}" autocomplete="off"
+                        onchange="objectivePresetChanged()"
                         {% if loop.index0 == 1 %}
                         checked
                         {% endif %}
                         >
-                    <label class="btn btn-outline-primary p-2" for="objectives{{+ name_no_space }}">{{+ name }}</label>
+                    <label class="btn btn-outline-primary p-2" for="objectives{{+ name }}">{{+ name }}</label>
                 {% endfor %}
-                </div>
+                <button type="button" style="flex:none" class="btn btn-secondary ms-1 me-0 p-2" data-bs-toggle="modal" data-bs-target="#objectivesModal">
+                    <i class="bi bi-gear"></i>
+                </button>    
+            </div>
             </div>
 
-            <div class="form-group row">
-                <div class="col-lg-3 my-2 pt-1">
+            <div class="form-group row my-3">
+                <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
                     {% include "help/map_layout.html" %}
                     <label for="map_layout">Map layout</label>
                 </div>
-                <div id="mapLayout" class="col-lg-4 btn-group my-2" role="group">
+                <div id="mapLayout" class="col-lg-4 btn-group" role="group">
                     <input type="radio" class="btn-check" name="map_layout" id="mapLayoutVanilla" value="Vanilla" onchange="fullSettingsChanged()">
                     <label class="btn btn-outline-primary" for="mapLayoutVanilla">Vanilla</label>
-                    <input type="radio" class="btn-check" name="map_layout" id="mapLayoutTame" value="Tame" onchange="fullSettingsChanged()" checked=true>
-                    <label class="btn btn-outline-primary" for="mapLayoutTame">Tame</label>
+                    <input type="radio" class="btn-check" name="map_layout" id="mapLayoutStandard" value="Standard" onchange="fullSettingsChanged()" checked=true>
+                    <label class="btn btn-outline-primary" for="mapLayoutStandard">Standard</label>
                     <input type="radio" class="btn-check" name="map_layout" id="mapLayoutWild" value="Wild" onchange="fullSettingsChanged()">
                     <label class="btn btn-outline-primary" for="mapLayoutWild">Wild</label>
                 </div>
             </div>
 
-            <div class="form-group row">
-                <div class="col-lg-3 my-2 pt-1">
+            <div class="form-group row my-3">
+                <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
                     {% include "help/doors.html" %}
                     <label for="doors">Doors</label>
                 </div>
-                <div id="doors" class="col-lg-4 btn-group my-2" role="group">
+                <div id="doors" class="col-lg-4 btn-group" role="group">
                     <input type="radio" class="btn-check" name="doors" id="doorsBlue" value="Blue" onchange="fullSettingsChanged()">
                     <label class="btn btn-outline-primary" for="doorsBlue">Blue</label>
                     <input type="radio" class="btn-check" name="doors" id="doorsAmmo" value="Ammo" onchange="fullSettingsChanged()" checked=true>
@@ -227,33 +220,38 @@
                 </div>
             </div>
 
-            <div class="form-group row">
-                <div class="col-lg-3 my-2 pt-1">
+            <div class="form-group row my-3">
+                <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
                     {% include "help/start_location.html" %}
                     <label for="start_location">Start location</label>
                 </div>
-                <div id="startLocation" class="col-lg-4 btn-group my-2" role="group">
-                    <input type="radio" class="btn-check" name="start_location" id="startLocationShip" value="Ship" onchange="fullSettingsChanged()" checked=true>
+                <div id="startLocation" class="col-lg-4 btn-group" role="group">
+                    <input type="radio" class="btn-check" name="start_location" id="startLocationShip" value="Ship" onchange="startLocationPresetChanged()" checked=true>
                     <label class="btn btn-outline-primary" for="startLocationShip">Ship</label>
-                    <input type="radio" class="btn-check" name="start_location" id="startLocationRandom" value="Random" onchange="fullSettingsChanged()">
+                    <input type="radio" class="btn-check" name="start_location" id="startLocationRandom" value="Random" onchange="startLocationPresetChanged()">
                     <label class="btn btn-outline-primary" for="startLocationRandom">Random</label>
-                    <input type="radio" class="btn-check" name="start_location" id="startLocationEscape" value="Escape" onchange="fullSettingsChanged()">
+                    <input type="radio" class="btn-check" name="start_location" id="startLocationEscape" value="Escape" onchange="startLocationPresetChanged()">
                     <label class="btn btn-outline-primary" for="startLocationEscape">Escape</label>
+                    <button type="button" style="flex:none" class="btn btn-secondary ms-1 me-0 p-2" data-bs-toggle="modal" data-bs-target="#customStartLocationModal">
+                        <i class="bi bi-gear"></i>
+                    </button>
                 </div>
             </div>
 
-            <div class="form-group row">
-                <div class="col-lg-3 my-2 pt-1">
+            <div class="form-group row my-3">
+                <div class="col-lg-3 ml-0 mt-1 mb-1 align-items-center">
                     {% include "help/variations/save_the_animals.html" %}
                     <label for="save_animals">Save the animals</label>
                 </div>
-                <div id="saveAnimals" class="col-lg-3 btn-group my-2" role="group">
+                <div id="saveAnimals" class="col-lg-4 btn-group" role="group">
                     <input type="radio" class="btn-check" name="save_animals" id="saveAnimalsNo" value="No" onchange="fullSettingsChanged()" checked=true>
                     <label class="btn btn-outline-primary" for="saveAnimalsNo">No</label>
-                    <input type="radio" class="btn-check" name="save_animals" id="saveAnimalsMaybe" value="Maybe" onchange="fullSettingsChanged()">
-                    <label class="btn btn-outline-primary" for="saveAnimalsMaybe">Maybe</label>
                     <input type="radio" class="btn-check" name="save_animals" id="saveAnimalsYes" value="Yes" onchange="fullSettingsChanged()">
                     <label class="btn btn-outline-primary" for="saveAnimalsYes">Yes</label>
+                    <input type="radio" class="btn-check" name="save_animals" id="saveAnimalsOptional" value="Optional" onchange="fullSettingsChanged()">
+                    <label class="btn btn-outline-primary" for="saveAnimalsOptional">Optional</label>
+                    <input type="radio" class="btn-check" name="save_animals" id="saveAnimalsRandom" value="Random" onchange="fullSettingsChanged()">
+                    <label class="btn btn-outline-primary" for="saveAnimalsRandom">Random</label>
                 </div>
             </div>
 
@@ -285,29 +283,11 @@
                 </div>
             </div>
 
-            <div class="modal" id="inputRomModal" tabindex="-1">
-                <div class="modal-dialog modal-lg">
-                  <div class="modal-content">
-                    <div class="modal-header">
-                      <h1 class="modal-title fs-5">Input ROM</h1>
-                      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                    </div>
-                    <div class="modal-body">
-                        <p>Please provide a vanilla Super Metroid ROM: NTSC, USA/JU version, unheadered.</p>
-
-                        <input class="col-lg-9 form-control-file my-3" type="file" id="inputRom" name="rom"
-                        onchange="saveROM(this)">
-
-                        <p id="romInvalid" class="d-none text-danger">
-                            The selected ROM is invalid. Please try again with a correct ROM.
-                        </p>
-                    </div>
-                    <div class="modal-footer">
-                      <input type="submit" class="btn btn-primary" data-bs-dismiss="modal" value="Generate Game">
-                    </div>
-                  </div>
-                </div>
-            </div>
+            {% include "skill_assumptions.html" %}
+            {% include "item_progression.html" %}
+            {% include "quality_of_life.html" %}
+            {% include "objectives.html" %}
+            {% include "start_location.html" %}
         </form>
     </div>
     {% include "../common/save_settings.html" %}

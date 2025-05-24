@@ -25,8 +25,13 @@ pub const TECH_ID_CAN_SPEEDBALL: TechId = 42;
 pub const TECH_ID_CAN_MOCKBALL: TechId = 41;
 pub const TECH_ID_CAN_MANAGE_RESERVES: TechId = 18;
 pub const TECH_ID_CAN_PAUSE_ABUSE: TechId = 19;
+pub const TECH_ID_CAN_SHINECHARGE_MOVEMENT: TechId = 136;
 pub const TECH_ID_CAN_SHINESPARK: TechId = 132;
+pub const TECH_ID_CAN_HORIZONTAL_SHINESPARK: TechId = 133;
+pub const TECH_ID_CAN_MIDAIR_SHINESPARK: TechId = 134;
+pub const TECH_ID_CAN_BE_PATIENT: TechId = 1;
 pub const TECH_ID_CAN_BE_VERY_PATIENT: TechId = 2;
+pub const TECH_ID_CAN_BE_EXTREMELY_PATIENT: TechId = 3;
 pub const TECH_ID_CAN_SKIP_DOOR_LOCK: TechId = 184;
 pub const TECH_ID_CAN_DISABLE_EQUIPMENT: TechId = 12;
 pub const TECH_ID_CAN_SPRING_BALL_BOUNCE: TechId = 38;
@@ -39,15 +44,21 @@ pub const TECH_ID_CAN_ENTER_R_MODE: TechId = 161;
 pub const TECH_ID_CAN_ENTER_G_MODE: TechId = 162;
 pub const TECH_ID_CAN_ENTER_G_MODE_IMMOBILE: TechId = 163;
 pub const TECH_ID_CAN_ARTIFICIAL_MORPH: TechId = 164;
+pub const TECH_ID_CAN_HEATED_G_MODE: TechId = 198;
 pub const TECH_ID_CAN_MOONFALL: TechId = 25;
+pub const TECH_ID_CAN_PRECISE_GRAPPLE: TechId = 51;
+pub const TECH_ID_CAN_GRAPPLE_JUMP: TechId = 52;
 pub const TECH_ID_CAN_GRAPPLE_TELEPORT: TechId = 55;
+pub const TECH_ID_CAN_SAMUS_EATER_TELEPORT: TechId = 194;
 pub const TECH_ID_CAN_KAGO: TechId = 107;
 pub const TECH_ID_CAN_SUITLESS_LAVA_DIVE: TechId = 5;
 pub const TECH_ID_CAN_HERO_SHOT: TechId = 130;
 pub const TECH_ID_CAN_OFF_SCREEN_SUPER_SHOT: TechId = 126;
 pub const TECH_ID_CAN_BOMB_HORIZONTALLY: TechId = 87;
 pub const TECH_ID_CAN_MOONDANCE: TechId = 26;
+pub const TECH_ID_CAN_EXTENDED_MOONDANCE: TechId = 27;
 pub const TECH_ID_CAN_ENEMY_STUCK_MOONFALL: TechId = 28;
+pub const TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP: TechId = 197;
 pub const TECH_ID_CAN_HYPER_GATE_SHOT: TechId = 10001;
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -60,6 +71,8 @@ pub struct Map {
     )>,
     pub area: Vec<usize>,    // Area number: 0, 1, 2, 3, 4, or 5
     pub subarea: Vec<usize>, // Subarea number: 0 or 1
+    #[serde(default)] // Default for backward compatibility
+    pub subsubarea: Vec<usize>, // Subsubarea number: 0 or 1
 }
 
 pub type TechId = i32; // Tech ID from sm-json-data
@@ -72,6 +85,7 @@ pub type RoomId = usize; // Room ID from sm-json-data
 pub type RoomPtr = usize; // Room pointer (PC address of room header)
 pub type RoomStateIdx = usize; // Room state index
 pub type NodeId = usize; // Node ID from sm-json-data (only unique within a room)
+pub type StartLocationId = usize; // Index into GameData.start_locations
 pub type NodePtr = usize; // nodeAddress from sm-json-data: for items this is the PC address of PLM, for doors it is PC address of door data
 pub type StratId = usize; // Strat ID from sm-json-data (only unique within a room)
 pub type NotableId = usize; // Notable ID from sm-json-data (only unique within a room)
@@ -152,6 +166,7 @@ impl Item {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct EnemyDrop {
+    pub nothing_weight: Float,
     pub small_energy_weight: Float,
     pub large_energy_weight: Float,
     pub missile_weight: Float,
@@ -160,7 +175,7 @@ pub struct EnemyDrop {
     pub count: Capacity,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BeamType {
     Charge,
     Ice,
@@ -169,7 +184,7 @@ pub enum BeamType {
     Plasma,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DoorType {
     Blue,
     Red,
@@ -188,7 +203,8 @@ pub enum Requirement {
     Item(ItemId),
     Flag(FlagId),
     NotFlag(FlagId),
-    Objective(usize),
+    MotherBrainBarrierClear(usize),
+    DisableableETank,
     Walljump,
     ShineCharge {
         used_tiles: Float,
@@ -215,6 +231,15 @@ pub enum Requirement {
     AcidFrames(Capacity),
     GravitylessAcidFrames(Capacity),
     MetroidFrames(Capacity),
+    CycleFrames(Capacity),
+    Farm {
+        requirement: Box<Requirement>,
+        drops: Vec<EnemyDrop>,
+        full_energy: bool,
+        full_missiles: bool,
+        full_supers: bool,
+        full_power_bombs: bool,
+    },
     Damage(Capacity),
     MissilesAvailable(Capacity),
     SupersAvailable(Capacity),
@@ -248,8 +273,10 @@ pub enum Requirement {
     ClimbWithoutLava,
     AmmoStationRefill,
     AmmoStationRefillAll,
+    EnergyStationRefill,
     RegularEnergyDrain(Capacity),
     ReserveEnergyDrain(Capacity),
+    MissileDrain(Capacity),
     LowerNorfairElevatorDownFrames,
     LowerNorfairElevatorUpFrames,
     MainHallElevatorFrames,
@@ -262,6 +289,10 @@ pub enum Requirement {
     HeatedDoorStuckLeniency {
         heat_frames: Capacity,
     },
+    XModeSpikeHitLeniency {},
+    XModeThornHitLeniency {},
+    BombIntoCrystalFlashClipLeniency {},
+    JumpIntoCrystalFlashClipLeniency {},
     ReserveTrigger {
         min_reserve_energy: Capacity,
         max_reserve_energy: Capacity,
@@ -301,6 +332,10 @@ pub enum Requirement {
         requirement_green: Box<Requirement>,
         requirement_yellow: Box<Requirement>,
         requirement_charge: Box<Requirement>,
+    },
+    ResetRoom {
+        room_id: RoomId,
+        node_id: NodeId,
     },
     EscapeMorphLocation,
     And(Vec<Requirement>),
@@ -372,6 +407,42 @@ impl Requirement {
             Requirement::GetBlueSpeed {
                 used_tiles: Float::new(tiles),
                 heated,
+            }
+        }
+    }
+
+    pub fn print_pretty(&self, indent: usize, game_data: &GameData) {
+        let spaces = " ".repeat(indent);
+        print!("{}", spaces);
+        match self {
+            &Requirement::Tech(tech_idx) => {
+                let tech_id = game_data.tech_isv.keys[tech_idx];
+                print!("Tech({})", game_data.tech_names[&tech_id]);
+            }
+            &Requirement::Item(item_idx) => {
+                print!("Item({})", game_data.item_isv.keys[item_idx]);
+            }
+            &Requirement::Flag(flag_idx) => {
+                print!("Flag({})", game_data.flag_isv.keys[flag_idx]);
+            }
+            Requirement::And(reqs) => {
+                println!("And(");
+                for r in reqs {
+                    r.print_pretty(indent + 2, game_data);
+                    println!(",");
+                }
+                print!("{})", spaces)
+            }
+            Requirement::Or(reqs) => {
+                println!("Or(");
+                for r in reqs {
+                    r.print_pretty(indent + 2, game_data);
+                    println!(",");
+                }
+                print!("{})", spaces)
+            }
+            other => {
+                print!("{:?}", other);
             }
         }
     }
@@ -452,6 +523,7 @@ pub enum EscapeConditionRequirement {
     CanOffCameraShot,
     CanKago,
     CanHeroShot,
+    CanOneTapShortcharge,
 }
 
 #[derive(Deserialize)]
@@ -480,7 +552,7 @@ pub struct EscapeTimingRoom {
     pub timings: Vec<EscapeTimingGroup>,
 }
 
-#[derive(Deserialize, Debug, Clone, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct StartLocation {
     pub name: String,
     pub room_id: usize,
@@ -492,7 +564,7 @@ pub struct StartLocation {
     pub note: Option<Vec<String>>,
     pub camera_offset_x: Option<f32>,
     pub camera_offset_y: Option<f32>,
-    #[serde(skip_deserializing)]
+    #[serde(skip_serializing, skip_deserializing)]
     pub requires_parsed: Option<Requirement>,
 }
 
@@ -557,9 +629,12 @@ fn parse_door_orientation(door_orientation: &str) -> Result<DoorOrientation> {
     Ok(match door_orientation {
         "left" => DoorOrientation::Left,
         "right" => DoorOrientation::Right,
-        "top" => DoorOrientation::Up,
-        "bottom" => DoorOrientation::Down,
-        _ => bail!(format!("Unrecognized door position '{}'", door_orientation)),
+        "up" => DoorOrientation::Up,
+        "down" => DoorOrientation::Down,
+        _ => bail!(format!(
+            "Unrecognized door orientation '{}'",
+            door_orientation
+        )),
     })
 }
 
@@ -609,11 +684,33 @@ pub enum BlueOption {
     Any,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub enum GrappleSwingBlockEnvironment {
+    #[default]
+    Air,
+    Water,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct GrappleSwingBlock {
+    position: (Float, Float),
+    environment: GrappleSwingBlockEnvironment,
+    obstructions: Vec<(i32, i32)>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum GrappleJumpPosition {
+    Left,
+    Right,
+    Any,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ExitCondition {
     LeaveNormally {},
     LeaveWithRunway {
         effective_length: Float,
+        min_extra_run_speed: Float,
         heated: bool,
         physics: Option<Physics>,
         from_exit_node: bool,
@@ -626,6 +723,7 @@ pub enum ExitCondition {
     },
     LeaveWithSpark {
         position: SparkPosition,
+        door_orientation: DoorOrientation,
     },
     LeaveSpinning {
         remote_runway_length: Float,
@@ -660,6 +758,7 @@ pub enum ExitCondition {
     },
     LeaveWithGModeSetup {
         knockback: bool,
+        heated: bool,
     },
     LeaveWithGMode {
         morphed: bool,
@@ -676,8 +775,24 @@ pub enum ExitCondition {
         left_position: Float,
         right_position: Float,
     },
+    LeaveWithSidePlatform {
+        effective_length: Float,
+        height: Float,
+        obstruction: (u16, u16),
+        environment: SidePlatformEnvironment,
+    },
+    LeaveWithGrappleSwing {
+        blocks: Vec<GrappleSwingBlock>,
+    },
+    LeaveWithGrappleJump {
+        position: GrappleJumpPosition,
+    },
     LeaveWithGrappleTeleport {
         block_positions: Vec<(u16, u16)>,
+    },
+    LeaveWithSamusEaterTeleport {
+        floor_positions: Vec<(u16, u16)>,
+        ceiling_positions: Vec<(u16, u16)>,
     },
 }
 
@@ -687,6 +802,15 @@ fn parse_spark_position(s: Option<&str>) -> Result<SparkPosition> {
         Some("bottom") => SparkPosition::Bottom,
         None => SparkPosition::Any,
         _ => bail!("Unrecognized spark position: {}", s.unwrap()),
+    })
+}
+
+fn parse_grapple_jump_position(s: Option<&str>) -> Result<GrappleJumpPosition> {
+    Ok(match s {
+        Some("left") => GrappleJumpPosition::Left,
+        Some("right") => GrappleJumpPosition::Right,
+        Some("any") => GrappleJumpPosition::Any,
+        _ => bail!("Unrecognized grapple jump position: {}", s.unwrap()),
     })
 }
 
@@ -753,6 +877,25 @@ pub enum BounceMovementType {
     Any,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub enum SidePlatformEnvironment {
+    #[default]
+    Any,
+    Air,
+    Water,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SidePlatformEntrance {
+    pub min_tiles: Float,
+    pub speed_booster: Option<bool>,
+    pub min_height: Float,
+    pub max_height: Float,
+    pub obstructions: Vec<(u16, u16)>,
+    pub environment: SidePlatformEnvironment,
+    pub requirement: Requirement,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum MainEntranceCondition {
     ComeInNormally {},
@@ -787,6 +930,7 @@ pub enum MainEntranceCondition {
     ComeInShinechargedJumping {},
     ComeInWithSpark {
         position: SparkPosition,
+        door_orientation: DoorOrientation,
     },
     ComeInSpeedballing {
         effective_runway_length: Float,
@@ -804,6 +948,10 @@ pub enum MainEntranceCondition {
     },
     ComeInBlueSpinning {
         unusable_tiles: Float,
+        min_extra_run_speed: Float,
+        max_extra_run_speed: Float,
+    },
+    ComeInBlueSpaceJumping {
         min_extra_run_speed: Float,
         max_extra_run_speed: Float,
     },
@@ -839,6 +987,7 @@ pub enum MainEntranceCondition {
         mode: GModeMode,
         morphed: bool,
         mobility: GModeMobility,
+        heated: bool,
     },
     ComeInWithStoredFallSpeed {
         fall_speed_in_tiles: i32,
@@ -853,8 +1002,21 @@ pub enum MainEntranceCondition {
         max_left_position: Float,
         min_right_position: Float,
     },
+    ComeInWithSidePlatform {
+        platforms: Vec<SidePlatformEntrance>,
+    },
+    ComeInWithGrappleSwing {
+        blocks: Vec<GrappleSwingBlock>,
+    },
+    ComeInWithGrappleJump {
+        position: GrappleJumpPosition,
+    },
     ComeInWithGrappleTeleport {
         block_positions: Vec<(u16, u16)>,
+    },
+    ComeInWithSamusEaterTeleport {
+        floor_positions: Vec<(u16, u16)>,
+        ceiling_positions: Vec<(u16, u16)>,
     },
 }
 
@@ -1076,6 +1238,156 @@ pub struct StratVideo {
     pub note: String,
 }
 
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DoorLockType {
+    Gray,
+    // Ammo doors:
+    Red,
+    Green,
+    Yellow,
+    // Beam doors:
+    Charge,
+    Ice,
+    Wave,
+    Spazer,
+    Plasma,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum MapTileEdge {
+    #[default]
+    Empty,
+    QolEmpty,
+    Passage,
+    QolPassage,
+    Door,
+    QolDoor,
+    Wall,
+    QolWall,
+    ElevatorEntrance,
+    Sand,
+    QolSand,
+    // Extension used at runtime:
+    LockedDoor(DoorLockType),
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum MapTileInterior {
+    #[default]
+    Empty,
+    Item,
+    DoubleItem,
+    HiddenItem,
+    ElevatorPlatformHigh,
+    ElevatorPlatformLow,
+    SaveStation,
+    MapStation,
+    EnergyRefill,
+    AmmoRefill,
+    DoubleRefill,
+    Ship,
+    Event,
+    // Extensions added at runtime:
+    Objective,
+    AmmoItem,
+    MediumItem,
+    MajorItem,
+}
+
+impl MapTileInterior {
+    pub fn is_item(&self) -> bool {
+        use MapTileInterior::*;
+        match self {
+            Item | DoubleItem | HiddenItem | AmmoItem | MediumItem | MajorItem => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum Direction {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Copy, Clone, Debug, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum MapTileSpecialType {
+    SlopeUpFloorLow,
+    SlopeUpFloorHigh,
+    SlopeUpCeilingLow,
+    SlopeUpCeilingHigh,
+    SlopeDownFloorLow,
+    SlopeDownFloorHigh,
+    SlopeDownCeilingLow,
+    SlopeDownCeilingHigh,
+    Tube,
+    Elevator,
+    Black,
+    // Extensions added at runtime:
+    AreaTransition(AreaIdx, Direction),
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Default, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub enum MapLiquidType {
+    #[default]
+    None,
+    Water,
+    Lava,
+    Acid,
+}
+
+#[derive(Clone, Debug, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct MapTile {
+    pub coords: (usize, usize),
+    pub area: Option<usize>,
+    #[serde(default)]
+    pub left: MapTileEdge,
+    #[serde(default)]
+    pub right: MapTileEdge,
+    #[serde(default)]
+    pub top: MapTileEdge,
+    #[serde(default)]
+    pub bottom: MapTileEdge,
+    #[serde(default)]
+    pub interior: MapTileInterior,
+    #[serde(default)]
+    pub heated: bool,
+    #[serde(default)]
+    pub liquid_type: MapLiquidType,
+    pub liquid_level: Option<f32>,
+    pub special_type: Option<MapTileSpecialType>,
+    // Extensions added at runtime:
+    #[serde(default)]
+    pub faded: bool,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MapTileData {
+    pub room_id: usize,
+    pub room_name: String,
+    #[serde(default)]
+    pub liquid_type: MapLiquidType,
+    pub liquid_level: Option<f32>,
+    #[serde(default)]
+    pub heated: bool,
+    pub map_tiles: Vec<MapTile>,
+}
+
+#[derive(Deserialize)]
+struct MapTileDataFile {
+    rooms: Vec<MapTileData>,
+}
+
 // TODO: Clean this up, e.g. pull out a separate structure to hold
 // temporary data used only during loading, replace any
 // remaining JsonValue types in the main struct with something
@@ -1091,6 +1403,7 @@ pub struct GameData {
     pub flag_isv: IndexedVec<String>,
     pub item_isv: IndexedVec<String>,
     weapon_isv: IndexedVec<String>,
+    weapon_categories: HashMap<String, Vec<String>>, // map from weapon category to specific weapons with that category
     enemy_attack_damage: HashMap<(String, String), Capacity>,
     enemy_vulnerabilities: HashMap<String, EnemyVulnerabilities>,
     enemy_json: HashMap<String, JsonValue>,
@@ -1105,6 +1418,7 @@ pub struct GameData {
     pub helpers: HashMap<String, Option<Requirement>>,
     pub room_json_map: HashMap<RoomId, JsonValue>,
     pub room_obstacle_idx_map: HashMap<RoomId, HashMap<String, usize>>,
+    pub room_full_area: HashMap<RoomId, String>,
     pub node_json_map: HashMap<(RoomId, NodeId), JsonValue>,
     pub node_spawn_at_map: HashMap<(RoomId, NodeId), NodeId>,
     pub reverse_node_ptr_map: HashMap<NodePtr, (RoomId, NodeId)>,
@@ -1127,6 +1441,7 @@ pub struct GameData {
     pub links: Vec<Link>,
     pub base_links_data: LinksDataGroup,
     pub room_geometry: Vec<RoomGeometry>,
+    pub room_ptrs: Vec<RoomPtr>,
     pub room_and_door_idxs_by_door_ptr_pair:
         HashMap<DoorPtrPair, (RoomGeometryRoomIdx, RoomGeometryDoorIdx)>,
     pub room_ptr_by_id: HashMap<RoomId, RoomPtr>,
@@ -1144,6 +1459,7 @@ pub struct GameData {
     pub tech_dependencies: HashMap<TechId, Vec<TechId>>,
     pub escape_timings: Vec<EscapeTimingRoom>,
     pub start_locations: Vec<StartLocation>,
+    pub start_location_id_map: HashMap<(RoomId, NodeId), StartLocationId>,
     pub hub_locations: Vec<HubLocation>,
     pub heat_run_tech_idx: TechIdx, // Cached since it is used frequently in graph traversal, and to avoid needing to store it in every HeatFrames req.
     pub speed_ball_tech_idx: TechIdx, // Cached since it is used frequently in graph traversal, and to avoid needing to store it in every HeatFrames req.
@@ -1154,6 +1470,8 @@ pub struct GameData {
     pub title_screen_data: TitleScreenData,
     pub reduced_flashing_patch: GlowPatch,
     pub strat_videos: HashMap<(RoomId, StratId), Vec<StratVideo>>,
+    pub map_tile_data: Vec<MapTileData>,
+    pub area_order: Vec<String>,
 }
 
 impl<T: Hash + Eq> IndexedVec<T> {
@@ -1206,9 +1524,10 @@ impl GameData {
             "techRequires": [],
             "otherRequires": [],
             "note": [
-                "Can shoot blue & green gates from either side using Hyper Beam during the escape.",
+                "The ability to shoot blue & green gates from either side using Hyper Beam during the escape.",
                 "This is easy to do; this tech just represents knowing it can be done.",
-                "This is based on a randomizer patch applied on all settings (as in the vanilla game it isn't possible to open green gates using Hyper Beam.)"
+                "This is based on a randomizer patch applied on all settings,",
+                "as in the vanilla game it isn't possible to open green gates using Hyper Beam."
             ]
         })?;
         Self::override_can_awaken_zebes_tech_note(&mut full_tech_json)?;
@@ -1414,12 +1733,23 @@ impl GameData {
         ensure!(weapons_json["weapons"].is_array());
         for weapon_json in weapons_json["weapons"].members() {
             let name = weapon_json["name"].as_str().unwrap();
-            if weapon_json["situational"].as_bool().unwrap() {
-                continue;
-            }
             self.weapon_json_map
                 .insert(name.to_string(), weapon_json.clone());
             self.weapon_isv.add(name);
+            let mut categories: Vec<String> = weapon_json["categories"]
+                .members()
+                .map(|x| x.as_str().unwrap().to_string())
+                .collect();
+            categories.push(name.to_string());
+            for category in categories {
+                if !self.weapon_categories.contains_key(&category) {
+                    self.weapon_categories.insert(category.clone(), vec![]);
+                }
+                self.weapon_categories
+                    .get_mut(&category)
+                    .unwrap()
+                    .push(name.to_string());
+            }
         }
 
         self.non_ammo_weapon_mask = 0;
@@ -1445,10 +1775,9 @@ impl GameData {
                     self.enemy_attack_damage
                         .insert((enemy_name.to_string(), attack_name.to_string()), damage);
                 }
-                self.enemy_vulnerabilities.insert(
-                    enemy_name.to_string(),
-                    self.get_enemy_vulnerabilities(enemy_json)?,
-                );
+                let vul = self.get_enemy_vulnerabilities(enemy_json)?;
+                self.enemy_vulnerabilities
+                    .insert(enemy_name.to_string(), vul);
                 self.enemy_json
                     .insert(enemy_name.to_string(), enemy_json.clone());
             }
@@ -1458,7 +1787,15 @@ impl GameData {
 
     fn get_enemy_damage_multiplier(&self, enemy_json: &JsonValue, weapon_name: &str) -> f32 {
         for multiplier in enemy_json["damageMultipliers"].members() {
-            if multiplier["weapon"] == weapon_name {
+            let category = multiplier["weapon"].as_str().unwrap();
+            if !self.weapon_categories.contains_key(category) {
+                error!(
+                    "Weapon category '{}' not found, in enemy JSON: {}",
+                    category,
+                    enemy_json.pretty(2)
+                );
+            }
+            if self.weapon_categories[category].contains(&weapon_name.to_string()) {
                 return multiplier["value"].as_f32().unwrap();
             }
         }
@@ -1495,6 +1832,9 @@ impl GameData {
         'weapon: for (i, weapon_name) in self.weapon_isv.keys.iter().enumerate() {
             let weapon_json = &self.weapon_json_map[weapon_name];
             if invul.contains(weapon_name) {
+                continue;
+            }
+            if weapon_json["situational"].as_bool().unwrap() {
                 continue;
             }
             ensure!(weapon_json["categories"].is_array());
@@ -1696,6 +2036,58 @@ impl GameData {
         Ok(reqs)
     }
 
+    fn parse_enemy_drops(&self, value: &JsonValue) -> Vec<EnemyDrop> {
+        let mut enemy_drops = vec![];
+        assert!(value.is_array());
+        for drop in value.members() {
+            let enemy_name = drop["enemy"].as_str().unwrap();
+            let enemy_json = &self.enemy_json[enemy_name];
+            let drops_json = &enemy_json["drops"];
+            let count = drop["count"].as_i32().unwrap() as Capacity;
+            let nothing_weight = drops_json["noDrop"]
+                .as_f32()
+                .context(format!("missing noDrop for {}", enemy_name))
+                .unwrap()
+                / 102.0;
+            let small_energy_weight = drops_json["smallEnergy"]
+                .as_f32()
+                .context(format!("missing smallEnergy for {}", enemy_name))
+                .unwrap()
+                / 102.0;
+            let large_energy_weight = drops_json["bigEnergy"]
+                .as_f32()
+                .context(format!("missing bigEnergy for {}", enemy_name))
+                .unwrap()
+                / 102.0;
+            let missile_weight = drops_json["missile"]
+                .as_f32()
+                .context(format!("missing missile for {}", enemy_name))
+                .unwrap()
+                / 102.0;
+            let super_weight = drops_json["super"]
+                .as_f32()
+                .context(format!("missing super for {}", enemy_name))
+                .unwrap()
+                / 102.0;
+            let power_bomb_weight = drops_json["powerBomb"]
+                .as_f32()
+                .context(format!("missing powerBomb for {}", enemy_name))
+                .unwrap()
+                / 102.0;
+            let enemy_drop = EnemyDrop {
+                nothing_weight: Float::new(nothing_weight),
+                small_energy_weight: Float::new(small_energy_weight),
+                large_energy_weight: Float::new(large_energy_weight),
+                missile_weight: Float::new(missile_weight),
+                super_weight: Float::new(super_weight),
+                power_bomb_weight: Float::new(power_bomb_weight),
+                count,
+            };
+            enemy_drops.push(enemy_drop);
+        }
+        enemy_drops
+    }
+
     // TODO: Find some way to have this not need to be mutable (e.g. resolve the helper dependencies in a first pass)
     fn parse_requirement(
         &mut self,
@@ -1717,36 +2109,46 @@ impl GameData {
                 return Ok(Requirement::AmmoStationRefill);
             } else if value == "i_ammoRefillAll" {
                 return Ok(Requirement::AmmoStationRefillAll);
+            } else if value == "i_energyStationRefill" {
+                return Ok(Requirement::EnergyStationRefill);
             } else if value == "i_SupersDoubleDamageMotherBrain" {
                 return Ok(Requirement::SupersDoubleDamageMotherBrain);
-            } else if value == "i_BlueGateGlitchLeniency" {
+            } else if value == "i_blueGateGlitchLeniency" {
                 return Ok(Requirement::GateGlitchLeniency {
                     green: false,
                     heated: false,
                 });
-            } else if value == "i_GreenGateGlitchLeniency" {
+            } else if value == "i_greenGateGlitchLeniency" {
                 return Ok(Requirement::GateGlitchLeniency {
                     green: true,
                     heated: false,
                 });
-            } else if value == "i_HeatedBlueGateGlitchLeniency" {
+            } else if value == "i_heatedBlueGateGlitchLeniency" {
                 return Ok(Requirement::GateGlitchLeniency {
                     green: false,
                     heated: true,
                 });
-            } else if value == "i_HeatedGreenGateGlitchLeniency" {
+            } else if value == "i_heatedGreenGateGlitchLeniency" {
                 return Ok(Requirement::GateGlitchLeniency {
                     green: true,
                     heated: true,
                 });
-            } else if value == "i_Objective1Complete" {
-                return Ok(Requirement::Objective(0));
-            } else if value == "i_Objective2Complete" {
-                return Ok(Requirement::Objective(1));
-            } else if value == "i_Objective3Complete" {
-                return Ok(Requirement::Objective(2));
-            } else if value == "i_Objective4Complete" {
-                return Ok(Requirement::Objective(3));
+            } else if value == "i_bombIntoCrystalFlashClipLeniency" {
+                return Ok(Requirement::BombIntoCrystalFlashClipLeniency {});
+            } else if value == "i_jumpIntoCrystalFlashClipLeniency" {
+                return Ok(Requirement::JumpIntoCrystalFlashClipLeniency {});
+            } else if value == "i_XModeSpikeHitLeniency" {
+                return Ok(Requirement::XModeSpikeHitLeniency {});
+            } else if value == "i_XModeThornHitLeniency" {
+                return Ok(Requirement::XModeThornHitLeniency {});
+            } else if value == "i_MotherBrainBarrier1Clear" {
+                return Ok(Requirement::MotherBrainBarrierClear(0));
+            } else if value == "i_MotherBrainBarrier2Clear" {
+                return Ok(Requirement::MotherBrainBarrierClear(1));
+            } else if value == "i_MotherBrainBarrier3Clear" {
+                return Ok(Requirement::MotherBrainBarrierClear(2));
+            } else if value == "i_MotherBrainBarrier4Clear" {
+                return Ok(Requirement::MotherBrainBarrierClear(3));
             } else if value == "i_LowerNorfairElevatorDownwardFrames" {
                 return Ok(Requirement::LowerNorfairElevatorDownFrames);
             } else if value == "i_LowerNorfairElevatorUpwardFrames" {
@@ -1849,6 +2251,23 @@ impl GameData {
                 } else {
                     bail!("Unexpected resource type in {}", req_json);
                 }
+            } else if key == "resourceMaxCapacity" {
+                ensure!(value.members().len() == 1);
+                let value0 = value.members().next().unwrap();
+                let resource_type = value0["type"]
+                    .as_str()
+                    .expect(&format!("missing/invalid resource type in {}", req_json));
+                let count = value0["count"]
+                    .as_i32()
+                    .expect(&format!("missing/invalid resource count in {}", req_json));
+                if resource_type == "RegularEnergy" {
+                    return Ok(Requirement::make_and(vec![
+                        Requirement::DisableableETank,
+                        Requirement::RegularEnergyDrain(count as Capacity),
+                    ]));
+                } else {
+                    bail!("Unexpected resource type in {}", req_json);
+                }
             } else if key == "resourceAtMost" {
                 let mut reqs: Vec<Requirement> = vec![];
                 for r in value.members() {
@@ -1866,6 +2285,8 @@ impl GameData {
                         reqs.push(Requirement::RegularEnergyDrain(count as Capacity));
                     } else if resource_type == "ReserveEnergy" {
                         reqs.push(Requirement::ReserveEnergyDrain(count as Capacity));
+                    } else if resource_type == "Missile" {
+                        reqs.push(Requirement::MissileDrain(count as Capacity));
                     } else {
                         bail!("Unexpected resource type in {}", req_json);
                     }
@@ -2046,7 +2467,12 @@ impl GameData {
                 let frames = value
                     .as_i32()
                     .expect(&format!("invalid samusEaterFrames in {}", req_json));
-                return Ok(Requirement::Damage(frames as Capacity / 8));
+                return Ok(Requirement::Damage(frames as Capacity / 10));
+            } else if key == "cycleFrames" {
+                let frames = value
+                    .as_i32()
+                    .expect(&format!("invalid cycleFrames in {}", req_json));
+                return Ok(Requirement::CycleFrames(frames as Capacity));
             } else if key == "spikeHits" {
                 let hits = value
                     .as_i32()
@@ -2146,14 +2572,8 @@ impl GameData {
                     ensure!(value["explicitWeapons"].is_array());
                     let mut weapon_mask = 0;
                     for weapon_name in value["explicitWeapons"].members() {
-                        if self
-                            .weapon_isv
-                            .index_by_key
-                            .contains_key(weapon_name.as_str().unwrap())
-                        {
-                            weapon_mask |=
-                                1 << self.weapon_isv.index_by_key[weapon_name.as_str().unwrap()];
-                        }
+                        weapon_mask |=
+                            1 << self.weapon_isv.index_by_key[weapon_name.as_str().unwrap()];
                     }
                     weapon_mask
                 } else {
@@ -2162,14 +2582,8 @@ impl GameData {
                 if value.has_key("excludedWeapons") {
                     ensure!(value["excludedWeapons"].is_array());
                     for weapon_name in value["excludedWeapons"].members() {
-                        if self
-                            .weapon_isv
-                            .index_by_key
-                            .contains_key(weapon_name.as_str().unwrap())
-                        {
-                            allowed_weapons &=
-                                !(1 << self.weapon_isv.index_by_key[weapon_name.as_str().unwrap()]);
-                        }
+                        allowed_weapons &=
+                            !(1 << self.weapon_isv.index_by_key[weapon_name.as_str().unwrap()]);
                     }
                 }
                 let mut reqs: Vec<Requirement> = Vec::new();
@@ -2183,7 +2597,14 @@ impl GameData {
                         vul.super_damage = 0;
                     }
                     if allowed_weapons & (1 << self.weapon_isv.index_by_key["PowerBomb"]) == 0 {
-                        vul.power_bomb_damage = 0;
+                        if allowed_weapons
+                            & (1 << self.weapon_isv.index_by_key["PowerBombPeriphery"])
+                            == 0
+                        {
+                            vul.power_bomb_damage = 0;
+                        } else {
+                            vul.power_bomb_damage /= 2;
+                        }
                     }
                     reqs.push(Requirement::EnemyKill {
                         count: *count as Capacity,
@@ -2246,7 +2667,13 @@ impl GameData {
                 }
                 let mut reqs_or: Vec<Requirement> = vec![];
                 for node_id in node_ids {
-                    reqs_or.push(self.get_unlocks_doors_req(node_id, ctx)?);
+                    reqs_or.push(Requirement::make_and(vec![
+                        self.get_unlocks_doors_req(node_id, ctx)?,
+                        Requirement::ResetRoom {
+                            room_id: ctx.room_id,
+                            node_id,
+                        },
+                    ]));
                 }
                 return Ok(Requirement::make_or(reqs_or));
             } else if key == "doorUnlockedAtNode" {
@@ -2255,6 +2682,9 @@ impl GameData {
             } else if key == "itemNotCollectedAtNode" {
                 // TODO: implement this
                 return Ok(Requirement::Free);
+            } else if key == "itemCollectedAtNode" {
+                // TODO: implement this
+                return Ok(Requirement::Never);
             } else if key == "autoReserveTrigger" {
                 return Ok(Requirement::ReserveTrigger {
                     min_reserve_energy: value["minReserveEnergy"].as_i32().unwrap_or(1) as Capacity,
@@ -2281,48 +2711,7 @@ impl GameData {
                 return Ok(Requirement::Notable(notable_idx));
             } else if key == "heatFramesWithEnergyDrops" {
                 let frames = value["frames"].as_i32().unwrap() as Capacity;
-                let mut enemy_drops = vec![];
-                assert!(value["drops"].is_array());
-                for drop in value["drops"].members() {
-                    let enemy_name = drop["enemy"].as_str().unwrap();
-                    let enemy_json = &self.enemy_json[enemy_name];
-                    let drops_json = &enemy_json["drops"];
-                    let count = drop["count"].as_i32().unwrap() as Capacity;
-                    let small_energy_weight = drops_json["smallEnergy"]
-                        .as_f32()
-                        .context(format!("missing smallEnergy for {}", enemy_name))
-                        .unwrap()
-                        / 102.0;
-                    let large_energy_weight = drops_json["bigEnergy"]
-                        .as_f32()
-                        .context(format!("missing bigEnergy for {}", enemy_name))
-                        .unwrap()
-                        / 102.0;
-                    let missile_weight = drops_json["missile"]
-                        .as_f32()
-                        .context(format!("missing missile for {}", enemy_name))
-                        .unwrap()
-                        / 102.0;
-                    let super_weight = drops_json["super"]
-                        .as_f32()
-                        .context(format!("missing super for {}", enemy_name))
-                        .unwrap()
-                        / 102.0;
-                    let power_bomb_weight = drops_json["powerBomb"]
-                        .as_f32()
-                        .context(format!("missing powerBomb for {}", enemy_name))
-                        .unwrap()
-                        / 102.0;
-                    let enemy_drop = EnemyDrop {
-                        small_energy_weight: Float::new(small_energy_weight),
-                        large_energy_weight: Float::new(large_energy_weight),
-                        missile_weight: Float::new(missile_weight),
-                        super_weight: Float::new(super_weight),
-                        power_bomb_weight: Float::new(power_bomb_weight),
-                        count,
-                    };
-                    enemy_drops.push(enemy_drop);
-                }
+                let enemy_drops = self.parse_enemy_drops(&value["drops"]);
                 return Ok(Requirement::HeatFramesWithEnergyDrops(frames, enemy_drops));
             } else if key == "disableEquipment" {
                 return Ok(Requirement::Tech(
@@ -2527,11 +2916,13 @@ impl GameData {
     fn override_mother_brain_room(&mut self, room_json: &mut JsonValue) {
         // Add a requirement for objectives to be completed in order to cross the barriers
         for x in room_json["strats"].members_mut() {
-            if x["link"][0].as_i32().unwrap() == 2 && x["link"][1].as_i32().unwrap() != 2 {
-                x["requires"].push("i_Objective1Complete").unwrap();
-                x["requires"].push("i_Objective2Complete").unwrap();
-                x["requires"].push("i_Objective3Complete").unwrap();
-                x["requires"].push("i_Objective4Complete").unwrap();
+            if x["id"] == 38
+                || (x["link"][0].as_i32().unwrap() == 2 && x["link"][1].as_i32().unwrap() != 2)
+            {
+                x["requires"].push("i_MotherBrainBarrier1Clear").unwrap();
+                x["requires"].push("i_MotherBrainBarrier2Clear").unwrap();
+                x["requires"].push("i_MotherBrainBarrier3Clear").unwrap();
+                x["requires"].push("i_MotherBrainBarrier4Clear").unwrap();
             }
         }
 
@@ -2552,10 +2943,10 @@ impl GameData {
                 x["exitCondition"]["leaveWithRunway"]["openEnd"] = JsonValue::Number(0.into());
 
                 let obj_conditions = [
-                    "i_Objective1Complete",
-                    "i_Objective2Complete",
-                    "i_Objective3Complete",
-                    "i_Objective4Complete",
+                    "i_MotherBrainBarrier1Clear",
+                    "i_MotherBrainBarrier2Clear",
+                    "i_MotherBrainBarrier3Clear",
+                    "i_MotherBrainBarrier4Clear",
                 ];
                 for num_objectives_complete in 1..=4 {
                     let mut strat = x.clone();
@@ -2570,12 +2961,12 @@ impl GameData {
                     strat["id"] = JsonValue::Number((10000 + num_objectives_complete).into());
                     if num_objectives_complete == 1 {
                         strat["name"] = JsonValue::String(format!(
-                            "{}, 1 Objective Complete",
+                            "{}, 1 Barrier Cleared",
                             x["name"].as_str().unwrap()
                         ));
                     } else {
                         strat["name"] = JsonValue::String(format!(
-                            "{}, {} Objectives Complete",
+                            "{}, {} Barriers Cleared",
                             x["name"].as_str().unwrap(),
                             num_objectives_complete
                         ));
@@ -2736,6 +3127,10 @@ impl GameData {
             (170, "f_MaridiaTubeBroken"),
             (222, "f_ShaktoolDoneDigging"),
             (149, "f_UsedAcidChozoStatue"),
+            (226, "f_KilledMetroidRoom1"),
+            (227, "f_KilledMetroidRoom2"),
+            (228, "f_KilledMetroidRoom3"),
+            (229, "f_KilledMetroidRoom4"),
         ]
         .into_iter()
         .map(|(x, y)| (x, y.to_string()))
@@ -2775,7 +3170,9 @@ impl GameData {
                     "unlocksDoors": self.get_default_unlocks_door(room_json, node_id, node_id)?,
                 });
             }
-            if node_type == "door" || node_type == "entrance" {
+            if (node_type == "door" || node_type == "entrance")
+                && node_json["useImplicitComeInNormally"].as_bool() != Some(false)
+            {
                 let spawn_node_id = node_json["spawnAt"].as_usize().unwrap_or(node_id);
                 extra_strats.push(json::object! {
                     "link": [node_id, spawn_node_id],
@@ -2784,6 +3181,32 @@ impl GameData {
                         "comeInNormally": {}
                     },
                     "requires": []
+                });
+            }
+
+            if !node_json.has_key("spawnAt")
+                && node_type == "door"
+                && (node_json["doorOrientation"] == "left"
+                    || node_json["doorOrientation"] == "right")
+                && node_json["useImplicitComeInWithMockball"].as_bool() == Some(false)
+            {
+                let heated = self.get_room_heated(room_json, node_id)?;
+                let req = if heated {
+                    json::array![{"heatFrames": 10}]
+                } else {
+                    json::array![]
+                };
+                extra_strats.push(json::object! {
+                    "link": [node_id, node_id],
+                    "name": "Base (Come In With Mockball)",
+                    "entranceCondition": {
+                        "comeInWithMockball": {
+                            "adjacentMinTiles": 0,
+                            "remoteAndLandingMinTiles": [[0, 0]],
+                            "speedBooster": "any"
+                        }
+                    },
+                    "requires": req
                 });
             }
 
@@ -2996,7 +3419,7 @@ impl GameData {
             .to_string());
     }
 
-    fn get_room_heated(&self, room_json: &JsonValue, node_id: NodeId) -> Result<bool> {
+    pub fn get_room_heated(&self, room_json: &JsonValue, node_id: NodeId) -> Result<bool> {
         if !room_json.has_key("roomEnvironments") {
             // TODO: add roomEnvironments to Toilet Bowl so we don't need to skip this here
             return Ok(false);
@@ -3016,13 +3439,45 @@ impl GameData {
         bail!("No match for node {} in roomEnvironments", node_id);
     }
 
-    pub fn all_links(&self) -> impl Iterator<Item = &Link> {
-        self.links.iter()
+    pub fn all_links(&self) -> Vec<Link> {
+        let mut links = self.links.clone();
+        for (link, _) in self.node_gmode_regain_mobility.values().flatten() {
+            let mut new_link = link.clone();
+            new_link.requirement = Requirement::make_and(vec![
+                link.requirement.clone(),
+                Requirement::Tech(self.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE_IMMOBILE]),
+            ]);
+            links.push(new_link);
+        }
+        links
+    }
+
+    fn parse_grapple_swing_block(&self, block_json: &JsonValue) -> Result<GrappleSwingBlock> {
+        let mut obstructions: Vec<(i32, i32)> = vec![];
+        for ob in block_json["obstructions"].members() {
+            obstructions.push((ob[0].as_i32().unwrap(), ob[1].as_i32().unwrap()));
+        }
+        Ok(GrappleSwingBlock {
+            position: (
+                Float::new(block_json["position"][0].as_f32().unwrap()),
+                Float::new(block_json["position"][1].as_f32().unwrap()),
+            ),
+            environment: match block_json["environment"].as_str().unwrap_or("air") {
+                "air" => GrappleSwingBlockEnvironment::Air,
+                "water" => GrappleSwingBlockEnvironment::Water,
+                _ => bail!(
+                    "unexpected grapple swing block environment: {}",
+                    block_json["environment"]
+                ),
+            },
+            obstructions,
+        })
     }
 
     fn parse_exit_condition(
         &self,
         exit_json: &JsonValue,
+        room_id: RoomId,
         strat_json: &JsonValue,
         heated: bool,
         physics: Option<Physics>,
@@ -3033,7 +3488,7 @@ impl GameData {
         ensure!(value.is_object());
         let from_node_id = strat_json["link"][0].as_usize().unwrap();
         let to_node_id = strat_json["link"][1].as_usize().unwrap();
-        let mut req = Requirement::Free;
+        let req = Requirement::Free; // This was used by "leaveShinecharged" before but is currently unused.
         let exit_condition = match key {
             "leaveNormally" => ExitCondition::LeaveNormally {},
             "leaveWithRunway" => {
@@ -3041,23 +3496,25 @@ impl GameData {
                 let runway_effective_length = compute_runway_effective_length(&runway_geometry);
                 ExitCondition::LeaveWithRunway {
                     effective_length: Float::new(runway_effective_length),
+                    min_extra_run_speed: Float::new(parse_hex(&value["minExtraRunSpeed"], 0.0)?),
                     heated,
                     physics,
                     from_exit_node: from_node_id == to_node_id,
                 }
             }
-            "leaveShinecharged" => {
-                if let Some(frames_remaining) = value["framesRemaining"].as_i32() {
-                    req = Requirement::ShineChargeFrames(180 - frames_remaining as Capacity);
-                }
-                ExitCondition::LeaveShinecharged { physics }
-            }
+            "leaveShinecharged" => ExitCondition::LeaveShinecharged { physics },
             "leaveWithTemporaryBlue" => ExitCondition::LeaveWithTemporaryBlue {
                 direction: parse_temporary_blue_direction(value["direction"].as_str())?,
             },
-            "leaveWithSpark" => ExitCondition::LeaveWithSpark {
-                position: parse_spark_position(value["position"].as_str())?,
-            },
+            "leaveWithSpark" => {
+                let node_json = &self.node_json_map[&(room_id, to_node_id)];
+                let door_orientation =
+                    parse_door_orientation(node_json["doorOrientation"].as_str().unwrap())?;
+                ExitCondition::LeaveWithSpark {
+                    position: parse_spark_position(value["position"].as_str())?,
+                    door_orientation,
+                }
+            }
             "leaveSpinning" => {
                 let remote_runway_geometry = parse_runway_geometry(&value["remoteRunway"])?;
                 let remote_runway_effective_length =
@@ -3119,6 +3576,7 @@ impl GameData {
             }
             "leaveWithGModeSetup" => ExitCondition::LeaveWithGModeSetup {
                 knockback: value["knockback"].as_bool().unwrap_or(true),
+                heated,
             },
             "leaveWithGMode" => ExitCondition::LeaveWithGMode {
                 morphed: value["morphed"]
@@ -3155,8 +3613,53 @@ impl GameData {
                         .context("Expecting number 'rightPosition'")?,
                 ),
             },
+            "leaveWithSidePlatform" => {
+                let runway_geometry = parse_runway_geometry(&value["runway"])?;
+                let runway_effective_length = compute_runway_effective_length(&runway_geometry);
+
+                ExitCondition::LeaveWithSidePlatform {
+                    effective_length: Float::new(runway_effective_length),
+                    height: Float::new(
+                        value["height"]
+                            .as_f32()
+                            .context("Expecting number 'height'")?,
+                    ),
+                    obstruction: (
+                        value["obstruction"][0].as_u16().unwrap(),
+                        value["obstruction"][1].as_u16().unwrap(),
+                    ),
+                    environment: match physics {
+                        Some(Physics::Water) => SidePlatformEnvironment::Water,
+                        Some(Physics::Air) => SidePlatformEnvironment::Air,
+                        _ => bail!(
+                            "unexpected door physics in leaveWithSidePlatform: {:?}",
+                            physics
+                        ),
+                    },
+                }
+            }
+            "leaveWithGrappleSwing" => {
+                let mut blocks: Vec<GrappleSwingBlock> = vec![];
+                for b in value["blocks"].members() {
+                    blocks.push(self.parse_grapple_swing_block(b)?);
+                }
+                ExitCondition::LeaveWithGrappleSwing { blocks }
+            }
+            "leaveWithGrappleJump" => ExitCondition::LeaveWithGrappleJump {
+                position: parse_grapple_jump_position(value["position"].as_str())?,
+            },
             "leaveWithGrappleTeleport" => ExitCondition::LeaveWithGrappleTeleport {
                 block_positions: value["blockPositions"]
+                    .members()
+                    .map(|x| (x[0].as_u16().unwrap(), x[1].as_u16().unwrap()))
+                    .collect(),
+            },
+            "leaveWithSamusEaterTeleport" => ExitCondition::LeaveWithSamusEaterTeleport {
+                floor_positions: value["floorPositions"]
+                    .members()
+                    .map(|x| (x[0].as_u16().unwrap(), x[1].as_u16().unwrap()))
+                    .collect(),
+                ceiling_positions: value["ceilingPositions"]
                     .members()
                     .map(|x| (x[0].as_u16().unwrap(), x[1].as_u16().unwrap()))
                     .collect(),
@@ -3169,7 +3672,7 @@ impl GameData {
     }
 
     fn parse_entrance_condition(
-        &self,
+        &mut self,
         entrance_json: &JsonValue,
         room_id: RoomId,
         from_node_id: NodeId,
@@ -3189,11 +3692,11 @@ impl GameData {
             }
         } else {
             ensure!(entrance_json.len() == 1);
-            ToiletCondition::No
+            ToiletCondition::Any // to cover implicit strats, e.g. "comeInNormally"
         };
         let (key, value) = entrance_json.entries().next().unwrap();
         ensure!(value.is_object());
-        let mut req = Requirement::Free;
+        let req = Requirement::Free;
         let main = match key {
             "comeInNormally" => MainEntranceCondition::ComeInNormally {},
             "comeInRunning" => MainEntranceCondition::ComeInRunning {
@@ -3249,23 +3752,17 @@ impl GameData {
                     max_extra_run_speed: Float::new(parse_hex(&value["maxExtraRunSpeed"], 7.0)?),
                 }
             }
-            "comeInShinecharged" => {
-                let frames_required = value["framesRequired"]
-                    .as_i32()
-                    .context("Expecting integer 'framesRequired'")?;
-                req = Requirement::ShineChargeFrames(frames_required as Capacity);
-                MainEntranceCondition::ComeInShinecharged {}
+            "comeInShinecharged" => MainEntranceCondition::ComeInShinecharged {},
+            "comeInShinechargedJumping" => MainEntranceCondition::ComeInShinechargedJumping {},
+            "comeInWithSpark" => {
+                let node_json = &self.node_json_map[&(room_id, from_node_id)];
+                let door_orientation =
+                    parse_door_orientation(node_json["doorOrientation"].as_str().unwrap())?;
+                MainEntranceCondition::ComeInWithSpark {
+                    position: parse_spark_position(value["position"].as_str())?,
+                    door_orientation,
+                }
             }
-            "comeInShinechargedJumping" => {
-                let frames_required = value["framesRequired"]
-                    .as_i32()
-                    .context("Expecting integer 'framesRequired'")?;
-                req = Requirement::ShineChargeFrames(frames_required as Capacity);
-                MainEntranceCondition::ComeInShinechargedJumping {}
-            }
-            "comeInWithSpark" => MainEntranceCondition::ComeInWithSpark {
-                position: parse_spark_position(value["position"].as_str())?,
-            },
             "comeInStutterShinecharging" => MainEntranceCondition::ComeInStutterShinecharging {
                 min_tiles: Float::new(
                     value["minTiles"]
@@ -3306,6 +3803,10 @@ impl GameData {
             },
             "comeInBlueSpinning" => MainEntranceCondition::ComeInBlueSpinning {
                 unusable_tiles: Float::new(value["unusableTiles"].as_f32().unwrap_or(0.0)),
+                min_extra_run_speed: Float::new(parse_hex(&value["minExtraRunSpeed"], 0.0)?),
+                max_extra_run_speed: Float::new(parse_hex(&value["maxExtraRunSpeed"], 7.0)?),
+            },
+            "comeInBlueSpaceJumping" => MainEntranceCondition::ComeInBlueSpaceJumping {
                 min_extra_run_speed: Float::new(parse_hex(&value["minExtraRunSpeed"], 0.0)?),
                 max_extra_run_speed: Float::new(parse_hex(&value["maxExtraRunSpeed"], 7.0)?),
             },
@@ -3367,6 +3868,7 @@ impl GameData {
                     mode,
                     morphed,
                     mobility,
+                    heated,
                 }
             }
             "comeInWithStoredFallSpeed" => MainEntranceCondition::ComeInWithStoredFallSpeed {
@@ -3394,8 +3896,77 @@ impl GameData {
                         .unwrap_or(f32::NEG_INFINITY),
                 ),
             },
+            "comeInWithSidePlatform" => {
+                let mut platforms: Vec<SidePlatformEntrance> = vec![];
+
+                for p in value["platforms"].members() {
+                    platforms.push(SidePlatformEntrance {
+                        min_height: Float::new(
+                            p["minHeight"]
+                                .as_f32()
+                                .context("Expecting number 'minHeight'")?,
+                        ),
+                        max_height: Float::new(
+                            p["maxHeight"]
+                                .as_f32()
+                                .context("Expecting number 'maxHeight'")?,
+                        ),
+                        min_tiles: Float::new(
+                            p["minTiles"]
+                                .as_f32()
+                                .context("Expecting number 'minHeight'")?,
+                        ),
+                        speed_booster: p["speedBooster"].as_bool(),
+                        obstructions: p["obstructions"]
+                            .members()
+                            .map(|x| (x[0].as_u16().unwrap(), x[1].as_u16().unwrap()))
+                            .collect(),
+                        environment: match p["environment"].as_str().unwrap_or("any") {
+                            "air" => SidePlatformEnvironment::Air,
+                            "water" => SidePlatformEnvironment::Water,
+                            "any" => SidePlatformEnvironment::Any,
+                            _ => {
+                                bail!("unexpected side platform environment: {}", p["environment"])
+                            }
+                        },
+                        requirement: if p.has_key("requires") {
+                            let reqs_json: Vec<JsonValue> =
+                                value["requires"].members().cloned().collect();
+                            Requirement::make_and(
+                                self.parse_requires_list(
+                                    &reqs_json,
+                                    &RequirementContext::default(),
+                                )?,
+                            )
+                        } else {
+                            Requirement::Free
+                        },
+                    });
+                }
+                MainEntranceCondition::ComeInWithSidePlatform { platforms }
+            }
+            "comeInWithGrappleSwing" => {
+                let mut blocks: Vec<GrappleSwingBlock> = vec![];
+                for b in value["blocks"].members() {
+                    blocks.push(self.parse_grapple_swing_block(b)?);
+                }
+                MainEntranceCondition::ComeInWithGrappleSwing { blocks }
+            }
+            "comeInWithGrappleJump" => MainEntranceCondition::ComeInWithGrappleJump {
+                position: parse_grapple_jump_position(value["position"].as_str())?,
+            },
             "comeInWithGrappleTeleport" => MainEntranceCondition::ComeInWithGrappleTeleport {
                 block_positions: value["blockPositions"]
+                    .members()
+                    .map(|x| (x[0].as_u16().unwrap(), x[1].as_u16().unwrap()))
+                    .collect(),
+            },
+            "comeInWithSamusEaterTeleport" => MainEntranceCondition::ComeInWithSamusEaterTeleport {
+                floor_positions: value["floorPositions"]
+                    .members()
+                    .map(|x| (x[0].as_u16().unwrap(), x[1].as_u16().unwrap()))
+                    .collect(),
+                ceiling_positions: value["ceilingPositions"]
                     .members()
                     .map(|x| (x[0].as_u16().unwrap(), x[1].as_u16().unwrap()))
                     .collect(),
@@ -3472,6 +4043,7 @@ impl GameData {
             ensure!(strat_json["exitCondition"].is_object());
             let (e, r) = self.parse_exit_condition(
                 &strat_json["exitCondition"],
+                room_id,
                 strat_json,
                 to_heated,
                 physics,
@@ -3494,7 +4066,9 @@ impl GameData {
             };
 
         for from_obstacles_bitmask in 0..(1 << num_obstacles) {
-            if entrance_condition.is_some() && from_obstacles_bitmask != 0 {
+            if (entrance_condition.is_some() || gmode_regain_mobility.is_some())
+                && from_obstacles_bitmask != 0
+            {
                 continue;
             }
             ensure!(strat_json["requires"].is_array());
@@ -3562,6 +4136,7 @@ impl GameData {
                 requires_vec.push(exit_req.clone().unwrap());
             } else if ["door", "exit"].contains(&to_node_json["nodeType"].as_str().unwrap())
                 && strat_json.has_key("unlocksDoors")
+                && to_node_json["useImplicitLeaveNormally"].as_bool() != Some(false)
             {
                 if let Ok(unlock_to_door_req) = self.get_unlocks_doors_req(to_node_id, &ctx) {
                     maybe_exit_req = Some(unlock_to_door_req);
@@ -3632,6 +4207,76 @@ impl GameData {
                     .entry((room_id, to_node_id))
                     .or_insert(vec![])
                     .push((link, gmode_regain_mobility.clone().unwrap()))
+            } else if strat_json.has_key("farmCycleDrops") {
+                let enemy_drops = self.parse_enemy_drops(&strat_json["farmCycleDrops"]);
+                let mut has_high_energy: bool = false;
+                let mut has_high_missiles: bool = false;
+                let mut has_high_supers: bool = false;
+                let mut has_high_power_bombs: bool = false;
+                for drop in &enemy_drops {
+                    if drop.power_bomb_weight.get() > 0.25 {
+                        has_high_power_bombs = true;
+                    }
+                    if drop.super_weight.get() > 0.25 {
+                        has_high_supers = true;
+                    }
+                    if (drop.large_energy_weight.get() + drop.small_energy_weight.get()) > 0.25
+                        && drop.missile_weight.get() > 0.0
+                    {
+                        has_high_energy = true;
+                    }
+                    if drop.missile_weight.get() > 0.25
+                        && drop.large_energy_weight.get() + drop.small_energy_weight.get() > 0.0
+                    {
+                        has_high_missiles = true;
+                    }
+                }
+                for full_energy in [false, true] {
+                    for full_missiles in [false, true] {
+                        for full_supers in [false, true] {
+                            for full_power_bombs in [false, true] {
+                                if full_energy && !has_high_energy {
+                                    continue;
+                                }
+                                if full_missiles && !has_high_missiles {
+                                    continue;
+                                }
+                                if full_supers && !has_high_supers {
+                                    continue;
+                                }
+                                if full_power_bombs && !has_high_power_bombs {
+                                    continue;
+                                }
+                                if full_missiles && full_energy {
+                                    continue;
+                                }
+
+                                let mut farm_link = link.clone();
+                                if full_energy {
+                                    farm_link.strat_name.push_str("- Full Energy");
+                                }
+                                if full_missiles {
+                                    farm_link.strat_name.push_str("- Full Missiles");
+                                }
+                                if full_supers {
+                                    farm_link.strat_name.push_str("- Full Supers");
+                                }
+                                if full_power_bombs {
+                                    farm_link.strat_name.push_str("- Full Power Bombs");
+                                }
+                                farm_link.requirement = Requirement::Farm {
+                                    requirement: Box::new(requirement.clone()),
+                                    drops: enemy_drops.clone(),
+                                    full_energy,
+                                    full_missiles,
+                                    full_supers,
+                                    full_power_bombs,
+                                };
+                                self.links.push(farm_link.clone());
+                            }
+                        }
+                    }
+                }
             } else {
                 self.links.push(link.clone());
             }
@@ -3725,12 +4370,26 @@ impl GameData {
         Ok(())
     }
 
+    fn get_full_area(&self, room_json: &JsonValue) -> String {
+        let area = room_json["area"].as_str().unwrap().to_string();
+        let sub_area = room_json["subarea"].as_str().unwrap_or("").to_string();
+        let sub_sub_area = room_json["subsubarea"].as_str().unwrap_or("").to_string();
+        let full_area = if sub_sub_area != "" {
+            format!("{} {} {}", sub_sub_area, sub_area, area)
+        } else if sub_area != "" && sub_area != "Main" {
+            format!("{} {}", sub_area, area)
+        } else {
+            area
+        };
+        full_area
+    }
+
     fn process_room(&mut self, room_json: &JsonValue) -> Result<()> {
         let room_id = room_json["id"].as_usize().unwrap();
         self.room_json_map.insert(room_id, room_json.clone());
-
         let mut room_ptr =
             parse_int::parse::<usize>(room_json["roomAddress"].as_str().unwrap()).unwrap();
+        self.room_ptrs.push(room_ptr);
         self.raw_room_id_by_ptr.insert(room_ptr, room_id);
         if room_ptr == 0x7D69A {
             room_ptr = 0x7D646; // Treat East Pants Room as part of Pants Room
@@ -3740,6 +4399,8 @@ impl GameData {
             self.room_id_by_ptr.insert(room_ptr, room_id);
         }
         self.room_ptr_by_id.insert(room_id, room_ptr);
+        self.room_full_area
+            .insert(room_id, self.get_full_area(room_json));
 
         // Process obstacles:
         let obstacles_idx_map: HashMap<String, usize> = if room_json.has_key("obstacles") {
@@ -3792,6 +4453,18 @@ impl GameData {
                 let req = json::object! {"or": JsonValue::Array(req_list)};
                 self.grey_lock_map.insert((room_id, node_id), req);
             }
+
+            let height = node_json["mapTileMask"].len();
+            let width = node_json["mapTileMask"][0].len();
+            let mut coords: Vec<(usize, usize)> = vec![];
+            for y in 0..height {
+                for x in 0..width {
+                    if node_json["mapTileMask"][y][x] == 2 {
+                        coords.push((x, y));
+                    }
+                }
+            }
+            self.node_tile_coords.insert((room_id, node_id), coords);
         }
         let mut node_implicit_door_unlocks: HashMap<NodeId, bool> = HashMap::new();
         for node_json in room_json["nodes"].members() {
@@ -3807,9 +4480,21 @@ impl GameData {
             // Implicit leaveWithGMode:
             if !node_json.has_key("spawnAt")
                 && node_json["nodeType"].as_str().unwrap() == "door"
-                && node_json["doorOrientation"] != "up"
+                && node_json["isDoorImmediatelyClosed"].as_bool() != Some(true)
             {
                 for morphed in [false, true] {
+                    if !morphed
+                        && node_json["useImplicitCarryGModeBackThrough"].as_bool() == Some(false)
+                    {
+                        continue;
+                    }
+                    if morphed
+                        && (node_json["doorOrientation"] == "up"
+                            || node_json["useImplicitCarryGModeMorphBackThrough"].as_bool()
+                                == Some(false))
+                    {
+                        continue;
+                    }
                     let from_vertex_id = self.vertex_isv.add(&VertexKey {
                         room_id,
                         node_id,
@@ -3820,6 +4505,7 @@ impl GameData {
                                 mode: GModeMode::Direct,
                                 morphed,
                                 mobility: GModeMobility::Any,
+                                heated: self.get_room_heated(room_json, node_id)?,
                             },
                         })],
                     });
@@ -3838,7 +4524,11 @@ impl GameData {
                         start_with_shinecharge: false,
                         end_with_shinecharge: false,
                         strat_id: None,
-                        strat_name: "G-Mode Go Back Through Door".to_string(),
+                        strat_name: if morphed {
+                            "Carry G-Mode Morph Back Through".to_string()
+                        } else {
+                            "Carry G-Mode Back Through".to_string()
+                        },
                         strat_notes: vec![],
                     };
                     self.links.push(link);
@@ -3926,7 +4616,7 @@ impl GameData {
         Ok(())
     }
 
-    fn add_connection(&mut self, src: (RoomId, NodeId), dst: (RoomId, NodeId), conn: &JsonValue) {
+    fn add_connection(&mut self, src: (RoomId, NodeId), dst: (RoomId, NodeId), _conn: &JsonValue) {
         let src_ptr = self.node_ptr_map.get(&src).map(|x| *x);
         let dst_ptr = self.node_ptr_map.get(&dst).map(|x| *x);
         let is_west_ocean_bridge = src == (32, 7) || src == (32, 8);
@@ -3936,8 +4626,6 @@ impl GameData {
                 self.reverse_door_ptr_pair_map
                     .insert(src, (src_ptr, dst_ptr));
             }
-            let pos = parse_door_orientation(conn["position"].as_str().unwrap()).unwrap();
-            self.door_position.insert(src, pos);
         }
     }
 
@@ -4047,26 +4735,34 @@ impl GameData {
         Ok(())
     }
 
-    pub fn get_weapon_mask(&self, items: &[bool]) -> WeaponMask {
+    pub fn get_weapon_mask(&self, items: &[bool], tech: &[bool]) -> WeaponMask {
         let mut weapon_mask = 0;
-        let implicit_item_requires: HashSet<String> =
-            vec!["PowerBeam", "canUseGrapple", "canSpecialBeamAttack"]
-                .into_iter()
-                .map(|x| x.to_string())
-                .collect();
+        let implicit_requires: HashSet<String> = vec!["PowerBeam"]
+            .into_iter()
+            .map(|x| x.to_string())
+            .collect();
         // TODO: possibly make this more efficient. We could avoid dealing with strings
         // and just use a pre-computed item bitmask per weapon. But not sure yet if it matters.
         'weapon: for (i, weapon_name) in self.weapon_isv.keys.iter().enumerate() {
             let weapon = &self.weapon_json_map[weapon_name];
             assert!(weapon["useRequires"].is_array());
-            for item_name_json in weapon["useRequires"].members() {
-                let item_name = item_name_json.as_str().unwrap();
-                if implicit_item_requires.contains(item_name) {
+            for req_json in weapon["useRequires"].members() {
+                let req_name = req_json.as_str().unwrap();
+                if implicit_requires.contains(req_name) {
                     continue;
                 }
-                let item_idx = self.item_isv.index_by_key[item_name];
-                if !items[item_idx] {
-                    continue 'weapon;
+                if self.item_isv.index_by_key.contains_key(req_name) {
+                    let item_idx = self.item_isv.index_by_key[req_name];
+                    if !items[item_idx] {
+                        continue 'weapon;
+                    }
+                } else if self.tech_id_by_name.contains_key(req_name) {
+                    let tech_idx = self.tech_isv.index_by_key[&self.tech_id_by_name[req_name]];
+                    if !tech[tech_idx] {
+                        continue 'weapon;
+                    }
+                } else {
+                    panic!("Unrecognized weapon requirement: {}", req_name);
                 }
             }
             weapon_mask |= 1 << i;
@@ -4086,7 +4782,15 @@ impl GameData {
         let start_locations_str = std::fs::read_to_string(path)
             .with_context(|| format!("Unable to load start locations at {}", path.display()))?;
         let mut start_locations: Vec<StartLocation> = serde_json::from_str(&start_locations_str)?;
-        for loc in &mut start_locations {
+        let mut start_location_id_map: HashMap<(usize, usize), usize> = HashMap::new();
+        for (i, loc) in start_locations.iter_mut().enumerate() {
+            if start_location_id_map.contains_key(&(loc.room_id, loc.node_id)) {
+                bail!(
+                    "Non-unique (room_id, node_id) for start location: {:?}",
+                    loc
+                );
+            }
+            start_location_id_map.insert((loc.room_id, loc.node_id), i);
             if loc.requires.is_none() {
                 loc.requires_parsed = Some(Requirement::Free);
             } else {
@@ -4111,6 +4815,7 @@ impl GameData {
             }
         }
         self.start_locations = start_locations;
+        self.start_location_id_map = start_location_id_map;
         Ok(())
     }
 
@@ -4177,89 +4882,8 @@ impl GameData {
                 "room_id_by_ptr missing entry {:x}",
                 room.rom_address
             ))?;
-            let mut max_x = 0;
-            let mut max_y = 0;
-            let mut tile_set: HashSet<(usize, usize)> = HashSet::new();
-            let mut node_set: HashSet<usize> = HashSet::new();
-            for (node_id, tiles) in &room.node_tiles {
-                self.node_tile_coords
-                    .insert((room_id, *node_id), tiles.clone());
-                let node_max_x = tiles.iter().map(|x| x.0).max().unwrap();
-                let node_max_y = tiles.iter().map(|x| x.1).max().unwrap();
-                if node_max_x > max_x {
-                    max_x = node_max_x;
-                }
-                if node_max_y > max_y {
-                    max_y = node_max_y;
-                }
-                for &tile in tiles {
-                    if room.map[tile.1][tile.0] == 0 && room.name != "Toilet" {
-                        error!(
-                            "Node tile not belonging to map: {}:{}:({}, {})",
-                            room.name, node_id, tile.0, tile.1
-                        );
-                    }
-                    tile_set.insert(tile);
-                }
-
-                if !self.node_json_map.contains_key(&(room_id, *node_id)) {
-                    error!("Invalid node ID in node tiles: {}:{}", room.name, node_id);
-                }
-                node_set.insert(*node_id);
-            }
-            self.room_shape.insert(room_id, (max_x + 1, max_y + 1));
-            for node_json in self.room_json_map[&room_id]["nodes"].members() {
-                let node_id = node_json["id"].as_usize().unwrap();
-                if !node_set.contains(&node_id) {
-                    error!(
-                        "Node ID not covered in node tiles: {}:{}",
-                        room.name, node_id
-                    );
-                }
-            }
-
-            if let Some(twin_rom_address) = room.twin_rom_address {
-                let room_id = self.raw_room_id_by_ptr[&twin_rom_address];
-                let mut node_set: HashSet<usize> = HashSet::new();
-                for (node_id, tiles) in room.twin_node_tiles.as_ref().unwrap() {
-                    self.node_tile_coords
-                        .insert((room_id, *node_id), tiles.clone());
-
-                    for &tile in tiles {
-                        if room.map[tile.1][tile.0] == 0 {
-                            error!(
-                                "Invalid twin node tile: {}:{}:({}, {})",
-                                room.name, node_id, tile.0, tile.1
-                            );
-                        }
-                        tile_set.insert(tile);
-                    }
-                    if !self.node_json_map.contains_key(&(room_id, *node_id)) {
-                        error!(
-                            "Invalid node ID in twin node tiles: {}:{}",
-                            room.name, node_id
-                        );
-                    }
-                    node_set.insert(*node_id);
-                }
-                for node_json in self.room_json_map[&room_id]["nodes"].members() {
-                    let node_id = node_json["id"].as_usize().unwrap();
-                    if !node_set.contains(&node_id) {
-                        error!(
-                            "Node ID not covered in twin node tiles: {}:{}",
-                            room.name, node_id
-                        );
-                    }
-                }
-            }
-
-            for y in 0..room.map.len() {
-                for x in 0..room.map[0].len() {
-                    if room.map[y][x] == 1 && !tile_set.contains(&(x, y)) {
-                        error!("Node tile not covered: {}:({}, {})", room.name, x, y);
-                    }
-                }
-            }
+            self.room_shape
+                .insert(room_id, (room.map[0].len(), room.map.len()));
         }
         self.room_geometry = room_geometry;
         Ok(())
@@ -4345,6 +4969,31 @@ impl GameData {
         Ok(())
     }
 
+    fn load_map_tile_data(&mut self, path: &Path) -> Result<()> {
+        let map_tile_data_str = std::fs::read_to_string(path)
+            .with_context(|| format!("Unable to load map tile data at {}", path.display()))?;
+        let map_tile_data_file: MapTileDataFile = serde_json::from_str(&map_tile_data_str)?;
+        self.map_tile_data = map_tile_data_file.rooms;
+        for room in &mut self.map_tile_data {
+            for tile in &mut room.map_tiles {
+                tile.heated = room.heated;
+                if let Some(liquid_level) = room.liquid_level {
+                    if (tile.coords.1 as f32) <= liquid_level - 1.0 {
+                        tile.liquid_level = None;
+                    } else if (tile.coords.1 as f32) >= liquid_level {
+                        tile.liquid_level = Some(0.0);
+                    } else {
+                        tile.liquid_level = Some(liquid_level.fract());
+                    }
+                }
+                if tile.liquid_level.is_some() {
+                    tile.liquid_type = room.liquid_type;
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub fn load(
         sm_json_data_path: &Path,
         room_geometry_path: &Path,
@@ -4354,6 +5003,7 @@ impl GameData {
         title_screen_path: &Path,
         reduced_flashing_path: &Path,
         strat_videos_path: &Path,
+        map_tile_path: &Path,
     ) -> Result<GameData> {
         let mut game_data = GameData::default();
         game_data.sm_json_data_path = sm_json_data_path.to_owned();
@@ -4364,6 +5014,31 @@ impl GameData {
         game_data.load_items_and_flags()?;
         game_data.load_tech()?;
         game_data.load_helpers()?;
+
+        game_data.area_order = vec![
+            "Central Crateria",
+            "West Crateria",
+            "East Crateria",
+            "Blue Brinstar",
+            "Green Brinstar",
+            "Pink Brinstar",
+            "Red Brinstar",
+            "Kraid Brinstar",
+            "East Upper Norfair",
+            "West Upper Norfair",
+            "Crocomire Upper Norfair",
+            "West Lower Norfair",
+            "East Lower Norfair",
+            "Wrecked Ship",
+            "Outer Maridia",
+            "Pink Inner Maridia",
+            "Yellow Inner Maridia",
+            "Green Inner Maridia",
+            "Tourian",
+        ]
+        .into_iter()
+        .map(|x| x.to_string())
+        .collect();
 
         // Patch the h_heatProof and h_heatResistant to take into account the complementary suit
         // patch, where only Varia (and not Gravity) provides heat protection:
@@ -4383,42 +5058,79 @@ impl GameData {
             "name": "h_lavaProof",
             "requires": ["Varia", "Gravity"],
         };
+        // Both Varia and Gravity are required to provide full enemy damage reduction:
+        *game_data
+            .helper_json_map
+            .get_mut("h_fullEnemyDamageReduction")
+            .unwrap() = json::object! {
+            "name": "h_fullEnemyDamageReduction",
+            "requires": ["Varia", "Gravity"],
+        };
+
         // Gate glitch leniency
         *game_data
             .helper_json_map
-            .get_mut("h_BlueGateGlitchLeniency")
+            .get_mut("h_blueGateGlitchLeniency")
             .unwrap() = json::object! {
-            "name": "h_BlueGateGlitchLeniency",
-            "requires": ["i_BlueGateGlitchLeniency"],
+            "name": "h_blueGateGlitchLeniency",
+            "requires": ["i_blueGateGlitchLeniency"],
         };
         *game_data
             .helper_json_map
-            .get_mut("h_GreenGateGlitchLeniency")
+            .get_mut("h_greenGateGlitchLeniency")
             .unwrap() = json::object! {
-            "name": "h_GreenGateGlitchLeniency",
-            "requires": ["i_GreenGateGlitchLeniency"],
+            "name": "h_greenGateGlitchLeniency",
+            "requires": ["i_greenGateGlitchLeniency"],
         };
         *game_data
             .helper_json_map
-            .get_mut("h_HeatedBlueGateGlitchLeniency")
+            .get_mut("h_heatedBlueGateGlitchLeniency")
             .unwrap() = json::object! {
-            "name": "h_HeatedBlueGateGlitchLeniency",
-            "requires": ["i_HeatedBlueGateGlitchLeniency"],
+            "name": "h_heatedBlueGateGlitchLeniency",
+            "requires": ["i_heatedBlueGateGlitchLeniency"],
         };
         *game_data
             .helper_json_map
-            .get_mut("h_HeatedGreenGateGlitchLeniency")
+            .get_mut("h_heatedGreenGateGlitchLeniency")
             .unwrap() = json::object! {
-            "name": "h_HeatedGreenGateGlitchLeniency",
-            "requires": ["i_HeatedGreenGateGlitchLeniency"],
+            "name": "h_heatedGreenGateGlitchLeniency",
+            "requires": ["i_heatedGreenGateGlitchLeniency"],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_bombIntoCrystalFlashClipLeniency")
+            .unwrap() = json::object! {
+            "name": "h_bombIntoCrystalFlashClipLeniency",
+            "requires": ["i_bombIntoCrystalFlashClipLeniency"],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_jumpIntoCrystalFlashClipLeniency")
+            .unwrap() = json::object! {
+            "name": "h_jumpIntoCrystalFlashClipLeniency",
+            "requires": ["i_jumpIntoCrystalFlashClipLeniency"],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_XModeSpikeHitLeniency")
+            .unwrap() = json::object! {
+            "name": "h_XModeSpikeHitLeniency",
+            "requires": ["i_XModeSpikeHitLeniency"],
+        };
+        *game_data
+            .helper_json_map
+            .get_mut("h_XModeThornHitLeniency")
+            .unwrap() = json::object! {
+            "name": "h_XModeThornHitLeniency",
+            "requires": ["i_XModeThornHitLeniency"],
         };
 
         // Other:
         *game_data
             .helper_json_map
-            .get_mut("h_AllItemsSpawned")
+            .get_mut("h_allItemsSpawned")
             .unwrap() = json::object! {
-            "name": "h_AllItemsSpawned",
+            "name": "h_allItemsSpawned",
             "requires": ["f_AllItemsSpawn"]  // internal flag "f_AllItemsSpawn" gets set at start if QoL option enabled
         };
         *game_data
@@ -4430,16 +5142,16 @@ impl GameData {
         };
         *game_data
             .helper_json_map
-            .get_mut("h_canActivateBombTorizo")
+            .get_mut("h_activateBombTorizo")
             .unwrap() = json::object! {
-            "name": "h_canActivateBombTorizo",
+            "name": "h_activateBombTorizo",
             "requires": [],
         };
         *game_data
             .helper_json_map
-            .get_mut("h_canActivateAcidChozo")
+            .get_mut("h_activateAcidChozo")
             .unwrap() = json::object! {
-            "name": "h_canActivateAcidChozo",
+            "name": "h_activateAcidChozo",
             "requires": [{
                 "or": ["SpaceJump", "f_AcidChozoWithoutSpaceJump"]
             }],
@@ -4481,13 +5193,6 @@ impl GameData {
         };
         *game_data
             .helper_json_map
-            .get_mut("h_EtecoonDoorSpawnFix")
-            .unwrap() = json::object! {
-            "name": "h_EtecoonDoorSpawnFix",
-            "requires": [],
-        };
-        *game_data
-            .helper_json_map
             .get_mut("h_SupersDoubleDamageMotherBrain")
             .unwrap() = json::object! {
             "name": "h_SupersDoubleDamageMotherBrain",
@@ -4508,13 +5213,21 @@ impl GameData {
             "name": "h_MissileRefillStationAllAmmo",
             "requires": ["i_ammoRefillAll"],
         };
+        // Energy station refill
+        *game_data
+            .helper_json_map
+            .get_mut("h_useEnergyRefillStation")
+            .unwrap() = json::object! {
+            "name": "h_useEnergyRefillStation",
+            "requires": ["i_energyStationRefill"],
+        };
 
         // Wall on right side of Tourian Escape Room 1 does not spawn in the randomizer:
         *game_data
             .helper_json_map
-            .get_mut("h_AccessTourianEscape1RightDoor")
+            .get_mut("h_openTourianEscape1RightDoor")
             .unwrap() = json::object! {
-            "name": "h_AccessTourianEscape1RightDoor",
+            "name": "h_openTourianEscape1RightDoor",
             "requires": [],
         };
 
@@ -4539,13 +5252,7 @@ impl GameData {
             .get_mut("h_MainHallElevatorFrames")
             .unwrap() = json::object! {
             "name": "h_MainHallElevatorFrames",
-            "requires": [
-                "i_MainHallElevatorFrames",
-                {"or":[
-                    "h_heatResistant",
-                    {"resourceCapacity": [{"type": "RegularEnergy", "count": 149}]}
-                ]}
-            ],
+            "requires": ["i_MainHallElevatorFrames"],
         };
         *game_data
             .helper_json_map
@@ -4570,6 +5277,7 @@ impl GameData {
         game_data.load_escape_timings(escape_timings_path)?;
         game_data.load_start_locations(start_locations_path)?;
         game_data.load_hub_locations(hub_locations_path)?;
+        game_data.load_map_tile_data(map_tile_path)?;
         game_data.area_names = vec![
             "Crateria",
             "Brinstar",

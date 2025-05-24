@@ -9,9 +9,9 @@ lorom
 
 incsrc "constants.asm"
 
-; In the game header, expand SRAM from 8 KB to 16 KB.
+; In the game header, expand SRAM from 8 KB to 32 KB.
 org $80FFD8
-    db 4
+    db 5
 
 ; Modify SRAM size check to work for the new SRAM size.
 ; We just check that the SRAM can remember the incrementing sequence. 
@@ -23,6 +23,7 @@ org $8086B5 : LDX #$3FFE
 org $8086B8 : STA $700000, x
 org $8086C4 : LDX #$3FFE
 org $8086D2 : LDX #$3FFE
+
 
 org $848CA6
     jsl activate_map_station_hook
@@ -165,6 +166,8 @@ activate_map_station_hook:
     sta $702700, x
     ; fully reveal specific tiles that contain area-transition markers,
     ; since those would not show correctly in the partially-revealed palette:
+    ; TODO: look into removing this. It shouldn't be needed anymore, since we switched
+    ; to using the "cross-area reveal" table to cover these same-area reveal as well.
     lda $829727, x
     ora $702000, x
     sta $702000, x
@@ -290,8 +293,7 @@ org $82945C      ; We keep this instruction in the same place so that item_dots_
 .BRANCH_PARTIAL_REVEALED_MAP_TILE:
     REP #$30
     LDA [$00],y            ;\
-    AND #$EFFF             ; Use palette 3 (instead of 6)
-    ORA #$0400             ; 
+    AND #$EFFF             ; Use palette 3 (instead of 7)
     STA [$03],y            ;/
     BRA .BRANCH_NEXT     ; Go to BRANCH_NEXT
 
@@ -299,8 +301,8 @@ org $82945C      ; We keep this instruction in the same place so that item_dots_
     ROL $26
     ROL $28
     REP #$30
-    LDA [$00],y            ;\ Use palette 2 (instead of 6)
-    AND #$EFFF             ;} [$03] + [Y] = [[$00] + [Y]] & ~1000h
+    LDA [$00],y            ;\ Use palette 2 (instead of 7)
+    AND #$EBFF             ;} [$03] + [Y] = [[$00] + [Y]] & ~1400h
     STA [$03],y            ;/
     BRA .BRANCH_NEXT     ; Go to BRANCH_NEXT
 
@@ -321,10 +323,10 @@ org $90A9C1
     ; PC should now be exactly $90A9D0:
     print "$90A9D0 =? ", pc
 
-; use palette 6 for unexplored tile in HUD minimap
-org $90AAB4 : ORA #$3800  ; row 0, was: ORA #$2C00
-org $90AADB : ORA #$3800  ; row 1, was: ORA #$2C00
-org $90AB18 : ORA #$3800  ; row 2, was: ORA #$2C00
+; use palette 7 for unexplored tile in HUD minimap
+org $90AAB4 : ORA #$3C00  ; row 0, was: ORA #$2C00
+org $90AADB : ORA #$3C00  ; row 1, was: ORA #$2C00
+org $90AB18 : ORA #$3C00  ; row 2, was: ORA #$2C00
 
 ; Patch HUD mini-map drawing to use map revealed bits instead of map data bits
 ; Vanilla logic: tile is non-blank if map station obtained AND map data bit is set
@@ -363,3 +365,52 @@ org $829EC6
 ;$82:9EE3 85 08       STA $08    [$7E:0008]  ;|
 ;$82:9EE5 A9 F7 07    LDA #$07F7             ;} $06 = $00:07F7 (map tiles explored)
 ;$82:9EE8 85 06       STA $06    [$7E:0006]  ;/
+
+; Patches below re-enable mini-map with boss deaths
+; ridley
+org $8081b1
+    jsl fix_boss
+
+; croc
+org $a490c4
+    jsr fix_minimap
+
+; dray
+org $a592d7
+    jsl fix_boss
+
+; kraid
+org $a7c825
+    jsl fix_boss
+
+; phant
+org $a7db7e
+    jsl fix_boss
+
+; mb
+org $a9b275
+    jsl fix_mb : nop : nop
+
+!bank_a4_free_space_start = $a4f6d0
+!bank_a4_free_space_end = $a4f6f0
+
+org !bank_a4_free_space_start
+fix_minimap:
+    stz $5f7                      ; enable mini-map
+    lda #$ffff
+    sta !last_samus_map_x         ; null x,y to induce update
+    sta !last_samus_map_y
+    rts
+
+fix_boss:
+    jsr fix_minimap
+    lda $7ed828,x                 ; replaced code
+    rtl
+
+fix_mb:
+    jsr fix_minimap
+    ldy #$9534                    ; replaced code
+    ldx #$0122
+    rtl
+
+warnpc !bank_a4_free_space_end

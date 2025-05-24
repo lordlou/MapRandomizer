@@ -55,7 +55,7 @@ fn run_scenario(
         }
     }
 
-    let weapon_mask = game_data.get_weapon_mask(&items);
+    let weapon_mask = game_data.get_weapon_mask(&items, &difficulty.tech);
     let global_state = GlobalState {
         inventory: Inventory {
             items: items,
@@ -64,19 +64,15 @@ fn run_scenario(
             max_reserves: 0,
             max_supers: super_cnt,
             max_power_bombs: 0,
+            collectible_missile_packs: 0,
+            collectible_super_packs: 0,
+            collectible_power_bomb_packs: 0,
         },
         flags: vec![false; game_data.flag_isv.keys.len()],
         doors_unlocked: vec![],
         weapon_mask,
     };
-    let local_state = LocalState {
-        energy_used: 0,
-        reserves_used: 0,
-        missiles_used: 0,
-        supers_used: 0,
-        power_bombs_used: 0,
-        shinecharge_frames_remaining: 0,
-    };
+    let local_state = LocalState::new();
     let locked_door_data = LockedDoorData {
         locked_doors: vec![],
         locked_door_node_map: HashMap::new(),
@@ -124,6 +120,7 @@ fn main() -> Result<()> {
     let tech_path = Path::new("data/tech_data.json");
     let notable_path = Path::new("data/notable_data.json");
     let presets_path = Path::new("data/presets");
+    let map_tiles_path = Path::new("data/map_tiles.json");
 
     let game_data = GameData::load(
         sm_json_data_path,
@@ -134,6 +131,7 @@ fn main() -> Result<()> {
         title_screen_path,
         reduced_flashing_path,
         strat_videos_path,
+        map_tiles_path,
     )?;
 
     let preset_data = PresetData::load(tech_path, notable_path, presets_path, &game_data)?;

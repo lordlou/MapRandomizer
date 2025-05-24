@@ -1,6 +1,9 @@
 function changeSamusSprite() {
     var sprites = document.getElementsByClassName("sprite");
     var selectedSpriteName = document.getElementById("samusSprite").value;
+    if (selectedSpriteName == "") {
+        selectedSpriteName = "samus_vanilla";
+    }
     var selectedSprite = document.getElementById("spriteButton-" + selectedSpriteName);
 
     // Unhighlight other sprites
@@ -76,7 +79,7 @@ function roomThemingChanged() {
         document.getElementById("tileTheme").value = "none";
     }
     if (document.getElementById("roomThemingTiling").checked) {
-        document.getElementById("roomPalettesAreaThemed").checked = true;
+        document.getElementById("roomPalettesVanilla").checked = true;
         document.getElementById("tileTheme").value = "area_themed";
     }
 }

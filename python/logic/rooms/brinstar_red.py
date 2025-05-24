@@ -165,6 +165,7 @@ rooms = [
             4: [(0, 4)],  # bottom right door
             5: [(1, 3), (2, 3)],  # top right door
             6: [(0, 0), (0, 1), (0, 2)],  # elevator
+            7: [(1, 3), (2, 3)],  # indirect g-mode junction
         },
     ),
     Room(
@@ -198,9 +199,8 @@ rooms = [
             Item(0, 1, 0x788CA),
         ],
         node_tiles={
-            1: [(1, 0)],  # right door
+            1: [(0, 0), (1, 0)],  # right door
             2: [(0, 1)],  # power bomb
-            3: [(0, 0)],  # junction
         },
     ),
     Room(

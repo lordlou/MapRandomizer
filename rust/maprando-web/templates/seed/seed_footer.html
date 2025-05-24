@@ -59,6 +59,12 @@
         Repeat to cycle through previous saves.
         <li>Press L + R + Up + X to activate Spin Lock, temporarily preventing up/down inputs from breaking spin.
         Pressing shot will cancel this mode.
+        {% if settings.quality_of_life_settings.disableable_etanks %}
+        <li>Press Select + X in the pause equipment screen to disable E-Tanks (one at a time). Press Select + Y to re-enable them.
+        {% endif %}
+        {% if settings.quality_of_life_settings.reserve_backward_transfer %}
+        <li>Set reserves to Manual and hold B + Up in the pause equipment screen to transfer energy to reserve tanks.
+        {% endif %}
         </ul>
         {% endif %}
         <h6>Map info</h6>
@@ -107,11 +113,7 @@
     <sup>1</sup>This can be done in the following rooms: Pit Room (old Mother Brain room), Baby Kraid Room, Metal Pirates Room,
     and Plasma Room. These are the rooms that involve killing Space Pirates to unlock the doors in the vanilla game.
     Note that in the Pit Room, the 
-    {% if all_items_spawn %}
-    enemies and gray doors
-    {% else %}
-    enemies, gray doors, and item 
-    {% endif %}
+    {% if all_items_spawn +%} enemies and gray doors {%+ else +%} enemies, gray doors, and item {%+ endif %}
     only spawn after Morph and Missiles are collected (regardless of whether Zebes is awake).
     </small>
 </div>
@@ -120,7 +122,7 @@
 <div id="footnote-spoiler" style="display:none;">
     <a>
     <small>
-    <sup>2</sup>Spoiler log <a href="data/spoiler.json">JSON</a>, map PNG (<a href="data/map-assigned.png">assigned room colors</a>, <a href="data/map-vanilla.png">vanilla room colors</a>)</small>
+    <sup>2</sup>Spoiler log <a href="data/spoiler.json">JSON</a>, map PNG (<a href="data/map-explored.png">explored room colors</a>, <a href="data/map-outline.png">room outlines</a>)</small>
     </small>
 </div>
 <script>
@@ -132,7 +134,7 @@ if (window.unlockedTimestampString != "") {
 <div>
     <a id="footnote-spoiler">
     <small>
-    <sup>2</sup>Spoiler log <a href="data/spoiler.json">JSON</a>, map PNG (<a href="data/map-assigned.png">assigned room colors</a>, <a href="data/map-vanilla.png">vanilla room colors</a>)</small>
+    <sup>2</sup>Spoiler log <a href="data/spoiler.json">JSON</a>, map PNG (<a href="data/map-explored.png">explored room colors</a>, <a href="data/map-outline.png">room outlines</a>)</small>
     </small>
 </div>
 {% endif %}

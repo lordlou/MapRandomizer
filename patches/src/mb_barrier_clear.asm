@@ -1,121 +1,132 @@
 arch snes.cpu
 lorom
 
-!bank_84_freespace_start = $84F200
-!bank_84_freespace_end = $84F300
+!bank_84_free_space_start = $84F200
+!bank_84_free_space_end = $84F300
 
-org $83AAD2
-    dw $EB00  ; Set door ASM for Rinka Room toward Mother Brain
+!bank_b8_free_space_start = $B88100   ; must match address in patch.asm
+!bank_b8_free_space_end = $B88300
 
-macro check_objective(i,plm)
-    lda.w #$007E
-    sta.b $02
-    lda.l ObjectiveAddrs+<i>
-    sta.b $00
-    lda.l ObjectiveBitmasks+<i>
-    sta.b $04
-    lda.b [$00]
-    bit.b $04
-    beq ?skip  ; skip clearing if objective not done
+incsrc "constants.asm"
 
+macro clear_plm(plm)
     jsl $8483D7
     db <plm>
     db $04
     dw clear_barrier_plm
-?skip:
 endmacro
 
-; Free space in bank $8F
-org $8FEB00
-    ; clear barriers in mother brain room based on main bosses killed:
-    %check_objective(0,$39)
-    %check_objective(2,$38)
-    %check_objective(4,$37)
-    %check_objective(6,$36)
+; Hook the code that checks whether to trigger post-MB1 cutscene:
+; (based on glass being broken, MB1 health at zero, etc.)
+org $A987E4
+    jsl mb1_trigger_hook
 
-motherbrain:
-    lda $7ed82d
-    bit #$0001
-    beq done  ; skip clearing if mother brain isn't dead
+; Free space in bank $B8
+org !bank_b8_free_space_start
+; This must be placed at the start of the free space, to match the location expected in patch.rs
+door_asm_start:
+; 2 potential scenarios for barriers:
+; obj_num <= 4, clear individually from left to right
+; obj_num > 4, maintain all 4 until all obj's cleared
+    lda !objectives_num : and #$7FFF
+    cmp #$0005
+    bcc normal_objs               ; <= 4 ?
 
-    ; Spawn Mother Brain's room escape door:
-    jsl $8483D7
-    dw  $0600,  $B677
+    ldx #$0000
+    tay
+; iterate through all obj's
+.check_lp
+    jsr check_objective
+    beq done
+    dey
+    bne .check_lp
 
-    ; Remove invisible spikes where Mother Brain used to be:
-    jsl remove_spikes
+; either none or all cleared
+clear_all:
+    ldx #$FFFB
+    bra start_obj_checks
+
+; # obj's - 4
+normal_objs:
+    sec
+    sbc #$0004
+    tax
+
+; starting value of X determines check/clear behavior
+; X = 0 for stock behavior (4 objs)
+; X < 0 will clear until 0, then check (for 0-3 objs)
+; X = -4 will clear all objs
+start_obj_checks:
+    jsr check_objective
+    beq .skip_1
+    %clear_plm($36)
+.skip_1
+    jsr check_objective
+    beq .skip_2
+    %clear_plm($37)
+.skip_2
+    jsr check_objective
+    beq .skip_3
+    %clear_plm($38)
+.skip_3
+    jsr check_objective
+    beq done
+    %clear_plm($39)
+
 done:
     rts
-
-warnpc $8FEBC0
-org $8FEBC0
-ObjectiveAddrs:
-    dw $D829, $D82A, $D82B, $D82C
-ObjectiveBitmasks:
-    dw $0001, $0001, $0001, $0001
-
-; OBJECTIVE: None (must match address in patch.rs)
-warnpc $8FECA0
-org $8FECA0
-
-    jsl $8483D7
-    db $39
-    db $04
-    dw clear_barrier_plm
-
-    jsl $8483D7
-    db $38
-    db $04
-    dw clear_barrier_plm
-
-    jsl $8483D7
-    db $37
-    db $04
-    dw clear_barrier_plm
-
-    jsl $8483D7
-    db $36
-    db $04
-    dw clear_barrier_plm
-
-    jmp motherbrain
-
-warnpc $8FED00
-
-
-
-org $83AAEA
-    dw $EE00  ; Set door ASM for Tourian Escape Room 1 toward Mother Brain
-
-org $83AAE3
-    db $00    ; Set door direction = $00  (to make door not close behind Samus)
-
-; Custom door ASM for Tourian Escape Room 1 toward Mother Brain
-org $8FEE00
-    jsl $8483D7            ;\
-    db  $00, $06           ;|
-    dw  $B677              ;} Spawn Mother Brain's room escape door
-
-    ; Remove invisible spikes where Mother Brain used to be:
-    jsl remove_spikes
-
+    
+check_objective:
+; X >= 0 obj to check; X < 0 = return obj cleared
+; also increments X
+    phx
+    txa
+    bmi .bypass_check
+    asl
+    tax
+    lda.w #$007E
+    sta.b $02
+    lda.l !objectives_addrs, X
+    sta.b $00
+    lda.l !objectives_bitmasks, X
+    plx
+    inx
+    sta.b $04
+    lda.b [$00]
+    bit.b $04
+    rts
+.bypass_check
+    plx
+    inx
+    lda #$0001
     rts
 
-; Remove invisible spikes where Mother Brain used to be (common routine used by both the left and right door ASMs)
-org !bank_84_freespace_start
+; returns: carry set if conditions to trigger MB1 cutscene are satisfied
+; (glass broken and all objectives complete)
+mb1_trigger_hook:
+    jsl $808233  ; run hi-jacked code: check if glass is broken
+    bcc .done
 
-remove_spikes:
-    ; Remove invisible spikes
-    lda #$8000   ; solid tile
-    ldx #$0192   ; offset to spike above Mother Brain right
-    jsr $82B4
-    lda #$8000   ; solid tile
-    ldx #$0210   ; offset to spike above Mother Brain center-right
-    jsr $82B4
-    lda #$8000   ; solid tile
-    ldx #$0494   ; offset to spike below Mother Brain right
-    jsr $82B4
+    lda !objectives_num : and #$7FFF
+    beq .all_obj_cleared
+
+    ldx #$0000
+    tay
+.check_lp:
+    jsr check_objective
+    beq .obj_not_cleared
+    dey
+    bne .check_lp
+.all_obj_cleared:
+    sec
     rtl
+.obj_not_cleared:
+    clc
+.done:
+    rtl
+warnpc !bank_b8_free_space_end
+
+org !bank_84_free_space_start
 
 clear_barrier_plm:
     dw $B3D0, clear_barrier_inst
@@ -167,7 +178,7 @@ pirates_set_flag:
 .not_metal_pirates_room:
     rtl
 
-warnpc !bank_84_freespace_end
+warnpc !bank_84_free_space_end
 
 ; bowling chozo hook
 org $84D66B

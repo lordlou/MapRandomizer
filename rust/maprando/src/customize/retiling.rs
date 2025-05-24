@@ -4,7 +4,7 @@ use super::mosaic::MosaicTheme;
 use crate::patch::{apply_ips_patch, bps::BPSPatch, get_room_state_ptrs, snes2pc, Rom};
 use anyhow::{Context, Result};
 use hashbrown::HashMap;
-use maprando_game::{AreaIdx, DoorPtr, GameData, Map, RoomPtr, RoomStateIdx};
+use maprando_game::{DoorPtr, GameData, Map, RoomPtr, RoomStateIdx};
 use rand::{Rng, SeedableRng};
 
 use super::TileTheme;
@@ -48,30 +48,15 @@ pub fn apply_retiling(
     theme: &TileTheme,
     mosaic_themes: &[MosaicTheme],
 ) -> Result<()> {
-    let area_theme_map: HashMap<(AreaIdx, usize), String> = vec![
-        ((0, 0), "OuterCrateria"),
-        ((0, 1), "InnerCrateria"),
-        ((1, 0), "GreenBrinstar"),
-        ((1, 1), "RedBrinstar"),
-        ((2, 0), "UpperNorfair"),
-        ((2, 1), "LowerNorfair"),
-        ((3, 0), "WreckedShip"),
-        ((3, 1), "WreckedShip"),
-        ((4, 0), "WestMaridia"),
-        ((4, 1), "YellowMaridia"),
-        ((5, 0), "MetroidHabitat"),
-        ((5, 1), "MechaTourian"),
-    ]
-    .into_iter()
-    .map(|(x, y)| (x, y.to_owned()))
-    .collect();
-
     let patch_names = vec![
         "Scrolling Sky v1.6",
         "Area FX",
         "Area Palettes",
         "Area Palette Glows",
         "Bowling",
+        "Item Loading",
+        "Fake Lava",
+        "in_place_level_data",
     ];
     for name in &patch_names {
         let patch_path_str = format!("../patches/ips/{}.ips", name);
@@ -111,7 +96,32 @@ pub fn apply_retiling(
                 if let Some(map) = map {
                     let area = map.area[room_idx];
                     let sub_area = map.subarea[room_idx];
-                    area_theme_map[&(area, sub_area)].clone()
+                    let sub_sub_area = if map.subsubarea.len() > 0 {
+                        map.subsubarea[room_idx]
+                    } else {
+                        // For backward compatibility, use subsubarea 0 for old maps that didn't have a subsubarea.
+                        0
+                    };
+                    match (area, sub_area, sub_sub_area) {
+                        (0, 0, _) => "OuterCrateria",
+                        (0, 1, 0) => "InnerCrateria",
+                        (0, 1, 1) => "BlueBrinstar",
+                        (1, 0, 0) => "GreenBrinstar",
+                        (1, 0, 1) => "PinkBrinstar",
+                        (1, 1, _) => "RedBrinstar",
+                        (2, 0, _) => "UpperNorfair",
+                        (2, 1, _) => "LowerNorfair",
+                        (3, _, _) => "WreckedShip",
+                        (4, 0, _) => "WestMaridia",
+                        (4, 1, _) => "YellowMaridia",
+                        (5, 0, _) => "MetroidHabitat",
+                        (5, 1, _) => "MechaTourian",
+                        _ => panic!(
+                            "unexpected area/subarea/subsubarea combination: ({}, {}, {})",
+                            area, sub_area, sub_sub_area
+                        ),
+                    }
+                    .to_string()
                 } else {
                     // Fall back to Base theme in case map is unavailable
                     // (since it wasn't saved off in earlier randomizer versions)

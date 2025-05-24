@@ -5,14 +5,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub struct RandomizerSettings {
     pub version: usize,
-    pub name: String,
+    pub name: Option<String>,
     pub skill_assumption_settings: SkillAssumptionSettings,
     pub item_progression_settings: ItemProgressionSettings,
     pub quality_of_life_settings: QualityOfLifeSettings,
-    pub objectives_mode: ObjectivesMode,
+    pub objective_settings: ObjectiveSettings,
     pub map_layout: String,
     pub doors_mode: DoorsMode,
-    pub start_location_mode: StartLocationMode,
+    pub start_location_settings: StartLocationSettings,
     pub save_animals: SaveAnimals,
     pub other_settings: OtherSettings,
     #[serde(default)]
@@ -29,6 +29,9 @@ pub struct SkillAssumptionSettings {
     pub resource_multiplier: f32,
     pub gate_glitch_leniency: i32,
     pub door_stuck_leniency: i32,
+    pub bomb_into_cf_leniency: i32,
+    pub jump_into_cf_leniency: i32,
+    pub spike_xmode_leniency: i32,
     pub phantoon_proficiency: f32,
     pub draygon_proficiency: f32,
     pub ridley_proficiency: f32,
@@ -65,8 +68,9 @@ pub struct ItemProgressionSettings {
     pub spazer_before_plasma: bool,
     pub item_pool_preset: Option<ItemPoolPreset>,
     pub stop_item_placement_early: bool,
+    pub ammo_collect_fraction: f32,
     pub item_pool: Vec<ItemCount>,
-    pub starting_items_preset: StartingItemsPreset,
+    pub starting_items_preset: Option<StartingItemsPreset>,
     pub starting_items: Vec<ItemCount>,
     pub key_item_priority: Vec<KeyItemPrioritySetting>,
     pub filler_items: Vec<FillerItemPrioritySetting>,
@@ -119,6 +123,7 @@ pub struct QualityOfLifeSettings {
     pub fast_elevators: bool,
     pub fast_doors: bool,
     pub fast_pause_menu: bool,
+    pub fanfares: Fanfares,
     // Samus control
     pub respin: bool,
     pub infinite_space_jump: bool,
@@ -127,15 +132,173 @@ pub struct QualityOfLifeSettings {
     pub all_items_spawn: bool,
     pub acid_chozo: bool,
     pub remove_climb_lava: bool,
+    // Energy and reserves
+    pub etank_refill: ETankRefill,
+    pub energy_station_reserves: bool,
+    pub disableable_etanks: bool,
+    pub reserve_backward_transfer: bool,
     // Other:
     pub buffed_drops: bool,
     pub early_save: bool,
 }
 
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq, Eq, Hash)]
+pub enum Objective {
+    Kraid,
+    Phantoon,
+    Draygon,
+    Ridley,
+    SporeSpawn,
+    Crocomire,
+    Botwoon,
+    GoldenTorizo,
+    MetroidRoom1,
+    MetroidRoom2,
+    MetroidRoom3,
+    MetroidRoom4,
+    BombTorizo,
+    BowlingStatue,
+    AcidChozoStatue,
+    PitRoom,
+    BabyKraidRoom,
+    PlasmaRoom,
+    MetalPiratesRoom,
+}
+
+impl Objective {
+    pub fn get_flag_name(&self) -> &'static str {
+        use Objective::*;
+        match self {
+            Kraid => "f_DefeatedKraid",
+            Phantoon => "f_DefeatedPhantoon",
+            Draygon => "f_DefeatedDraygon",
+            Ridley => "f_DefeatedRidley",
+            SporeSpawn => "f_DefeatedSporeSpawn",
+            Crocomire => "f_DefeatedCrocomire",
+            Botwoon => "f_DefeatedBotwoon",
+            GoldenTorizo => "f_DefeatedGoldenTorizo",
+            MetroidRoom1 => "f_KilledMetroidRoom1",
+            MetroidRoom2 => "f_KilledMetroidRoom2",
+            MetroidRoom3 => "f_KilledMetroidRoom3",
+            MetroidRoom4 => "f_KilledMetroidRoom4",
+            BombTorizo => "f_DefeatedBombTorizo",
+            BowlingStatue => "f_UsedBowlingStatue",
+            AcidChozoStatue => "f_UsedAcidChozoStatue",
+            PitRoom => "f_ClearedPitRoom",
+            BabyKraidRoom => "f_ClearedBabyKraidRoom",
+            PlasmaRoom => "f_ClearedPlasmaRoom",
+            MetalPiratesRoom => "f_ClearedMetalPiratesRoom",
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub enum ObjectiveSetting {
+    No,
+    Maybe,
+    Yes,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+pub struct ObjectiveOption {
+    pub objective: Objective,
+    pub setting: ObjectiveSetting,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
+pub enum ObjectiveScreen {
+    Disabled,
+    Enabled,
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+pub struct ObjectiveSettings {
+    pub preset: Option<String>,
+    pub objective_options: Vec<ObjectiveOption>,
+    pub min_objectives: i32,
+    pub max_objectives: i32,
+    pub objective_screen: ObjectiveScreen,
+}
+
+pub struct ObjectiveGroup {
+    pub name: String,
+    pub objectives: Vec<(String, String)>, // (internal name, display name)
+}
+
+pub fn get_objective_groups() -> Vec<ObjectiveGroup> {
+    vec![
+        ObjectiveGroup {
+            name: "Bosses".to_string(),
+            objectives: vec![
+                ("Kraid", "Kraid"),
+                ("Phantoon", "Phantoon"),
+                ("Draygon", "Draygon"),
+                ("Ridley", "Ridley"),
+            ]
+            .into_iter()
+            .map(|(x, y)| (x.to_string(), y.to_string()))
+            .collect(),
+        },
+        ObjectiveGroup {
+            name: "Minibosses".to_string(),
+            objectives: vec![
+                ("SporeSpawn", "Spore Spawn"),
+                ("Crocomire", "Crocomire"),
+                ("Botwoon", "Botwoon"),
+                ("GoldenTorizo", "Golden Torizo"),
+            ]
+            .into_iter()
+            .map(|(x, y)| (x.to_string(), y.to_string()))
+            .collect(),
+        },
+        ObjectiveGroup {
+            name: "Pirates".to_string(),
+            objectives: vec![
+                ("PitRoom", "Pit Room"),
+                ("BabyKraidRoom", "Baby Kraid"),
+                ("PlasmaRoom", "Plasma Room"),
+                ("MetalPiratesRoom", "Metal Pirates"),
+            ]
+            .into_iter()
+            .map(|(x, y)| (x.to_string(), y.to_string()))
+            .collect(),
+        },
+        ObjectiveGroup {
+            name: "Chozos".to_string(),
+            objectives: vec![
+                ("BombTorizo", "Bomb Torizo"),
+                ("BowlingStatue", "Bowling"),
+                ("AcidChozoStatue", "Acid Statue"),
+            ]
+            .into_iter()
+            .map(|(x, y)| (x.to_string(), y.to_string()))
+            .collect(),
+        },
+        ObjectiveGroup {
+            name: "Metroids".to_string(),
+            objectives: vec![
+                ("MetroidRoom1", "Metroids 1"),
+                ("MetroidRoom2", "Metroids 2"),
+                ("MetroidRoom3", "Metroids 3"),
+                ("MetroidRoom4", "Metroids 4"),
+            ]
+            .into_iter()
+            .map(|(x, y)| (x.to_string(), y.to_string()))
+            .collect(),
+        },
+    ]
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+pub struct StartLocationSettings {
+    pub mode: StartLocationMode,
+    pub room_id: Option<usize>,
+    pub node_id: Option<usize>,
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub struct OtherSettings {
     pub wall_jump: WallJump,
-    pub etank_refill: ETankRefill,
     pub area_assignment: AreaAssignment,
     pub item_dot_change: ItemDotChange,
     pub transition_letters: bool,
@@ -201,6 +364,13 @@ pub enum ItemMarkers {
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
+pub enum Fanfares {
+    Vanilla,
+    Trimmed,
+    Off,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum ItemDotChange {
     Fade,
     Disappear,
@@ -229,10 +399,12 @@ pub enum StartLocationMode {
     Ship,
     Random,
     Escape,
+    Custom,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum AreaAssignment {
+    Ordered,
     Standard,
     Random,
 }
@@ -266,8 +438,9 @@ pub enum MapStationReveal {
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]
 pub enum SaveAnimals {
     No,
-    Maybe,
+    Optional,
     Yes,
+    Random,
 }
 
 #[derive(Clone, Copy, Serialize, Deserialize, Debug, PartialEq)]

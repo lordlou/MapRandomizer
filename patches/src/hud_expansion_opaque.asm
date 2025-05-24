@@ -1,7 +1,9 @@
 lorom
 
-!bank_85_free_space_start = $859643
-!bank_85_free_space_end = $8596B0
+!bank_80_free_space_start = $80E540
+!bank_80_free_space_end = $80E580
+!bank_85_free_space_start = $85A8B0
+!bank_85_free_space_end = $85A9B0
 
 ; Set this to the relative path between the assembler and this file (eg. ROMProject/ASM)
 ; If the assembler is in the same directory, then leave it as '.'
@@ -229,43 +231,45 @@ org $80A0ED
     ; add an injection to run the transition DMA at gameplay load
     JSR TransitionDMA_CalculateLayer2XPos ; A2F9
 
-; clear layer 3
-; This is rewritten to make it free up some space for the next function
-org $80A29C
-    PHP
-    LDX #$0002
-ClearLayer3_Loop:
-    REP #$20
-    LDA #$5880
-    STA $2116 ; DMA VRAM address
-    LDA.w ClearLayer3_DMA_Params,X
-    STA $4310 ; DMA Parameter/VRAM Address
-    LDA.w ClearLayer3_WRAM_Address,X
-    STA $4312 ; DMA WRAM Address
-    LDA #$0080
-    STA $4314 ; DMA WRAM Bank
-    LDA #$0780
-    STA $4315 ; DMA Bytes
-    SEP #$20
-    LDA.w ClearLayer3_VRAM_Inc_Value,X
-    STA $2115 ; VRAM Adress Increment Value
-    LDA #$02
-    STA $420B ; Start DMA
-    DEX
-    DEX
-    BPL ClearLayer3_Loop
-    PLP
-    RTL
+;; clear layer 3
+;; This is rewritten to make it free up some space for the next function
+;org $80A29C
+;    PHP
+;    LDX #$0002
+;ClearLayer3_Loop:
+;    REP #$20
+;    LDA #$5880
+;    STA $2116 ; DMA VRAM address
+;    LDA.w ClearLayer3_DMA_Params,X
+;    STA $4310 ; DMA Parameter/VRAM Address
+;    LDA.w ClearLayer3_WRAM_Address,X
+;    STA $4312 ; DMA WRAM Address
+;    LDA #$0080
+;    STA $4314 ; DMA WRAM Bank
+;    LDA #$0780
+;    STA $4315 ; DMA Bytes
+;    SEP #$20
+;    LDA.w ClearLayer3_VRAM_Inc_Value,X
+;    STA $2115 ; VRAM Adress Increment Value
+;    LDA #$02
+;    STA $420B ; Start DMA
+;    DEX
+;    DEX
+;    BPL ClearLayer3_Loop
+;    PLP
+;    RTL
+;
+;ClearLayer3_DMA_Params:
+;    DW $1908, $1808
+;ClearLayer3_WRAM_Address:
+;    DW #ClearLayer3_ClearTile+1, #ClearLayer3_ClearTile+0
+;ClearLayer3_VRAM_Inc_Value:
+;    DW $0080, $0000
+;ClearLayer3_ClearTile:
+;    DW $180F    ; palette 6
 
-ClearLayer3_DMA_Params:
-    DW $1908, $1808
-ClearLayer3_WRAM_Address:
-    DW #ClearLayer3_ClearTile+1, #ClearLayer3_ClearTile+0
-ClearLayer3_VRAM_Inc_Value:
-    DW $0080, $0000
-ClearLayer3_ClearTile:
-    DW $1C0F    ; using palette 7 instead of palette 6
 
+org !bank_80_free_space_start
 ; Added function
 TransitionDMA_CalculateLayer2XPos:
     ; New entry point into 'Calculate layer 2 X position'
@@ -276,8 +280,11 @@ TransitionDMA_CalculateLayer2XPos:
     SEP #$60
     JSR ExecuteTransitionDMAWithoutBlank
     PLP
+    JSR $A2F9  ; run hi-jacked instruction
+    RTS
 
-warnpc $80A2F9 : padbyte $FF : pad $80A2F9
+warnpc !bank_80_free_space_end
+;warnpc $80A2F9 : padbyte $FF : pad $80A2F9
 
 
 ;---------------------------------------
@@ -343,6 +350,27 @@ ClearLayer3_SetBank:
     LDA #$01
     STA $420B ; start DMA (channel 0)
 ClearLayer3_Return:
+
+    ; transfer message-box letters to VRAM, since these
+    ; could have gotten overwritten by Kraid Room.
+    rep #$20
+    LDA #$4600
+    STA $2116  ; VRAM (destination) address = $4600
+
+    lda #$BE00 ; source address = $BE00
+    sta $4302
+
+    ; Set source bank to $9A:
+    lda #$009A
+    sta $4304
+
+    lda #$0200
+    sta $4305 ; transfer size = $0200 bytes
+
+    sep #$20
+    lda #$01
+    sta $420B  ; perform DMA transfer on channel 1
+
     JSR $81F3 ; displaced code
     RTS
 
@@ -435,16 +463,17 @@ org $829580
 org $82E569
     LDA #$180F ; 184E
 
-; Message box button text table
-org $858426
-    DW $28C0 ;$28E0, ; A
-    DW $3CC1 ;$3CE1, ; B
-    DW $2CD7 ;$2CF7, ; X
-    DW $2CD8 ;$38F8, ; Y
-    DW $38FA ;$38D0, ; Select
-    DW $2CCB ;$38EB, ; L
-    DW $2CD1 ;$38F1, ; R
-    DW $280F ;$284E  ; Blank
+; Skipping this, since it is overwritten in map_area.asm:
+; ; Message box button text table
+; org $858426
+;     DW $28C0 ;$28E0, ; A
+;     DW $3CC1 ;$3CE1, ; B
+;     DW $2CD7 ;$2CF7, ; X
+;     DW $2CD8 ;$38F8, ; Y
+;     DW $38FA ;$38D0, ; Select
+;     DW $2CCB ;$38EB, ; L
+;     DW $2CD1 ;$38F1, ; R
+;     DW $280F ;$284E  ; Blank
 
 ; Digit tilemap on HUD because the numbers are moved
 org $809DBF

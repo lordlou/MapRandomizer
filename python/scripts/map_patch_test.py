@@ -7,10 +7,13 @@ import io
 import os
 
 
-input_rom_path = '/home/kerby/Downloads/Super Metroid Practice Hack-v2.6.1-tinystates-ntsc.sfc'
-output_rom_path = '/home/kerby/Downloads/prachack-2.6.1.smc'
+input_rom_path = '/home/kerby/Downloads/Super Metroid Practice Hack-v2.6.5-tinystates-ntsc.sfc'
+output_rom_path = '/home/kerby/Downloads/prachack-2.6.5.smc'
 orig_rom = Rom(open(input_rom_path, 'rb'))
 rom = Rom(open(input_rom_path, 'rb'))
+
+# disable practice hack behavior of moving Samus in misaligned door transitions:
+rom.write_u24(snes2pc(0x82e387), 0xe38ea9)  # LDA #$e38e  (restore vanilla code, to remove practice hack hook)
 
 area_arr = [rom.read_u8(room.rom_address + 1) for room in rooms]
 # orig_map_patcher = MapPatcher(orig_rom, area_arr)
@@ -29,11 +32,10 @@ patches = [
     # 'holes',
     # 'oob_death',
     # 'spinjumprestart',
-    # 'new_game_extra',
     # 'door_hurt',
     "everest_tube",
     "fast_pause_menu",
-    "buffed_drops"
+    # "buffed_drops"
     # 'complementary_suits',
     # 'complementary_suits_noheat',
     # 'escape',
@@ -122,11 +124,11 @@ def write_colors(addr, colors):
 
 # write_colors(snes2pc(0x9BFF00), gravity_suit_colors)
 
-# # release Kraid camera so it won't be as glitched when entering from the right
-rom.write_n(snes2pc(0xA7A9F4), 4, bytes(4 * [0xEA]))
-# # No longer restrict Samus X position to left screen during start of Kraid fight
-rom.write_u8(snes2pc(0xA7C9EE), 0x60)
-#
+# # # release Kraid camera so it won't be as glitched when entering from the right
+# rom.write_n(snes2pc(0xA7A9F4), 4, bytes(4 * [0xEA]))
+# # # No longer restrict Samus X position to left screen during start of Kraid fight
+# rom.write_u8(snes2pc(0xA7C9EE), 0x60)
+# #
 
 # map_patcher = MapPatcher(rom, area_arr)
 
@@ -170,7 +172,7 @@ for room_obj in rooms:
             main_var_high = rom.read_u8(ptr + 5)
             if plm_type in plm_types_to_remove or plm_type in gray_door_plm_types:
                 # print(room_obj.name)
-                rom.write_u16(ptr, 0xB63B)  # right continuation arrow (should have no effect, giving a blue door)
+                rom.write_u16(ptr, 0xB63F)  # left continuation arrow (should have no effect, giving a blue door)
                 rom.write_u16(ptr + 2, 0)  # position = (0, 0)
             # elif plm_type in gray_door_plm_types:
             #     new_type = gray_door_plm_types[plm_type]
@@ -316,7 +318,7 @@ for room_obj in rooms:
 # rom.write_n(snes2pc(0xA7D4E5), 8, bytes(8 * [0xEA]))
 
 # Shaktool camera
-rom.write_u8(snes2pc(0x84B8DC), 0x60)  # RTS
+# rom.write_u8(snes2pc(0x84B8DC), 0x60)  # RTS
 
 # rom.write_n(snes2pc(0xA0872D), 288, bytes(288 * [0]))
 

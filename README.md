@@ -10,6 +10,24 @@ If you are interested in contributing, feel free to reach out on the [Discord](h
 - Run the web service using Cargo
 - Run the CLI using Cargo
 
+### Using macOS
+
+If you are running on macOS, you will need to do the following.
+1. [Clone the repository](#clone-the-repository) and ensure all submodules are initialized and checked out.
+2. Install the following dependencies:
+* [`wget`](https://www.gnu.org/software/wget/)
+* [`rustup`](https://rustup.rs/)
+3. Ensure that Rust is in your `PATH` variable.
+```sh
+export PATH=$HOME/rustup/bin:$PATH
+```
+4. After installing `rustup`, run the following to ensure you are using the latest stable version of Rust.
+```sh
+rustup default stable
+```
+5. Follow the instructions for [Run the web service using Cargo](#run-the-web-service-using-cargo). _Note: Docker does not work at the moment._
+
+
 ### Using Windows
 
 If you are running on Windows, be sure to enable symlinks in Git before cloning the repository:
@@ -64,7 +82,7 @@ Building and running locally using Cargo is generally faster than using Docker, 
 
 Install the stable Rust toolchain (e.g. using [rustup](https://rustup.rs/)).
 
-After cloning the GitHub repository, download and extract required external data, which includes the randomized map pools and the Mosaic theming patches:
+After cloning the GitHub repository, download and extract required external data, which includes the randomized map pools and the Mosaic theming patches. This is about 2 gigabytes.
 
 ```sh
 sh scripts/download_data.sh
@@ -106,7 +124,7 @@ cargo run --bin maprando-web -- --seed-repository-url mem --video-storage-path .
 
 As an alternative to using the web service, a CLI tool can also be used to generate a seed,  to get results with fewer steps. At the moment, the CLI tool has many randomization options hard-coded into it and is intended for development rather than general use.
 
-After cloning the GitHub repository and downloading/extracting the maps (as above), run the CLI tool like this:
+After cloning the GitHub repository **and** downloading/extracting the maps (as above), run the CLI tool like this:
 
 ```sh
 cd rust

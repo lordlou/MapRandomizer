@@ -12,6 +12,9 @@ pub struct Inventory {
     pub max_missiles: Capacity,
     pub max_supers: Capacity,
     pub max_power_bombs: Capacity,
+    pub collectible_missile_packs: Capacity,
+    pub collectible_super_packs: Capacity,
+    pub collectible_power_bomb_packs: Capacity,
 }
 
 // TODO: move tech and notable_strats out of this struct, since these do not change from step to step.
@@ -32,17 +35,35 @@ impl GlobalState {
         }
     }
 
-    pub fn collect(&mut self, item: Item, game_data: &GameData) {
+    pub fn collect(
+        &mut self,
+        item: Item,
+        game_data: &GameData,
+        ammo_collect_fraction: f32,
+        tech: &[bool],
+    ) {
         self.inventory.items[item as usize] = true;
         match item {
             Item::Missile => {
-                self.inventory.max_missiles += 5;
+                self.inventory.collectible_missile_packs += 1;
+                self.inventory.max_missiles = (ammo_collect_fraction
+                    * self.inventory.collectible_missile_packs as f32)
+                    .round() as Capacity
+                    * 5;
             }
             Item::Super => {
-                self.inventory.max_supers += 5;
+                self.inventory.collectible_super_packs += 1;
+                self.inventory.max_supers = (ammo_collect_fraction
+                    * self.inventory.collectible_super_packs as f32)
+                    .round() as Capacity
+                    * 5;
             }
             Item::PowerBomb => {
-                self.inventory.max_power_bombs += 5;
+                self.inventory.collectible_power_bomb_packs += 1;
+                self.inventory.max_power_bombs = (ammo_collect_fraction
+                    * self.inventory.collectible_power_bomb_packs as f32)
+                    .round() as Capacity
+                    * 5;
             }
             Item::ETank => {
                 self.inventory.max_energy += 100;
@@ -52,7 +73,7 @@ impl GlobalState {
             }
             _ => {}
         }
-        self.weapon_mask = game_data.get_weapon_mask(&self.inventory.items);
+        self.weapon_mask = game_data.get_weapon_mask(&self.inventory.items, tech);
     }
 }
 
@@ -64,6 +85,12 @@ pub struct LocalState {
     pub supers_used: Capacity,
     pub power_bombs_used: Capacity,
     pub shinecharge_frames_remaining: Capacity,
+    pub cycle_frames: Capacity,
+    pub farm_baseline_energy_used: Capacity,
+    pub farm_baseline_reserves_used: Capacity,
+    pub farm_baseline_missiles_used: Capacity,
+    pub farm_baseline_supers_used: Capacity,
+    pub farm_baseline_power_bombs_used: Capacity,
 }
 
 impl LocalState {
@@ -75,6 +102,12 @@ impl LocalState {
             supers_used: 0,
             power_bombs_used: 0,
             shinecharge_frames_remaining: 0,
+            cycle_frames: 0,
+            farm_baseline_energy_used: 0,
+            farm_baseline_reserves_used: 0,
+            farm_baseline_missiles_used: 0,
+            farm_baseline_supers_used: 0,
+            farm_baseline_power_bombs_used: 0,
         }
     }
 }

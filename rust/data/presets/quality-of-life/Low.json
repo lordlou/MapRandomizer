@@ -15,9 +15,14 @@
     "respin": false,
     "infinite_space_jump": false,
     "momentum_conservation": false,
+    "fanfares": "Off",
     "all_items_spawn": false,
     "acid_chozo": false,
     "remove_climb_lava": false,
+    "energy_station_reserves": false,
+    "etank_refill": "Vanilla",
+    "disableable_etanks": false,
+    "reserve_backward_transfer": false,
     "buffed_drops": false,
     "early_save": false
 }

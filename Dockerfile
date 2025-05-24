@@ -1,4 +1,4 @@
-FROM rust:1.79.0-bullseye AS build
+FROM rust:1.84.0-bullseye AS build
 
 RUN apt-get update && apt-get install -y zstd
 
@@ -21,6 +21,9 @@ COPY rust/maprando-logic/Cargo.toml /rust/maprando-logic/Cargo.toml
 COPY rust/maprando/src/bin/dummy.rs /rust/maprando-logic/src/bin/dummy-logic.rs
 COPY rust/maprando-wasm/Cargo.toml /rust/maprando-wasm/Cargo.toml
 COPY rust/maprando/src/bin/dummy.rs /rust/maprando-wasm/src/bin/dummy-wasm.rs
+COPY rust/lznint/Cargo.toml /rust/lznint/Cargo.toml
+COPY rust/maprando/src/bin/dummy.rs /rust/lznint/src/bin/dummy-lznint.rs
+
 RUN mkdir -p /rust/maprando-wasm/src && touch /rust/maprando-wasm/src/lib.rs
 RUN cargo build --release
 RUN rm /rust/src/*.rs
@@ -28,7 +31,7 @@ RUN rm /rust/src/*.rs
 # Download the map datasets and Mosaic patches
 WORKDIR /
 COPY /scripts /scripts
-COPY /MOSAIC_COMMIT_ID /MOSAIC_COMMIT_ID
+COPY /MOSAIC_BUILD_ID /MOSAIC_BUILD_ID
 RUN bash /scripts/download_data.sh
 
 # Now copy over the source code and build the real binary
@@ -39,8 +42,19 @@ RUN wasm-pack build --target="web" --release
 WORKDIR /rust
 RUN cargo build --release --bin maprando-web
 
+# Test the correctness of the IPS patches
+FROM debian:bullseye AS ips-test
+RUN apt-get update && apt-get install -y g++ cmake python3
+COPY asar /asar
+WORKDIR /asar
+RUN cmake src && make
+WORKDIR /
+COPY scripts /scripts
+COPY patches /patches
+RUN python3 scripts/build_ips.py --assembler-path=/asar/asar/bin/asar --verify
+
 # Now restart with a slim base image and just copy over the binary and data needed at runtime.
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 RUN apt-get update && apt-get install -y \
     libssl1.1 \
     && rm -rf /var/lib/apt/lists/*

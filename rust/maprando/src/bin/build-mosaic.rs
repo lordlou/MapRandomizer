@@ -21,7 +21,7 @@ use std::process::Command;
 #[derive(Parser)]
 struct Args {
     #[arg(long)]
-    compressor: PathBuf,
+    compressor: Option<PathBuf>,
     #[arg(long)]
     input_rom: PathBuf,
 }
@@ -49,7 +49,7 @@ struct MosaicPatchBuilder {
     source_suffix_tree: SuffixTree,
     room_ptr_map: HashMap<(usize, usize), usize>,
     compressed_data_cache_dir: PathBuf,
-    compressor_path: PathBuf,
+    compressor_path: Option<PathBuf>,
     tmp_dir: PathBuf,
     mosaic_dir: PathBuf,
     output_patches_dir: PathBuf,
@@ -101,30 +101,42 @@ pub fn extract_uncompressed_level_data(state_xml: &smart_xml::RoomState) -> Vec<
     let height = state_xml.level_data.height;
     let width = state_xml.level_data.width;
     let num_tiles = height * width * 256;
-    let level_data_size = if state_xml.layer2_type == Layer2Type::Layer2 {
-        2 + num_tiles * 5
-    } else {
-        2 + num_tiles * 3
-    };
-    let mut level_data = vec![0u8; level_data_size];
-    level_data[0] = ((num_tiles * 2) & 0xFF) as u8;
-    level_data[1] = ((num_tiles * 2) >> 8) as u8;
+    let mut level_data: Vec<u8> = vec![];
+    level_data.push(((num_tiles * 2) & 0xFF) as u8);
+    level_data.push(((num_tiles * 2) >> 8) as u8);
+    let layer1_fill_word = 0x8000;
+    let layer2_fill_word = 0x0000;
+    let bts_fill_byte = 0x00;
+
+    for _ in 0..0x3200 {
+        level_data.push((layer1_fill_word & 0xFF) as u8);
+        level_data.push((layer1_fill_word >> 8) as u8);
+    }
     extract_all_screen_words(
         &state_xml.level_data.layer_1.screen,
         &mut level_data[2..],
         width,
         height,
     );
+
+    for _ in 0..0x3200 {
+        level_data.push(bts_fill_byte);
+    }
     extract_all_screen_bytes(
         &state_xml.level_data.bts.screen,
-        &mut level_data[2 + num_tiles * 2..],
+        &mut level_data[0x6402..],
         width,
         height,
     );
+
     if state_xml.layer2_type == Layer2Type::Layer2 {
+        for _ in 0..num_tiles {
+            level_data.push((layer2_fill_word & 0xFF) as u8);
+            level_data.push((layer2_fill_word >> 8) as u8);
+        }
         extract_all_screen_words(
             &state_xml.level_data.layer_2.screen,
-            &mut level_data[2 + num_tiles * 3..],
+            &mut level_data[0x9602..],
             width,
             height,
         );
@@ -137,16 +149,24 @@ impl MosaicPatchBuilder {
         let digest = crypto_hash::hex_digest(crypto_hash::Algorithm::SHA256, &data);
         let output_path = self.compressed_data_cache_dir.join(digest);
         if !output_path.exists() {
-            let tmp_path = self.tmp_dir.join("tmpfile");
-            std::fs::write(&tmp_path, data)?;
-            Command::new(&self.compressor_path)
-                .arg("-c")
-                .arg(format!("-f={}", tmp_path.to_str().unwrap()))
-                .arg(format!("-o={}", output_path.to_str().unwrap()))
-                .status()
-                .context("error running compressor")?;
+            if let Some(compressor_path) = &self.compressor_path {
+                let tmp_path = self.tmp_dir.join("tmpfile");
+                std::fs::write(&tmp_path, data)?;
+                Command::new(&compressor_path)
+                    .arg("-c")
+                    .arg(format!("-f={}", tmp_path.to_str().unwrap()))
+                    .arg(format!("-o={}", output_path.to_str().unwrap()))
+                    .status()
+                    .context("error running compressor")?;
+                return Ok(std::fs::read(output_path)?);
+            } else {
+                let output = lznint::compress(data);
+                std::fs::write(&output_path, output.clone())?;
+                return Ok(output);
+            }
+        } else {
+            return Ok(std::fs::read(output_path)?);
         }
-        return Ok(std::fs::read(output_path)?);
     }
 
     fn get_fx_data(&self, state_xml: &smart_xml::RoomState, default_only: bool) -> Vec<u8> {
@@ -276,6 +296,8 @@ impl MosaicPatchBuilder {
         let gfx8x8_path = tileset_path.join("8x8tiles.gfx");
         let gfx8x8_bytes = std::fs::read(&gfx8x8_path)
             .with_context(|| format!("Unable to load CRE 8x8 gfx at {}", gfx8x8_path.display()))?;
+        // Truncate CRE tileset to exclude bottom 2 rows (used for item PLMs):
+        let gfx8x8_bytes = gfx8x8_bytes[..11264].to_vec();
         let compressed_gfx8x8 = self.get_compressed_data(&gfx8x8_bytes)?;
         let gfx8x8_addr = self.main_allocator.allocate(compressed_gfx8x8.len())?;
         new_rom.write_n(gfx8x8_addr, &compressed_gfx8x8)?;
@@ -570,7 +592,12 @@ impl MosaicPatchBuilder {
 
                 // Write FX:
                 if pc2snes(room_ptr) & 0xFFFF == 0xDD58 {
-                    // Skip for Mother Brain Room, which has special FX not in the FX list.
+                    // Mother Brain Room has special a FX not in the FX list, for lowering the acid after MB1 fight.
+                    // Instead of replacing the whole FX header, patch the existing ones to use the correct
+                    // palette blend for the acid:
+                    new_rom.write_u8(snes2pc(0x83A0B3), 8)?;
+                    new_rom.write_u8(snes2pc(0x83A0C3), 8)?;
+                    new_rom.write_u8(snes2pc(0x83A0D3), 8)?;
                 } else {
                     new_rom.write_n(fx_data_addr, &fx_data_vec[i])?;
                     new_rom.write_u16(state_ptr + 6, (pc2snes(fx_data_addr) & 0xFFFF) as isize)?;
@@ -625,7 +652,6 @@ impl MosaicPatchBuilder {
         src_width: usize,
         src_layer_2: &[u8],
     ) {
-        let dst_size = dst_level_data[0] as usize + ((dst_level_data[1] as usize) << 8);
         for y in 0..16 {
             for x in 0..16 {
                 let src_x = src_screen_x * 16 + x;
@@ -634,11 +660,14 @@ impl MosaicPatchBuilder {
                 let dst_x = dst_screen_x * 16 + x;
                 let dst_y = dst_screen_y * 16 + y;
                 let dst_i = dst_y * dst_width * 16 + dst_x;
+                // Layer1:
                 dst_level_data[2 + dst_i * 2] = src_level_data[2 + src_i * 2];
                 dst_level_data[2 + dst_i * 2 + 1] = (dst_level_data[2 + dst_i * 2 + 1] & 0xF0)
                     | (src_level_data[2 + src_i * 2 + 1] & 0x0F);
-                dst_level_data[2 + 3 * dst_size / 2 + dst_i * 2] = src_layer_2[src_i * 2];
-                dst_level_data[2 + 3 * dst_size / 2 + dst_i * 2 + 1] = src_layer_2[src_i * 2 + 1];
+                // We skip touching BTS, leaving it unchanged.
+                // Layer2:
+                dst_level_data[0x9602 + dst_i * 2] = src_layer_2[src_i * 2];
+                dst_level_data[0x9602 + dst_i * 2 + 1] = src_layer_2[src_i * 2 + 1];
             }
         }
     }
@@ -668,7 +697,7 @@ impl MosaicPatchBuilder {
     ) -> Vec<u8> {
         let size = level_data[0] as usize + ((level_data[1] as usize) << 8);
         if state_xml.layer2_type == Layer2Type::Layer2 {
-            let mut out = level_data[(2 + size * 3 / 2)..(2 + size * 5 / 2)].to_vec();
+            let mut out = level_data[0x9602..].to_vec();
             if state_xml.layer1_2 == 0x91C9 {
                 // Scrolling sky BG: replicate first column of screens
                 for sy in 0..room_height {
@@ -706,15 +735,15 @@ impl MosaicPatchBuilder {
                 let i = (screen_y * 16 + y) * room_width * 16 + screen_x * 16 + 7;
                 let tile: u16 = match (maridia_style_tube, priority, y == 0 || y == 15) {
                     // Tube tiles specific to East Maridia (as in vanilla):
-                    (true, true, true) => 0x3B2,
+                    (true, true, true) => 0x3B4,
                     (true, true, false) => 0x3AB ^ 0x400,
                     (true, false, true) => 0x33D,
-                    (true, false, false) => 0x33B ^ 0x400,
+                    (true, false, false) => 0x33A ^ 0x400,
                     // Tube tiles in other tilesets:
                     (false, true, true) => 0xEE,
-                    (false, true, false) => 0xEF,
+                    (false, true, false) => 0xF0,
                     (false, false, true) => 0xF1,
-                    (false, false, false) => 0xF2,
+                    (false, false, false) => 0xF3,
                 };
                 let vflip = if y == 15 { 0x08 } else { 0x00 };
                 (layer2[i * 2], layer2[i * 2 + 1]) =
@@ -1128,6 +1157,15 @@ impl MosaicPatchBuilder {
                             // Set BG scroll rate to 100%
                             new_rom.write_u8(toilet_state_ptr + 13, 0x00 as isize)?;
 
+                            // Setup ASM:
+                            // Copy from middle room if it's the type that loads special tiles (for Crab Hole, etc.)
+                            if middle_state_xml.layer1_2 == 0xC11B {
+                                new_rom.write_u16(
+                                    toilet_state_ptr + 24,
+                                    middle_state_xml.layer1_2 as isize,
+                                )?;
+                            }
+
                             // Write FX:
                             new_rom.write_u16(
                                 toilet_state_ptr + 6,
@@ -1288,13 +1326,8 @@ fn main() -> Result<()> {
         // Skipping rest of bank CE: used by credits data
         (snes2pc(0xE08000), snes2pc(0xE10000)),
         (snes2pc(0xE18000), snes2pc(0xE20000)),
-        // Skipping lower part of banks E2-E6: used for per-area BG3 and pause menu graphics
-        (snes2pc(0xE2D000), snes2pc(0xE30000)),
-        (snes2pc(0xE3D000), snes2pc(0xE40000)),
-        (snes2pc(0xE4D000), snes2pc(0xE50000)),
-        (snes2pc(0xE5D000), snes2pc(0xE60000)),
-        (snes2pc(0xE6D000), snes2pc(0xE70000)),
-        (snes2pc(0xE7D000), snes2pc(0xE80000)),
+        // Skipping bank E2, E3, and E4: used for map tile graphics
+        (snes2pc(0xE58000), snes2pc(0xE80000)),
         // Skipping bank E9, used for hazard markers and title screen graphics
         // Skipping bank EA, used for beam door graphics
         (snes2pc(0xEB8000), snes2pc(0xF80000)),
@@ -1308,12 +1341,20 @@ fn main() -> Result<()> {
         (snes2pc(0x83F000), snes2pc(0x840000)),
     ]);
 
+    info!(
+        "Initial state: main alloc {:?}, FX alloc {:?}",
+        main_allocator.get_stats(),
+        fx_allocator.get_stats()
+    );
+
     let project_names: Vec<String> = vec![
         "Base",
         "OuterCrateria",
         "InnerCrateria",
+        "BlueBrinstar",
         "GreenBrinstar",
         "RedBrinstar",
+        "PinkBrinstar",
         "UpperNorfair",
         "LowerNorfair",
         "WreckedShip",
@@ -1322,6 +1363,7 @@ fn main() -> Result<()> {
         "MechaTourian",
         "MetroidHabitat",
         "Outline",
+        "Invisible",
     ]
     .into_iter()
     .map(|x| x.to_string())

@@ -98,7 +98,6 @@ rooms = [
             12: [(2, 7)],  # charge beam
             13: [(2, 0), (3, 0), (2, 1), (3, 1), (2, 2), (3, 2),  # main junction
                  (2, 3), (3, 3), (2, 4), (3, 4), (2, 5), (3, 5), (2, 6)],
-            14: [(2, 4)],  # junction above crumbles
             15: [(3, 6)],  # G-Mode Morph Junction (Middle Right)
         },
     ),
@@ -227,7 +226,7 @@ rooms = [
         ],
         node_tiles={
             1: [(3, 0), (4, 0), (5, 0), (6, 0)],  # door
-            2: [(0, 0)],  # item
+            2: [(0, 0), (1, 0), (2, 0)],  # item
             3: [(1, 0), (2, 0)],  # Dry Platform Junction
         },
     ),

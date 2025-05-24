@@ -9,6 +9,9 @@
 
 lorom
 
+!bank_82_free_space_start = $82FF30
+!bank_82_free_space_end = $82FF80
+
 !bank_84_free_space_start = $84F490
 !bank_84_free_space_end = $84F4A0
 
@@ -55,7 +58,7 @@ org $82AF36
     NOP #4
 
 ; Hook: At "Samus previous health = 0" in HUD init
-org $809AE4
+org $809AF0
     JSR HOOK_HUD_INIT
 
 ; Here's where the regular reserve HUD tiles are set; jump to custom draw function instead
@@ -297,7 +300,7 @@ FCST_DMA_SPECIAL_TILE:
 
 ; Hook: HUD init
 HOOK_HUD_INIT:
-    STZ $0A06 ; Original code: Samus previous health = 0
+    STZ $0A0E ; Original code: Samus previous health = 0
     LDA #$FFFF : STA !samus_previous_reserves
     RTS
 
@@ -329,9 +332,66 @@ FUNCTION_PAUSE_REPAINT_HELPER:
     JSL FUNCTION_REPAINT
     RTS
 
+org !bank_82_free_space_start
+FUNCTION_KRAID_LEAVE_REPAINT_BG3:
+    PHA
+    PHP
+    REP #$30
+    LDA $1F7E                   ; Previous room
+    CMP #$A59F                  ; Leaving Kraid?
+    BNE .no_fix
+    JSR FUNCTION_KRAID_REPAINT
+.no_fix
+    PLP
+    PLA
+    STA $5A ; Original code
+    STA $5B
+    RTL
+
+FUNCTION_KRAID_ENTER_REPAINT_BG3:
+    LDA #$8000                  ; Original code
+    CPY #$B817                  ; Kraid (alive) initial cmd 0008?
+    BEQ .hook
+    CPY #$B842                  ; Kraid (dead) initial cmd 0008?
+    BEQ .hook
+    JMP $E606                   ; if not, return to hook point
+    
+.hook    
+    TSB $05BC
+.spin
+    BIT $05BC
+    BMI .spin                   ; process hooked VRAM update
+    PHY                         ; save cmd ptr
+    PHP
+    SEP #$20
+    LDA #$02
+    STA $5E                     ; update BG3 base address now
+    JSR FUNCTION_KRAID_REPAINT
+    PLP
+    PLY                         ; restore cmd ptr
+    JMP $E60E                   ; return to end of hooked func
+
+FUNCTION_KRAID_REPAINT:
+    PHB
+    REP #$30
+    PEA $8000 : PLB : PLB
+    JSL FUNCTION_REPAINT
+    PLB
+    RTS
+
+warnpc !bank_82_free_space_end
+
 ; Hook: On reserve pickup
 org $848986
     JSR HOOK_RESERVE_PICKUP
+
+; Hook: Prevents blinking of reserve HUD on BG3 base address update (exiting Kraid)
+org $8883DC
+    JSL FUNCTION_KRAID_LEAVE_REPAINT_BG3
+
+; Hook: Prevents blinking of reserve HUD on BG3 base address update (entering Kraid)
+org $82E603
+    JMP FUNCTION_KRAID_ENTER_REPAINT_BG3
 
 org !bank_84_free_space_start
 HOOK_RESERVE_PICKUP:
@@ -339,52 +399,3 @@ HOOK_RESERVE_PICKUP:
     LDA $09D4 ; Original code
     RTS
 warnpc !bank_84_free_space_end
-
-; When enterng and leaving Kraid's room, the original tiles are drawn for a few frames, so make them empty
-org $E2C330
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E2C460
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E2C4C0
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-
-org $E3C330
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E3C460
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E3C4C0
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-
-org $E4C330
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E4C460
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E4C4C0
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-
-org $E5C330
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E5C460
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E5C4C0
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-
-org $E6C330
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E6C460
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E6C4C0
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-
-org $E7C330
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E7C460
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-org $E7C4C0
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00
-    db $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00, $00

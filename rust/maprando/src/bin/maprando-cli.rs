@@ -3,12 +3,11 @@ use clap::Parser;
 use log::info;
 use maprando::customize::samus_sprite::{SamusSpriteCategory, SamusSpriteInfo};
 use maprando::customize::{customize_rom, ControllerConfig, CustomizeSettings, MusicSettings};
-use maprando::patch::ips_write::create_ips_patch;
 use maprando::patch::make_rom;
 use maprando::patch::Rom;
 use maprando::preset::PresetData;
 use maprando::randomize::{
-    get_difficulty_tiers, get_objectives, randomize_doors, Randomization, Randomizer,
+    get_difficulty_tiers, get_objectives, randomize_doors, Randomization, Randomizer, SpoilerLog,
 };
 use maprando::settings::{RandomizerSettings, StartLocationMode};
 use maprando::spoiler_map;
@@ -37,6 +36,9 @@ struct Args {
     random_seed: Option<usize>,
 
     #[arg(long)]
+    start_location: Option<String>,
+
+    #[arg(long)]
     item_placement_seed: Option<usize>,
 
     #[arg(long)]
@@ -52,10 +54,10 @@ struct Args {
     output_spoiler_log: Option<PathBuf>,
 
     #[arg(long)]
-    output_spoiler_map_assigned: Option<PathBuf>,
+    output_spoiler_map_explored: Option<PathBuf>,
 
     #[arg(long)]
-    output_spoiler_map_vanilla: Option<PathBuf>,
+    output_spoiler_map_outline: Option<PathBuf>,
 
     #[arg(long)]
     area_themed_palette: bool,
@@ -93,7 +95,7 @@ fn get_randomization(
     settings: &RandomizerSettings,
     game_data: &GameData,
     preset_data: &PresetData,
-) -> Result<Randomization> {
+) -> Result<(Randomization, SpoilerLog)> {
     let implicit_tech = &preset_data.tech_by_difficulty["Implicit"];
     let implicit_notables = &preset_data.notables_by_difficulty["Implicit"];
     let difficulty_tiers = get_difficulty_tiers(
@@ -142,7 +144,9 @@ fn get_randomization(
             None => 10000, // Same as maprando-web.
         }
     };
-    let max_attempts_per_map = if settings.start_location_mode == StartLocationMode::Random {
+    let max_attempts_per_map = if settings.start_location_settings.mode == StartLocationMode::Random
+        && game_data.start_locations.len() > 1
+    {
         10
     } else {
         1
@@ -217,7 +221,8 @@ fn main() -> Result<()> {
     let reduced_flashing_path = Path::new("data/reduced_flashing.json");
     let strat_videos_path = Path::new("data/strat_videos.json");
     let title_screen_path = Path::new("../TitleScreen/Images");
-    let game_data = GameData::load(
+    let map_tiles_path = Path::new("data/map_tiles.json");
+    let mut game_data = GameData::load(
         sm_json_data_path,
         room_geometry_path,
         escape_timings_path,
@@ -226,7 +231,17 @@ fn main() -> Result<()> {
         title_screen_path,
         reduced_flashing_path,
         strat_videos_path,
+        map_tiles_path,
     )?;
+
+    if let Some(start_location_name) = &args.start_location {
+        game_data.start_locations = game_data
+            .start_locations
+            .iter()
+            .cloned()
+            .filter(|x| &x.name == start_location_name)
+            .collect();
+    }
 
     let tech_path = Path::new("data/tech_data.json");
     let notable_path = Path::new("data/notable_data.json");
@@ -235,16 +250,14 @@ fn main() -> Result<()> {
     let settings = get_settings(&args, &preset_data)?;
 
     // Perform randomization (map selection & item placement):
-    let randomization = get_randomization(&args, &settings, &game_data, &preset_data)?;
+    let (randomization, spoiler_log) =
+        get_randomization(&args, &settings, &game_data, &preset_data)?;
 
     // Generate the patched ROM:
     let orig_rom = Rom::load(&args.input_rom)?;
     let mut input_rom = orig_rom.clone();
     input_rom.data.resize(0x400000, 0);
-    let game_rom = make_rom(&input_rom, &randomization, &game_data)?;
-    let ips_patch = create_ips_patch(&input_rom.data, &game_rom.data);
-
-    let mut output_rom = input_rom.clone();
+    let mut output_rom = make_rom(&input_rom, &settings, &randomization, &game_data)?;
     let customize_settings = CustomizeSettings {
         samus_sprite: Some("samus_vanilla".to_string()),
         // samus_sprite: None,
@@ -252,7 +265,7 @@ fn main() -> Result<()> {
         reserve_hud_style: true,
         vanilla_screw_attack_animation: true,
         palette_theme: maprando::customize::PaletteTheme::AreaThemed,
-        tile_theme: maprando::customize::TileTheme::Constant("OuterCrateria".to_string()),
+        tile_theme: maprando::customize::TileTheme::Vanilla,
         door_theme: maprando::customize::DoorTheme::Vanilla,
         music: MusicSettings::AreaThemed,
         // music: MusicSettings::Vanilla,
@@ -264,7 +277,6 @@ fn main() -> Result<()> {
     customize_rom(
         &mut output_rom,
         &orig_rom,
-        &ips_patch,
         &Some(randomization.map.clone()),
         &customize_settings,
         &game_data,
@@ -291,28 +303,28 @@ fn main() -> Result<()> {
             "Writing spoiler log to {}",
             output_spoiler_log_path.display()
         );
-        let spoiler_str = serde_json::to_string_pretty(&randomization.spoiler_log)?;
+        let spoiler_str = serde_json::to_string_pretty(&spoiler_log)?;
         std::fs::write(output_spoiler_log_path, spoiler_str)?;
     }
 
-    let spoiler_maps = spoiler_map::get_spoiler_map(&output_rom, &randomization.map, &game_data)?;
+    let spoiler_maps = spoiler_map::get_spoiler_map(&randomization, &game_data, &settings)?;
 
-    if let Some(output_spoiler_map_assigned_path) = &args.output_spoiler_map_assigned {
+    if let Some(output_spoiler_map_explored_path) = &args.output_spoiler_map_explored {
         println!(
-            "Writing spoiler map (assigned areas) to {}",
-            output_spoiler_map_assigned_path.display()
+            "Writing spoiler map (explored) to {}",
+            output_spoiler_map_explored_path.display()
         );
-        let spoiler_map_assigned = spoiler_maps.assigned.clone();
-        std::fs::write(output_spoiler_map_assigned_path, spoiler_map_assigned)?;
+        let spoiler_map_explored = spoiler_maps.explored.clone();
+        std::fs::write(output_spoiler_map_explored_path, spoiler_map_explored)?;
     }
 
-    if let Some(output_spoiler_map_vanilla_path) = &args.output_spoiler_map_vanilla {
+    if let Some(output_spoiler_map_outline_path) = &args.output_spoiler_map_outline {
         println!(
-            "Writing spoiler map (vanilla areas) to {}",
-            output_spoiler_map_vanilla_path.display()
+            "Writing spoiler map (outline) to {}",
+            output_spoiler_map_outline_path.display()
         );
-        let spoiler_map_vanilla = spoiler_maps.vanilla.clone();
-        std::fs::write(output_spoiler_map_vanilla_path, spoiler_map_vanilla)?;
+        let spoiler_map_outline = spoiler_maps.outline.clone();
+        std::fs::write(output_spoiler_map_outline_path, spoiler_map_outline)?;
     }
 
     Ok(())

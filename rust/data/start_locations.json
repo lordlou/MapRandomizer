@@ -108,7 +108,7 @@
         "y": 13
     },
     {
-        "name": "Landing Site Gauntlet Entrance",
+        "name": "Landing Site Top Left",
         "room_id": 8,
         "node_id": 1,
         "x": 29.5,
@@ -131,7 +131,7 @@
         "y": 9
     },
     {
-        "name": "Alcatraz",
+        "name": "Parlor Alcatraz",
         "room_id": 10,
         "node_id": 5,
         "x": 57,
@@ -335,7 +335,7 @@
         "y": 13,
         "requires": [
             "canSuitlessMaridia",
-            "h_canCrouchJumpDownGrab"
+            "h_crouchJumpDownGrab"
         ]
     },
     {
@@ -705,7 +705,7 @@
         "x": 11,
         "y": 22,
         "spicy": true,
-        "requires": ["canHeatRun"]
+        "requires": [{"heatFrames": 260}]
     },
     {
         "name": "Cathedral Left",
@@ -816,7 +816,7 @@
     {
         "name": "Lower Norfair Elevator",
         "room_id": 309,
-        "node_id": 3,
+        "node_id": 4,
         "door_load_node_id": 1,
         "x": 8,
         "y": 10,
@@ -1151,7 +1151,7 @@
     {
         "name": "Post Crocomire Farming Room",
         "room_id": 123,
-        "node_id": 5,
+        "node_id": 2,
         "door_load_node_id": 3,
         "x": 3,
         "y": 27
@@ -1241,7 +1241,8 @@
         "x": 6,
         "y": 69,
         "spicy": true,
-        "requires": ["canHeatRun", {"heatFrames": 280}, "canConsecutiveWalljump"]
+        "requires": ["canHeatRun", {"heatFrames": 280}, "canConsecutiveWalljump"],
+        "camera_offset_y": -4
     },
     {
         "name": "Amphitheatre Top Right",
@@ -1322,7 +1323,7 @@
     {
         "name": "Main Hall Elevator",
         "room_id": 132,
-        "node_id": 3,
+        "node_id": 4,
         "door_load_node_id": 4,
         "x": 72,
         "y": 42,
@@ -1334,7 +1335,7 @@
         "node_id": 2,
         "x": 56,
         "y": 21,
-        "requires": ["canHeatRun", {"heatFrames": 160}, {"or": ["canWalljump", "h_canCrouchJumpDownGrab"]}]
+        "requires": ["canHeatRun", {"heatFrames": 160}, {"or": ["canWalljump", "h_crouchJumpDownGrab"]}]
     },
     {
         "name": "Pillar Room Right",
@@ -1649,7 +1650,7 @@
     {
         "name": "Colosseum Left",
         "room_id": 189,
-        "node_id": 3,
+        "node_id": 1,
         "x": 44.5,
         "y": 8,
         "spicy": true,
@@ -1707,7 +1708,7 @@
         "name": "East Sand Hole",
         "room_id": 208,
         "node_id": 2,
-        "door_load_node_id": 2,
+        "door_load_node_id": 1,
         "x": 25,
         "y": 11
     },
@@ -2027,7 +2028,7 @@
         "node_id": 2,
         "x": 44.5,
         "y": 45,
-        "requires": [{"or": ["canWalljump", "h_canCrouchJumpDownGrab"]}]
+        "requires": [{"or": ["canWalljump", "h_crouchJumpDownGrab"]}]
     },
     {
         "name": "Tourian Eye Door Room",
@@ -2043,17 +2044,6 @@
         "node_id": 3,
         "x": 8.5,
         "y": 58
-    },
-    {
-        "name": "Amphitheatre Bottom Left",
-        "room_id": 136,
-        "node_id": 1,
-        "door_load_node_id": 1,
-        "x": 6,
-        "y": 69,
-        "spicy": true,
-        "requires": ["canHeatRun", {"heatFrames": 280}, "canConsecutiveWalljump"],
-        "camera_offset_y": -4
     },
     {
         "name": "Crateria Map Room",
@@ -2234,21 +2224,12 @@
     {
         "name": "Warehouse Entrance Pit",
         "room_id": 78,
-        "node_id": 3,
+        "node_id": 4,
         "x": 26,
         "y": 21,
         "camera_offset_x": 2,
         "camera_offset_y": -6,
-        "requires": [
-            {"or": [
-                "canPreciseWalljump",
-                {"and": [
-                    "h_canBackIntoCorner",
-                    "canInsaneJump",
-                    "canDownGrab"
-                ]}
-            ]}
-        ]
+        "requires": []
     },
     {
         "name": "Frog Savestation",
@@ -2356,7 +2337,7 @@
             {"heatFrames": 60},
             {"or": [
                 "canWalljump",
-                "h_canCrouchJumpDownGrab"
+                "h_crouchJumpDownGrab"
             ]}
         ],
         "camera_offset_y": -8
@@ -2425,7 +2406,7 @@
         "name": "West Sand Hole",
         "room_id": 209,
         "node_id": 2,
-        "door_load_node_id": 2,
+        "door_load_node_id": 1,
         "x": 17,
         "y": 12,
         "camera_offset_x": -6,

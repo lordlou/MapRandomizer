@@ -3,16 +3,15 @@ use crate::web::{AppData, VersionInfo};
 use actix_web::HttpRequest;
 use anyhow::{bail, Result};
 use askama::Template;
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use maprando::{
     helpers::get_item_priorities,
-    patch::{ips_write::create_ips_patch, Rom},
     preset::PresetData,
-    randomize::{DifficultyConfig, ItemPriorityGroup, Randomization},
+    randomize::{DifficultyConfig, ItemPriorityGroup, Randomization, SpoilerLog},
     seed_repository::{Seed, SeedFile},
     settings::{
-        AreaAssignment, DoorLocksSize, ETankRefill, FillerItemPriority, ItemDotChange,
-        RandomizerSettings, WallJump,
+        get_objective_groups, AreaAssignment, DoorLocksSize, ETankRefill, FillerItemPriority,
+        ItemDotChange, RandomizerSettings, WallJump,
     },
     spoiler_map,
 };
@@ -29,6 +28,7 @@ pub struct SeedHeaderTemplate<'a> {
     version_info: VersionInfo,
     settings: &'a RandomizerSettings,
     item_priority_groups: Vec<ItemPriorityGroup>,
+    objective_names: HashMap<String, String>,
     race_mode: bool,
     preset: String,
     item_progression_preset: String,
@@ -56,7 +56,8 @@ pub struct SeedHeaderTemplate<'a> {
     respin: bool,
     infinite_space_jump: bool,
     momentum_conservation: bool,
-    objectives: String,
+    fanfares: String,
+    etank_refill: String,
     doors: String,
     start_location_mode: String,
     map_layout: String,
@@ -128,8 +129,14 @@ impl<'a> SeedHeaderTemplate<'a> {
 
     fn game_variations(&self) -> Vec<&str> {
         let mut game_variations = vec![];
-        if self.settings.other_settings.area_assignment == AreaAssignment::Random {
-            game_variations.push("Random area assignment");
+        match self.settings.other_settings.area_assignment {
+            AreaAssignment::Ordered => {
+                game_variations.push("Ordered area assignment");
+            }
+            AreaAssignment::Random => {
+                game_variations.push("Random area assignment");
+            }
+            AreaAssignment::Standard => {}
         }
         if self.settings.other_settings.item_dot_change == ItemDotChange::Disappear {
             game_variations.push("Item dots disappear after collection");
@@ -143,15 +150,6 @@ impl<'a> SeedHeaderTemplate<'a> {
         match self.settings.other_settings.wall_jump {
             WallJump::Collectible => {
                 game_variations.push("Collectible wall jump");
-            }
-            _ => {}
-        }
-        match self.settings.other_settings.etank_refill {
-            ETankRefill::Disabled => {
-                game_variations.push("E-Tank refill disabled");
-            }
-            ETankRefill::Full => {
-                game_variations.push("E-Tanks refill reserves");
             }
             _ => {}
         }
@@ -184,6 +182,7 @@ pub struct SeedFooterTemplate {
     all_items_spawn: bool,
     supers_double: bool,
     ultra_low_qol: bool,
+    settings: RandomizerSettings,
 }
 
 pub fn get_random_seed() -> usize {
@@ -193,10 +192,11 @@ pub fn get_random_seed() -> usize {
 pub async fn save_seed(
     seed_name: &str,
     seed_data: &SeedData,
+    input_settings: &str,
     spoiler_token: &str,
-    vanilla_rom: &Rom,
-    output_rom: &Rom,
+    settings: &RandomizerSettings,
     randomization: &Randomization,
+    spoiler_log: &SpoilerLog,
     app_data: &AppData,
 ) -> Result<()> {
     if check_seed_exists(seed_name, app_data).await {
@@ -210,9 +210,10 @@ pub async fn save_seed(
     let seed_data_str = serde_json::to_vec_pretty(&seed_data).unwrap();
     files.push(SeedFile::new("seed_data.json", seed_data_str.to_vec()));
 
-    // Write the ROM patch.
-    let patch_ips = create_ips_patch(&vanilla_rom.data, &output_rom.data);
-    files.push(SeedFile::new("patch.ips", patch_ips));
+    files.push(SeedFile::new(
+        "input_settings.json",
+        input_settings.as_bytes().to_owned(),
+    ));
 
     // Write the seed header HTML and footer HTML
     let (seed_header_html, seed_footer_html) = render_seed(seed_name, seed_data, app_data)?;
@@ -250,11 +251,17 @@ pub async fn save_seed(
     let mut buf = Vec::new();
     let formatter = serde_json::ser::PrettyFormatter::with_indent(b"    ");
     let mut ser = serde_json::Serializer::with_formatter(&mut buf, formatter);
-    randomization.settings.serialize(&mut ser).unwrap();
+    settings.serialize(&mut ser).unwrap();
     files.push(SeedFile::new("public/settings.json", buf));
 
+    // Write the Randomization struct:
+    files.push(SeedFile::new(
+        "randomization.json",
+        serde_json::to_string(&randomization)?.as_bytes().to_vec(),
+    ));
+
     // Write the spoiler log
-    let spoiler_bytes = serde_json::to_vec_pretty(&randomization.spoiler_log).unwrap();
+    let spoiler_bytes = serde_json::to_vec_pretty(&spoiler_log).unwrap();
     files.push(SeedFile::new(
         &format!("{}/spoiler.json", prefix),
         spoiler_bytes,
@@ -262,18 +269,14 @@ pub async fn save_seed(
 
     // Write the spoiler maps
     let spoiler_maps =
-        spoiler_map::get_spoiler_map(&output_rom, &randomization.map, &app_data.game_data).unwrap();
+        spoiler_map::get_spoiler_map(randomization, &app_data.game_data, settings).unwrap();
     files.push(SeedFile::new(
-        &format!("{}/map-assigned.png", prefix),
-        spoiler_maps.assigned,
+        &format!("{}/map-explored.png", prefix),
+        spoiler_maps.explored,
     ));
     files.push(SeedFile::new(
-        &format!("{}/map-vanilla.png", prefix),
-        spoiler_maps.vanilla,
-    ));
-    files.push(SeedFile::new(
-        &format!("{}/map-grid.png", prefix),
-        spoiler_maps.grid,
+        &format!("{}/map-outline.png", prefix),
+        spoiler_maps.outline,
     ));
 
     // Write the spoiler visualizer
@@ -341,6 +344,11 @@ pub fn render_seed(
         get_enabled_tech(&seed_data.difficulty.tech, &app_data.game_data);
     let enabled_notables: HashSet<(RoomId, NotableId)> =
         get_enabled_notables(&seed_data.difficulty.notables, &app_data.game_data);
+    let objective_names: HashMap<String, String> = get_objective_groups()
+        .iter()
+        .map(|x| x.objectives.clone())
+        .flatten()
+        .collect();
     let seed_header_template = SeedHeaderTemplate {
         seed_name: seed_name.to_string(),
         version_info: app_data.version_info.clone(),
@@ -352,6 +360,7 @@ pub fn render_seed(
                 .item_progression_settings
                 .key_item_priority,
         ),
+        objective_names,
         race_mode: seed_data.race_mode,
         timestamp: seed_data.timestamp,
         preset: seed_data.preset.clone().unwrap_or("Custom".to_string()),
@@ -421,7 +430,13 @@ pub fn render_seed(
         respin: seed_data.respin,
         infinite_space_jump: seed_data.infinite_space_jump,
         momentum_conservation: seed_data.momentum_conservation,
-        objectives: seed_data.objectives.clone(),
+        fanfares: seed_data.fanfares.clone(),
+        etank_refill: match seed_data.settings.quality_of_life_settings.etank_refill {
+            ETankRefill::Disabled => "Disabled",
+            ETankRefill::Vanilla => "Vanilla",
+            ETankRefill::Full => "Full",
+        }
+        .to_string(),
         doors: seed_data.doors.clone(),
         start_location_mode: seed_data.start_location_mode.clone(),
         map_layout: seed_data.map_layout.clone(),
@@ -438,6 +453,7 @@ pub fn render_seed(
         all_items_spawn: seed_data.all_items_spawn,
         supers_double: seed_data.supers_double,
         ultra_low_qol: seed_data.ultra_low_qol,
+        settings: seed_data.settings.clone(),
     };
     let seed_footer_html = seed_footer_template.render()?;
     Ok((seed_header_html, seed_footer_html))

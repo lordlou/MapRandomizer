@@ -7,14 +7,15 @@
     "spazer_before_plasma": true,
     "item_pool_preset": "Reduced",
     "stop_item_placement_early": true,
+    "ammo_collect_fraction": 1.0,
     "item_pool": [
         {
             "item": "Missile",
-            "count": 46
+            "count": 12
         },
         {
             "item": "ETank",
-            "count": 14
+            "count": 3
         },
         {
             "item": "ReserveTank",
@@ -22,11 +23,11 @@
         },
         {
             "item": "Super",
-            "count": 10
+            "count": 6
         },
         {
             "item": "PowerBomb",
-            "count": 10
+            "count": 5
         }
     ],
     "starting_items_preset": "None",

@@ -1,441 +1,279 @@
-v115:
-- DONE: move input ROM into modals
-- DONE: validate input ROM
-- DONE: clean JSON API for /randomize
-- DONE: review spoiler zoom PR
-- DONE: fix error when customizing item pool (preset not set)
-- Make f_allItemsSpawn not be a flag?
-- review spoiler flag PR
-- DONE: make relevant flags only show logically collected flags
-- fix: 1st zebetite destroyable without clearing objectives: http://localhost:8080/logic/room/238/2/2/38
-- DONE: fix issue with comeInWithSpringBallBounce not checking speedbooster: https://discord.com/channels/1053421401354285129/1053434532973510748/1301251210606809130
-- DONE: improve reproducibility:
-  - try processing region files in a deterministic order
-- DONE: add pause & area times to credits
-- DONE: investigate issue with door lock skips not being in logic?:
-  - sam's seed: https://dev.maprando.com/seed/Y9zWgfcGD/
-- issue with Single Chamber door sometimes closing in wrong position: https://discord.com/channels/1053421401354285129/1053434532973510748/1300191178595110943
-- DONE: fix main hall elevator frames:
-  - takes at least 47 energy with fast elevators.
-- DONE: use RandomizerSettings in maprando-cli and maprando-test
-- DONE: set up script to automate syncing logic changes
-  - DONE: update skill assumption presets and full-settings presets
-- DONE: simplify DifficultyConfig
-- reduce Medium shortcharge tiles to 25? (will apply in bottom of Crateria Supers)
-- simplify SeedData
-- presets:
-  - show built-in preset on seed page if verified
-  - download settings preset from seed page
-    - remove custom name from settings JSON
-- built-in presets: default, and season 2 racing
-- new sm-json-data tests:
-  - leaveWithSpark should have shinespark in requires
-  - heated room strats should have heat frames
-  - resetRoom should reset obstacles
-- implement implicit canHorizontalShinespark for comeInWithSpark, also canMidairShinespark?
+Planned work to prioritize (v119?):
+- Allow more options to be overridden on the customization step:
+  - examples: Item dots after collection, Area transition markers on map, Door locks size on map
+  - these are all cosmetic changes to how the map is drawn, without affecting the information revealed.
+  - options with more substantial effects could maybe be included, but we'd need to define rules for "Race mode" of which changes are allowed
+- Add QoL setting for limiting starting map reveal to visited area
+  - Currently when using the "Maps revealed from start" option (Partial or Full), all areas are revealed from the start.
+  - This can be useful for "open spoiler" races or Escape start seeds (also very useful for development/debugging).
+  - More generally, it can be overwhelming to the player to digest all that information immediately.
+  - It could be useful to have another option that only reveals the map for areas that the player has visited.
+- Finer-grained map reveal options for specific types of tiles (maybe?)
+  - We can define categories of special tiles: map stations, refills, saves, objectives, items (each of the 4 tiers)
+  - For each category, there could be 3 options: revealed from the start, when visiting the area, or not at all.
+    - default setting would be map stations revealed when visiting the area, other tiles not at all.
+  - Since it's a lot of settings, they need to be tucked away into a modal or collapsible, similar to what is done with "Item pool" or "Starting items", and then we can have mini-presets for popular choices.
+  - Items are a tricky case to handle. Since the item dot does not occupy the whole tile, naively revealing it would also show parts of walls and other room features, which will probably look unacceptably bad.
+    - So it would probably have to be supported by a dynamic partial reveal mechanism, so that initially it can show only the item dot and not other features in that tile.
+    - Or the item case can just be postponed for later.
+- Handle the new wallJumpAvoid property on strats and notables:
+  - This identifies strats/notables that are only useful when playing with the "Collectible" wall jump option.
+  - So by default we could hide these (on the Generate page as well as in logic pages), to reduce clutter.
+  - Controls would need to be available, with 3 settings: to hide the wallJumpAvoid strats, to show them exclusively, or to show everything.
+- Model carrying around a flash suit (in LocalState somewhere, and as another cost metric)
+- Refine how initial ammo capacity works, and relax starting hub constraints:
+  - Currently starting hubs are restricted to rooms where you can farm all types of resources (energy, Missiles, Supers, PBs).
+  - But it may be slow, and this can sometimes result in an unreasonable expectations of managing/farming PBs in the early game.
+  - Instead, what we should do is 1) relax the constraint on starting hubs to require them to only be an energy farm, and 2) not consider starting ammo (Missiles, Supers, PBs) to be available except to the extent that a regular logical farm makes them available.
+- Make `resetRoom` account for the ~10 heat damage required to reset with a heated room (important for strats with `farmCycleDrops`).
+- Refine the fireflea room behavior across tile themes & area palettes, to make sure there is enough visiblity:
+  - The platforms in Red Brinstar Fireflea Room are often a problem currently.
+- Logic work (sm-json-data):
+  - Finish adding cross-room temp blue strats and remote runway setups/applications in Norfair
+    - Add missing remote runway strats in pink brinstar hopper room left side
+  - Populate wallJumpAvoid throughout the logic (strats and notables)
+  - Finish checking flash suit logic
+  - Maybe make some progress migrating farm strats (to use `farmCycleDrops`)
 
-TODO:
-- remove framesRequired/framesRemaining from comeInShinecharged/leaveShinecharged schema
-  - replace with "shineChargeFrames" logical requirement, and add test to ensure it is included.
-- sparking up a quicksand room causes OOB death, do we want that?
-  - hitbox expands after shinespark crash.
-- maybe add canTrickyDodgeEnemies to more places, e.g. Morph Ball Room?
-- map hub: fast travel
-- partial farms
-- link to logic pages from video site?
-- adjust auto-formatting for unlocksDoors
-- have auto-formatting also auto-order object properties by schema order
-- handle steep starting down tile better: only should affect short-charging, not other uses of runways
-- fix bug where dachora despawns global zeela in Dachora Room.
-  - probably caused by escape.asm: missing ",x" in stz, also check for Landing Site room ID so that it won't affect Dachora Room
-- show transition arrows in connecting areas when map is revealed
-- fix: g-mode immobile strats show Beyond on logic pages
-- Fix glass tunnel PLM drawing: https://github.com/amoebaOfDoom/subversion/blob/master/Project/ASM/PLM%20draw%20fix.asm
-- prevent empty tiles (grid lines only) from showing as explored on mini-map?
-- model energy usage in the escape.
-  - can be necessary to ensure beatability of seeds with reduced items and disabled escape refill.
-- possible QoL: while pause menu is fading in, press R to immediately initiate switching to equipment screen
-- add option to reroll seeds with not enough difficult required tricks?
-- instructions on gmode and artificial morph
-- fix g4 start location problem: https://discord.com/channels/1053421401354285129/1053434532973510748/1230346387628101643
-- fix issue with Low/Off QoL Chozo Desolate hanging the randomizer (won't place SpaceJump).
-- fix x-ray graphical glitches (seen in MemesAreHealthy seed):
-  - affecting top row of HUD, etc.
-- map room teleports?
-- update protogen sprite?
-- look into faster decompression:
-  - decompressor: https://github.com/tewtal/SHVC-LZSA2/blob/main/src/asar/lzsa2.asm
-  - compressor: https://github.com/emmanuel-marty/lzsa
-- override crystal flash helpers, for complementary suits
-- fix weapon PowerBomb logic:
-  - take into account that double hit is not possible with PowerBombPeriphery
-  - take into account multiplier
-- fix escape door staying open when entering from left (should close in MB1->MB2 cutscene?)
-- Ensure game is logically beatable (f_DefeatedMotherBrain) as a check at the end of seed generation
-  - Big Boy Room before Mother Brain Room can cause problems on low difficulty settings
-- Remove unneeded items from last step in Desolate.
-- heated elevator: mark with red platform?
-- Debug eddie desolate seed:
-  - https://maprando.com/seed/tPRO8Krh2LxvnQvA0HZzaw/
-  - Why placed Grapple and Wasteland ETank?
-- debug door lock logic:
-  - door requiring heat frames to unlock from unheated side: http://localhost:8080/seed/UCp7ZDC5H6ZSmDlKOtYBXw/data/visualizer/index.html
-- fix randomizer failing with all starting items.
-- in logic pages From/To node selections, improve contrast for grayed-out nodes.
-- reduced items?: new item progression preset & options
-- investigate possible respin bug: turnaround spin-jump doesn't work after shooting up?: 
-  - https://discord.com/channels/1053421401354285129/1073621773184159764/1205894290350407700
-- fix vanilla map music when "Random" start puts you in room with no music change (plays title screen music).
-- add more "carry shinecharge" strats.
-- handle `unlocksDoors`?
-- make sure cross-room notable strats actually check the setting for the notable
-- fix issue with pause map scrolling beyond bounds
-- adjust elevator heatFrames when fast elevators enabled
-- spoiler map: show pop-up when hovering over step, to show additional collectible items (with their quantities) and instructions
-  to double-click for details.
-- fix issue with pause map scrolling beyond bounds
-- add lower-detail partial map option, that hides more room-internal details including passages, doorways, elevator platforms
-- consider putting reverse croc speedway into escape logic (using runway data from sm-json-data)
-- consider building SOCD resolution into the randomizer (possibly with options for how it should work?)
-  - maybe also a way to toggle between two controller layouts
-  - maybe a way to bind directions to other inputs
-  - maybe a way to bind diagonal to individual button
-- add more leaveWithSpark strats in elevator rooms (including vertical?)
-- add test in sm-json-data to check that "shinespark" occurs in requires for "leaveWithSpark" strats.
-- set up offline script to generate BPS patch for each mosaic room/theme combination
-- UN farming room gate requirements:
-   - even on expert, it's still needing wave or a tank
-- add option for additional shinecharge tile lenience for cross-room shortcharge
-- should pink/orange door colors (on map) be changed to be less similar?
-- rework QoL presets?:
-  - keep same map options between Low and Default?
-- consider making shaktool room one-way in map generation (so Reverse Shaktool strat could be moved up to Medium)
-- in credits, show time spent in pause map
-- have pause map mark most recent save (like in vanilla)
-- fix OOB when leaving Kraid Room from right during fight
-- main street shinespark frames need some looking into: "frames": 35 doesn't make sense?
-- convert area arrows vs. letters to customization option
-- remove implicit g-mode go back through door strats for up doors.
-- add leaveRunningBlue exit condition (matching with comeInShinecharging)
-- refine GT logic: not in logic with 7E+4R and 5 Supers, Grapple.
-- clean up how door locks are modeled (including gray doors)
-- clean up how cross-room strats are implemented
-- proposal: eliminate implicit strats that cross through a door: exit/entrance conditions become only way to cross rooms.
-- consider options to start with Wrecked Ship powered on, and/or Zebes awake (maybe in Max QoL)
-- make start locations and hub locations only use door nodes
-  - that way much less risk of getting broken (or made unsound) by logic changes
-- map pools with movable toilet
-- look into possible quicksave/load patch (like save states but not emulator-dependent)
-  - could work better with music: continue playing same song or start from beginning if different
-  - could retain game timer shown in credits
-  - could retain map progress
-  - could expire after a certain number of door transitions (e.g. 4?) or when using a save station
-     - prevent accidental quickloads from losing lots of progress
-     - retain incentive to use real save stations
-- add door flags to refine logic
-- logic:
-  - mama turtle right item is basic with no items. is this ok?
-  - post croc farm room with ice to get to top left is basic. should be "canTrickyUseFrozenEnemies" or "canCameraManip"?
-- look at area-themed palettes again:
-  - seaweed in main street with norfair palette
-  - platforms in climb with brinstar palette
-- add more hazard doors when walljump is turned off (or collectible)?:
-  - left door to ridley
-  - left door to West Ocean (gravity suit door)
-- assume filler items are collected, when determining hard locations for key items?
-- for key items, skip options that are filler (including already-placed semi-filler)?
-- link to twin room in logic room pages.
-- indicate g-mode regain mobility in logic pages. 
-  - wait until after g-mode migration has made substantial progress.
-- adjust heat damage multipliers?
-- add physics/heated override to runway geometry
-- fix toilet to restore x position on exit?
-- leniency for shinecharge frames
-- add robots.txt for dev service
-- clear SRAM more fully when saved seed does not match:
-  - save slot position is apparently being retained (e.g. starting with cursor on slot 3)
-- proper saving/loading of custom presets
-- revamp strat page: 
-  - embed the video directly near the top? 
-  - collapse the room diagram
-- make tech and notable strat names in the Generate page link to the corresponding logic page.
-  - need special handling for reusable notables though
-- List notable strats in the main logic page.
-- add a logic page for each difficulty tier (similar to the sections within the Generate page)
-- clarify gate glitch leniency: that it doesn't apply to Pink Hopper Room gate
-- consider prioritizing item placement at closer item locations relative to previous key item(s)
-- split off toilet from aqueduct
-- speed booster hall: heat frames could be slightly less?
-- set up a more robust way for users to save & select presets
-- overhaul two-phase randomization/customization process
-  - create ROM in customization only
-- move input ROM off Generate page (and into separate dialogue that only shows on first use).
-- convert tech/strat AVIs to WebM & WebP (using ffmpeg CLI)
-  - WebM/VP9 for full playback using HTML5 <video>
-  - WebP for thumbnails
-  - use image-rendering: pixelated
-- logic: add some 3-room shinecharge strats to logic (ones that can work with existing schema)
-- add notable for underwater canGateGlitch (Very Hard)?
-- remove old-format farms and refills from sm-json-data?
-- make hub requirements consistent with new farm approach?
-  - actually probably don't need to define hub rooms anymore:
-      - just check for ability to refill each resource type from the start location and get back
-- logic pages (tech/room/strat): add way to fill out items/flags/resources/obstacles to simulate logic
-- take another look at boss fights
-  - create table to show in help button, to make boss logic more transparent (in addition to showing formulas)
-  - 5 Super phantoon fight probably needs more requirements than it currently has.
-- add objectives:
-  - Larvas: 4 special items (replacing missiles)
-  - Random?
-- Improve save station balancing
-  - Define "distance" in a way that accounts for ease of access (e.g. possible item/tech dependencies)?
-- Improve area clustering
-- investigate resource_multiplier bug that happened in Osse's seed with resource_multiplier=8:
-  - https://maprando.com/seed/isnUf9YjIhvW-BJFrvFuyw/data/visualizer/index.html
-  - (was from enemykill not using multiplier)
-- Fix bug with cross-room jump?:
-  - spoiler shows no logical path out of draygon until later than expected:
-    https://maprando.com/seed/O4j4-NDrcwckyTtJMVqxdw/data/visualizer/index.html
-- Slow progression item placement bug?:
-  - supers placed on same step as Screw, although Missiles still available as filler:
-    - https://maprando.com/seed/HwuYziIJUh-sCUM0YCAPRA/data/visualizer/index.html
-  - possibly related: issue where filler items are re-randomized when trying new key item.
-    - maybe re-randomizing is ok, but on success it should try replacing key item with Missile (instead of having Missile be first key item tried)
-- fix quick reloading from bottom/top of elevator (to not skip back a save)
-- handle canShinesparkWithReserve in randomizer (and remove it from being ignored)
-- incrementally build graph traversal with increasing difficulty tiers, acquiring flags in the process.
-  - will allow better accounting of the difficulty of boss fights in forced mode
-  - should be faster too
-  - improved spoiler log route
-- show objective progress in pause menu (also zebes awake, phantoon defeated)?
-  - or maybe make objective X's fade after collection?
-- help buttons for rest of settings (e.g. explain boss proficiency calculations)
-- logic simulator
-- consider marking last save (and backup saves) with map icons in pause map.
-- consider inverting the two colors of not-filled reserve tank in HUD?
-- handle sba attacks in "enemyKill"
-- "fast cutscenes" QoL option?: 
-  - fast big boy cutscene
-  - fast MB
-  - fast saves, refills, maps?
-  - item collection
-- "item fanfare" option?
-- QoL preset "Minimal" above "Off"?
-- consider "Other option" for shinespark not to drain energy
-- bug reported by somerando: on vanilla MB, escape sequence starts immediately on reload, instead of waiting for you to move.
-  - also, death by waiting the escape timer out will load to previous save
-- "flashing" customization option?
-- "friendly" map pool option that tries to put easier rooms closer to ship, harder rooms further away
-- Vanilla items option?
-- Vanilla doors option?
-  - lots of logic stuff to sort through
-  - combining with non-vanilla map would be particularly challenging:
-     - would need to change how boss gray doors are implemented
-     - would need to mark the color of the opposite side of doors somehow, to warn against softlocks
-     - not sure it would be worth the trouble
-- logic: for strats that require coming in with Screw Attack (e.g. Mickey Mouse Room bottom, Blue Hopper Room) we need to 
-  come in with normal physics from the other room
-- model the bridge doors in West Ocean properly (can be used for bypassing locks on bottom-left/right doors)
-- remove dead code for drawing lava/acid on map tiles.
-- strats to add to logic:
-  - tricky dash jump to get out of alcatraz with Morph + HiJump + SpeedBooster only (no wall jump or bombs)
-  - ice clip through crumble in Green Brin Main Shaft? (in case internal door is not blue)
-  - add notable (Medium) for reverse shaktool
-  - spore spawn plasma SBA
-  - enemy stuck moonfalls in Pink Brin Power Bomb and West Ocean
-  - R-mode forced stand-up clips (needs testing):
-    - GT Room
+v118:
+- DONE: implement comeInBlueSpaceJumping
+- DONE: fix BG color in Warehouse Entrance
+- fix issue with bombs opening wave beam doors.
+- fix wall jump boots palette
+- fix issue with vanilla item fanfare + fast save
+- finish refining stutter water shinecharges.
+- DONE: add side platform strats.
+- mosaic:
+  - restore morph tunnel continuation behind morph tunnel transition
+- DONE: apply Fake Lava patch (resolve conflict with complementary_suits?)
+- add more strats from Incomplete videos
+- chaining temp blue after bouncing through should be extreme:
+  - maprando.com/logic/room/59/13/4/134
+- add new samus sprites
+- DONE: rework map tiles (global pause tileset, and room-local mini-map tilesets)
+- DONE: investigate unnecessary scroll bars showing up in Chrome in logic pages.
+- DONE: fix sand hole start locations.
+- DONE: check MB logic: 2+4 shouldn't be in logic without r-mode?
+- DONE: fix disabled tank color
+- DONE: fix color on one samus tile on equipment screen
+- DONE: fix beam door black color
+- DONE: check why speed booster chozo orb visible during scrolling
+- DONE: apply correct setup ASM if Toilet intersects room with glass tube tiles
+- DONE: add X-mode leniency setting and CF clip leniency
+- DONE: remove vanilla music on vanilla map
+- DONE: load barrier-clearing PLMs in Mother Brain setup ASM instead of door ASM
+- DONE: prevent MB1 death unless objectives cleared
+- DONE: override "h_fullEnemyDamageReduction"
+- DONE: handle PowerBombPeriphery correctly in enemyKill logic
+- DONE: handle PowerBombBlast multiplier correctly in enemyKill logic (e.g. for Metroids)
+- DONE: add option to select specific start location
+  - DONE: handle in settings upgrade
+  - DONE: show in seed header
+  - DONE: organize by area
+  - DONE: update help/info
+- DONE: snes mini compatibility with fast decompression
+- DONE: investigate game-start crash reported by HisBeardNis
+- DONE: decide whether or not to leave item PLMs (other than chozo orbs) as early-loading
+- DONE: look into pause fade-in speed (currently asymmetric with fade-out)
+- DONE: switch around palettes, to make acid FX fade, and improve item colors
+- DONE: partial reveal door next to two-door save/refill rooms
+- DONE: handle comeInWithSidePlatform environment
+- DONE: add main hall elevator hazard marker
+- DONE: add/associate video for canTrickyGMode.
+- DONE: fix ultra-low QoL: when selecting QoL preset other than Off, disable ultra-low QoL.
+- DONE: handle "detailNote" in tech and strats.
+- DONE: handle "minExtraRunSpeed" in "leaveWithRunway"
+- DONE: include "objectives" details on seed page.
+- DONE: fix scrolling sky corruption, which got worse with the faster decompression
+- DONE: move crateria tube tiles to CRE
+- DONE: blue brinstar theme
+- DONE: fix spoiler map bug:
+  - non-existent (?) HiJump boots shown: https://maprando.com/seed/7wT9dbFrm/data/visualizer/index.html
+
+Other future work: --------------------------------------------------------------------
+
+ROM-patching fixes/improvements:
+  - investigate audio-related lag after quick reload
+  - draw door frame in front of hazard markers, for doors that don't have a door shell.
+  - Fix glass tunnel PLM drawing: https://github.com/amoebaOfDoom/subversion/blob/master/Project/ASM/PLM%20draw%20fix.asm
+    - currently the glass tunnel can look messed up when destroyed from below.
+  - investigate momentum conservation: 
+    - eddie says first-frame jump loses momentum: https://www.twitch.tv/videos/2317357753?t=2h17m11s
+  - prevent empty tiles (grid lines only) from showing as explored on mini-map?
+    - e.g. in Green Brin Firefleas Room, or when x-ray climbing rooms like Dachora, Crateria Supers
+  - fix g4 start location problem: https://discord.com/channels/1053421401354285129/1053434532973510748/1230346387628101643
+  - fix OOB when leaving Kraid Room from right during fight
+  - clear SRAM more fully when saved seed does not match:
+    - save slot position is being retained, so cursor might start on slots 2 or 3 initially
+  - look into possible quicksave/load patch (like save states but not emulator-dependent)
+    - could work better with music: continue playing same song or start from beginning if different
+    - could retain game timer shown in credits
+    - could retain map progress
+    - could expire when using a save station
+       - prevent accidental quickloads from losing lots of progress
+  - make kraid camera act normal when entering from left?
+    - same thing with spore spawn entering from bottom?
+  - fix issue with pause map scrolling beyond bounds
+  
+Logic (sm-json-data):
+- PCJR: "Left-Side Shinespark" (and related strats): rename and add "canShinechargeMovementComplex" req
+- X-Ray climb from "strange positions" using G-mode:
+  - example in Big Pink by bobbob: https://vimeo.com/623738489
+- add iframe spike jump remote runways: e.g. East Cac Alley, Bowling Alley, Crateria Supers
+- add `easyHeatFrames` logical requirement, for rooms like Speed Booster Hall
+- add missing Red Tower grapple jump strats:
+  - missed entering from the right
+  - grapple jumping up only to the ledge (probably needs a new node)
+    - shinespark strats could get up that node too, with fewer shinecharge frames
+- new strats to add:
+  - crumble jump of LN escape PB room, leavewithplatform
+  - west cac alley CF clip
+- R-mode forced stand-up clips (needs testing):
     - double chamber: right side (CF grapple clip too), if no walljumps
     - Acid Statue Room (no need for HiJump)
     - Mickey Mouse Room (alternative to CF grapple clip?)
     - West Ocean (alternative to ice clip?)
-    - Wrecked Ship East Super Room: alternative to CF clip (farm the Coverns)
     - PCJR: up through crumble? (not sure if this can work, since enemy hit kills momentum and crumble respawns. If it works, where you can jump back up before crumble respawns, then CF clip would probably also work)
-  - moondance in Bowling Alley top
-- mosaic visual cues etc.:
-  - InnerCrateria: 
-    - Metal Pirates
-    - top left of East Cac Alley, brick edge is wrong
-    - Wasteland fake bricks (replace with pipes?)
-    - Big Pink too many fake tiles in transition between fungal and brick
+- refine botwoon requirements:
+  - A distinction should probably be made between using supers vs. missiles:
+    - e.g. 10 supers should be fine in Extreme (maybe Expert?)
+  - 30 Missiles should be fine in Insane
+- use Ship refill in G-mode strats:
+  - for strats that enter G-mode into Landing Site, use it, and then go back out still in G-mode
+- many other things:
+  - see Issues on the GitHub: https://github.com/vg-json-data/sm-json-data/issues
+  - see Incomplete status videos on https://videos.maprando.com/
+
+Major new features (not clear yet which of these will ever happen):
+- Fast travel via map stations
+  - Have a "hub" room connected to each map station, with a door behind the map station that opens after activating that map.
+- Hyperlinks and tooltips in the logic page JSON, to make the logic easier to browse and understand
+- Logic simulator: a way to fill out items/flags/resources/obstacles to simulate logic and check if there is a logical path through a room:
+  - Useful especially for calculating energy required for hellruns.
+  - The boss calculator set up a lot of the infrastructure needed to support this.
+  - Cross-room strats will be tricky, as you would have to be able to specify what the neighboring rooms are.
+- "Larvas" objective: ~4 items to be collected (hidden among majors? or shown with an X? or have a setting to choose?)
+- Music customization (SPC):
+  - An advantage of SPC-based music customization is that it can be integrated into the site, similar to other customization options.
+  - We already have MSU-1 support, which works fine, but SPC would avoid the need for special setup or hardware/platform restrictions.
+    - Of course, MSU-1 will always be more flexible in allowing any kind of music.
+  - A lot of work would be needed to curate/edit custom SPC, to ensure they can work properly with the sound effects.
+    - Sound effects using non-existent "instruments" can crash the game, so we have to make sure that won't happen.
+    - Also we want to make sure the glitched sound effects don't sound too bad.
+- Improved save station balancing
+  - Reshuffle single-tile rooms during item placement, to try to maintain good save coverage, accounting for logical 2-way reachability.
+  - Define "distance" in a way that accounts for ease of access; e.g. coverage should probably only consider tricks roughly 1 tier lower than the skill assumptions selected?
+- Custom demos (when idling on the title screen)
+- Overhaul the G-mode logic schema, to be able to model using locked doors to overload PLMs, and opening PB doors with artificial morph.
+- Make Gravity-only Samus palette different from Gravity+Varia?
+    - Include support for custom sprites to define the new palette.
+- Small-sized map option, where only a subset of the rooms are included?
+  - Could maybe be done without a new map gen model, by chopping off parts of existing maps as an offline processing step.
+  - This needs some thought about how to handle objectives: i.e. if an objective doesn't exist, then it needs to not be required.
+- Support for horizontally mirrored rooms (requires heavy logic work, along with a new map gen model)
+- Support for randomizing room environments: heat and water (massive logic work)
+- make map rando for other hacks (e.g. project base, subversion?)
+  - would be a lot of work. we could invite others to help implement the logic
+
+Other:
+- maybe run customization on client (with Rust WebAssembly)
+  - then the ROM wouldn't need to be passed to the server.
+  - but Mosaic (tile theming) data will need to be downloaded
+- new entrance/exit conditions:
+  - add comeInWithRunway/leaveWithRunwayExtension for Crateria Tube
+  - add leaveBlueRunning exit condition (matching with comeInShinecharging/comeInGettingBlueSpeed)
+  - but how to implement propagation of runway-length/speed info for this?
+  - similarly, we'd like to support comeInGettingBlueSpeed in combination with leaveSpinning, leaveWithMockball, leaveWithSpringBallBounce, and leaveSpaceJumping.
+  - also comeIn(Blue)Spinning could combine with leaveWithMockball, leaveWithSpringBallBounce
+    - again, we need a way to propagate the runway-length/speed info
+- figure out how to express the heat-frame requirement to go back through a door
+- expand tech & strat notes on X-ray climbs: indicate when it is safer to only release X-ray while turning around in one direction
+(when there are air tiles not visible in the initial screen).
+- add sm-json-data tests:
+  - check that if some implicit strats are overridden, then all applicable ones are.
+- if strat includes doorUnlockedAtNode at destination node, then skip redundant unlock requirement.
+- fix clippy lints and set up as part of CI
+- simplify SeedData. It's not clear if we really even need this anymore.
+- Make f_allItemsSpawn (etc.) not be a flag? Could be "i_allItemsSpawn" instead and handled similar to other logic-impacting settings.
+- embed some logic data in video site? (e.g. show strat note when uploading/editing)
+- handle steep starting down tile better: only should affect short-charging, not other uses of runways
+- model energy usage in the escape.
+  - can be necessary to ensure beatability of seeds with reduced items and disabled escape refill.
+- add option to reroll seeds with not enough difficult required tricks?
+- instructions on gmode and artificial morph
+- fix weapon PowerBomb logic (can't remember if this is all already done?):
+  - take into account that double hit is not possible with PowerBombPeriphery
+  - take into account multiplier
+- Remove unneeded items from last step in Desolate.
+- in logic pages From/To node selections, improve contrast for grayed-out nodes.
+- fix vanilla map music when "Random" start puts you in room with no music change (plays title screen music).
+- handle door locks and flags more precisely; account for them when considering which key item to place
+  - this can help forced mode take into account difficulty of defeating bosses (and acquiring other flags)
+- spoiler map: show pop-up when hovering over step, to show additional collectible items (with their quantities) and instructions
+  to click/double-click for details.
+- rework QoL presets?:
+  - keep same map options between Low and Default?
+- consider making shaktool room one-way in map generation (so Reverse Shaktool strat could be moved up to Medium)
+- have pause map mark most recent save (like in vanilla)
+- main street shinespark frames need some looking into: "frames": 35 doesn't make sense?
+- refine GT logic: not in logic with 7E+4R and 5 Supers, Grapple.
+- make start locations and hub locations only use door nodes
+  - that way much less risk of getting broken (or made unsound) by logic changes
+- link to twin room in logic room pages.
+- add physics/heated override to runway geometry
+  - more generally, come up with some way to better account for the added difficulty when a strat cannot be retried or where a limited amount of retries are possible.
+- revamp strat page: 
+  - embed the video directly near the top? 
+  - collapse the room diagram
+- List notable strats in the main logic page?
+- add a logic page for each difficulty tier (similar to the sections within the Generate page)
+- clarify gate glitch leniency: that it doesn't apply to Pink Hopper Room gate
+- consider prioritizing item placement at closer item locations relative to previous key item(s)
+- incrementally build graph traversal with increasing difficulty tiers, acquiring flags in the process.
+  - will allow better accounting of the difficulty of boss fights in forced mode
+  - should be faster too
+  - improved spoiler log route
+- help buttons for rest of settings (e.g. explain boss proficiency calculations)
+- handle sba attacks in "enemyKill" (already done?)
+- more fine-grained "fast cutscenes" QoL options?: 
+  - fast big boy cutscene
+  - fast MB
+  - fast saves, refills, maps?
 - make item music tracks consistent, to eliminate music restarts that can happen between two item rooms
-- fix palette fade issue when entering MB room from left (Mother Brain starts from white?)
-- possibly bad idea: should getting map station add arrows to other maps (ones leading into current map)?
 - see if we can do something about silent snails with Zebes asleep music
-- for forced mode, also use tier below Basic?
-- enhancements to momentum conservation patch
-  - remove need to be holding dash or to be in spin
-  - reset speed boost counter whenever momentum conservation comes into play, to avoid making it too easy to get blue
-  - retain speed when turning around with spin?
+- possible enhancements to momentum conservation patch
+  - remove need to be holding dash or to be in spin (probably bad)
+  - retain speed when turning around with spin? (probably bad)
   - on ground, retain horizontal speed when unmorphing
-    - by pressing up (or jump, if spring ball not equipped) while holding forward
-  - in air, retain horizontal speed when soft unmorphing while holding forward
-- add animated GIFs on room/tech/strat pages for notable strats.
-- maybe overhaul how randomization/customization phases work: run customization on client (with Rust WebAssembly?)
-  - make it so that customization can use matching version from when the seed was generated
-  - include more options for customization
-  - ROM won't need to be provided for generation, only customization
+    - by pressing up (or jump, if spring ball not equipped) while holding forward and dash
+  - in air, retain horizontal speed when soft unmorphing while holding forward and dash
 - handle runways with conditional physics (Volcano Room, Amphitheatre, East Pants Room)
-- check why Tourian Escape Room 1 runway isn't allowing Speedball strat into Wrecked Ship Main Shaft (on Expert)
-- remove invisible solid tile in Tourian Escape Room 1, above transition
-- maybe move enhanced Samus controls into separate option (instead of Max QoL)?
 - enforce tech dependencies:
   - e.g. enabling "canPreciseWalljump" should enable dependency "canWalljump"
   - disabling "canWalljump" should disable dependent "canPreciseWalljump"
-- change how cross-room logic works?:
-  - unify cross-room strats to go under links, with annotations on the cross-room state (in new strat properties)
-  - replaces "initiateRemotely", allows obstacles and one-way cross-room paths to be handled properly
-- minimal items mode:
-  - could go in pending "Wild" item progression preset (along with option to allow items to be potentially required to be used in their return path)
-  - taking into account objectives & MB requirements, replace unneeded items with nothings (e.g. empty Missile container)
-  - keep item dots as they would have been (mixture of different possible types)
-  - there's no longer a guarantee that every room can be eventually reachable
-  - maybe allow customizabilty of which items can be removed:
-    - some people might still want to get certain items (e.g. beams)
-- consider "friendly reserve tank behavior" QoL option in max:
-  - manually refilling to full doesn't empty the remaining reserves (requested by zero318)
-  - i-frames don't expire during reserve? (though this would break double-damage boost strats)
-  - no heat damage during reserve refill
-  - maybe?:
-    - energy recharge stations also refill reserve energy
-    - collecting etank also refills reserves?
-  - (not part of QoL:) fix crash when pausing on frame when auto reserve triggers 
-  - See existing patch for some of these: https://metroidconstruction.com/resource.php?id=418
-- consider bot-friendly API
-- "wild" item progression mode, where new item may be required to be used for the return path.
-- consider idea from selicre: "what if there was a mode in which walljumps could be unlocked by visiting etecoons (and shinesparking by visiting dachora)?"
-- custom demos
+- harder item progression mode, where new item may be required to be used for the return path.
 - include a check that the client and server are matching versions and give a more meaningful error when they aren't
-- look into botwoon requirements: 
-  https://maprando.com/seed/-yvSvwjFlrfJN1NRxDi-Jw/data/visualizer/index.html
-- QoL option for save station fast travel (in Max)?
-- investigate problem when using quick reload (L+R+Select+Start) while unpausing with 0 energy.
-- investigate: ridley gray door closed when reserve triggered (in sapphron seed)
-- fix escape timer tech mapping to use reverse Amphitheatre notable for can_acid_dive
-- model improvement:
-  - try using localized output: use token that room is placed in, instead of applying attention across all tokens
-  - try nvidia transformer engine
-  - increase model size, probably decrease pass factor and buffer size
-  - try again using action values, to reduce the amount of computation needed
-- when tile above Samus gets explored (in speedways) make it get revealed too
 - fix missing Samus tile in Bomb message box (issue with map tile expansion patch)
-- add logic override for strat to run under tourian blue hoppers from left (except with ultra-low QoL)
-- fix: arrow map tile down to toilet doesn't get revealed (when it crosses areas)?
-- logic: killing 3 musketeers with ice should require patience?
-- fix toilet tile in botwoon's hallway with "vanilla map" option.
-- handle 3-room shinesparks
-  - at least basic case where using two-room combined runway to get a charge then jump into a 3rd room
-    - should be representable with canLeaveCharged having a canComeInCharged requirement (180 frames)
-  - in trickier cases, the frames in canLeaveCharged could depend on frames remaining in canComeInCharged
-    - we could add a field in canComeInCharged "relativeFrameRemaining" for this
-- make kraid camera act normal when entering from left
-  - same thing with spore spawn entering from bottom
-- handle (steep) slopes in runway length calculations
-- 10 super botwoon should be possible in Expert (and 30 missile in Insane?)
-- possibly adjust some of the transition marker letters:
-  - make the right part of the N thicker (possibly make it 7 pixels wide?)
-  - make M and W be 7 pixels wide. 
-    - Mirror them to put the gap in the correct place?
-    - but if it has tiles on both the left & right, what do we do?
-       - keep it 6 pixels?
-- maybe make Mother Brain Room reveal all its tiles (and maybe explore them too? but probably not), to be more consistent with the other boss rooms
-   - on the other hand, what about minibosses and other objectives? maybe just leave all this alone?
-- fix save animation colors (area-themed color looks a little bad?)
-- logic: metroid tank damage may need to be higher without some tech (multiplier doesn't apply)
-- fix how spoiler map sometimes won't show escape route
-- see if it is possible to prevent song changes from messing up enemy behavior
 - fix problem with disappearing typewriter text when pausing as escape sequence starts
 - add a tip that you can share a seed using the URL.
-- logic (maybe): moondance (bowling alley), tas dance (green brin shaft)
-- make graph traversals faster by using previous step for initial local states (probably not worth it?):
-  - we'd have to do a full graph traversal to get spoiler route as a separate step, to avoid getting weird long paths
-- in sm-json-data: use Ship refill in G-mode strats:
-  - for strats that enter G-mode into Landing Site, use it, and then go back out still in G-mode
-- replace Botwoon Hallway portion of Toilet level data with something more neutral
-   - also remove the enemies from the Botwoon Hallway part
-- fix gray door after mother brain when entering baby kraid (& metal pirates, boss rooms, etc.?)
-- add patch for handling crashes? (to display the stack & registers)
-- if possible, debug crash in Mt. Everest from Scottycro42 (https://clips.twitch.tv/DarlingSavageDogeMcaT-zgV9PF33MiawTpL2)
-- oats seed Apr 1:
- - main street shinespark energy
- - kronic boost heatframes
- - metal pirates hitbox doesn't need plasma
-- take double-hits into account correctly with reserve energy.
-- check if pants room internal door connects correctly in logic
-- add option (enabled on Challenge) to not treat tanks as filler items anymore after giving Varia (including the step where giving Varia)
-  - maybe more general option to postpone unneeded filler items aside from missiles
-- spoiler visualizer improvements (see GitHub issue)
-- find some way to have forced mode take into account difficulty of defeating bosses (and other flags)
-  - for each flag, identify its tier using just the flag edge (not redoing a full graph traversal)
-  - then for the item placement, have the graph traversal treat that flag not as free but as whatever difficulty it was.
-- fix graphics in door transitions?
-- fix (sometimes?) glitched right door in GT. X-Ray showed a plasma beam inside it
-- make quick reload work while in pause menu?
 - refine cross room shinesparks:
-    - slopes
-- consider overhauling how cross-room logic is encoded:
-  - canComeInCharged should be in a special part of the "node" (symmetric to "canLeaveCharged"), not in "links"
-  - same thing for adjacentRunway
-  - since "can" sounds like a tech, maybe we should rename these "enterCharged", "enterWithRunway", etc. (later we can have
-    "enterWithSpeedball" and other things), and symmetrically, "exitCharged", "exitWithSpeedball", etc.
-  - This is cleaner, reduces need for preprocessing, and would cut out the possibility of expressing invalid things
-    like requiring multiple adjacentRunway from different nodes in the same strat.
-- improve slow-progression logic: allow item progression by unlocking way back
-  - don't immediately place filler items at one-way reachable locations
-  - instead check that when a key item is placed at a previously one-way-reachable location, the item would not have provided
-    a way back at an earlier step?
-- fix spoiler log for reverse paths using shinesparks, G-mode, etc.
+    - take into account how the accumulated speed affects energy required in next room.
+    - this can make a big difference in some situations, e.g. sparking from Waterway into Mt. Everest
 - fix bug where suit color does not change when changing suits while taking damage (e.g. lava dive)?
-- fix bug where music is wrong after quick reload (even after going to next room).
 - clean up the web service, to reduce the amount of boilerplate plumbing settings around.
-- figure out why some rooms are dark (some FX other than palette FX?)
-- fixes/improvements to area palettes:
-  - add back palette FX glows using correct palettes.
-  - fix palette in Crocomire cutscene when wall collapses
-  - fix cutscene between MB1 and MB2
-  - fix background during Ridley fight
-- During escape, block backward path using room setup ASM instead of door ASM (so it can still work after leaving room another way)
-  - when going into room with no doorcap (e.g. escape room 1, glass tunnel) fix how gray door appears:
-    - shift to the right a tile.
-    - maybe use wall PLM instead of gray door
-  - or, possibly better idea: don't spawn a gray door or wall, just have it take you into post-MB-fight state of MB room
-    (like escape auto-save does).
 - make separate option for patching out major glitches?
   - include GT code, Spacetime beam (currently patched out)
   - make OOB cause instant death?
   - others
-- Add way to export settings from seed page (and export/import on main page).
 - Better validation/error-handling of web service
-  - push more validation into client
 - Add note to strat in Post-Crocomire farming room to get to top-left with HiJump
   (run on platform enemy and jump)
 - Use separate worker pool to run randomization (to avoid blocking web requests)
 - Rust cleanup:
     - Use `serde_json` instead of `json` crate for loading sm-json-data.
     - Clean up error handling: get rid of a bunch of remaining unwrap()'s, etc.
-- Make Gravity-only Samus palette different from Gravity+Varia.
-    - Figure out how this can work with custom sprites.
-- Consider rejecting cases where the set of bireachable item locations grows too slow or too fast.
-- move GFX colors:
-  - Morph Ball room (blue brinstar), tileset 7:
-    - [0x31, 0x32, 0x33] -> [0x38, 0x39, 0x3A]
-- fix tiny bug: when bottom-left door of landing site is an area transition, the arrow shows up from the beginning
-  of the game (due to running the door ASM while loading the game)
-- fix internal checksum in output ROM
+    - Look into using sm-rs-data.
+- fix tiny bug: when loading door of the starting room (e.g. bottom-left of landing site) is an area transition, the area transition marker shows up on the map from the beginning of the game (due to running the door ASM while loading the game)
+- fix internal checksum in output ROM?
 - fix suit graphics not showing after getting suit (consequence of skipping animation)?
-- have forced mode take into account return path?
-  - probably bad idea, because returning may not be required (before getting another item that makes it easier).
-
-
-maybe someday?:
-- minimizer mode? (select rooms to include randomly, hand-picked, and/or user-selected)
-- make map rando for other hacks (e.g. project base, subversion?)
-  - would be a lot of work. we could invite others to help implement the logic
-
-
-rejected ideas (probably):
-- set boss flag immediately when boss dies.
-- balance boss distribution (one boss per area, corresponding to vanilla?)
-- consider moving the MB barriers to the right one tile (or two?), to make them interfere less with ice zeb skip.
-- Option for anti-softlock patches (e.g. in Moat, Early Supers, etc.)?
-  - disable acid trigger in Leodox room?
+- making the map generation code more reusable, so that others could more easily apply it to other games.

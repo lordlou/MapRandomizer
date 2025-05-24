@@ -8,12 +8,19 @@ use maprando::{
     traverse::{apply_requirement, LockedDoorData},
 };
 use maprando_game::{
-    ExitCondition, GameData, Link, MainEntranceCondition, NodeId, NotableId, NotableIdx,
-    Requirement, RoomId, StratId, StratVideo, TechId, VertexAction, VertexKey,
-    TECH_ID_CAN_ARTIFICIAL_MORPH, TECH_ID_CAN_BOMB_HORIZONTALLY, TECH_ID_CAN_ENEMY_STUCK_MOONFALL,
-    TECH_ID_CAN_ENTER_G_MODE, TECH_ID_CAN_ENTER_R_MODE, TECH_ID_CAN_GRAPPLE_TELEPORT,
-    TECH_ID_CAN_MOONDANCE, TECH_ID_CAN_SHINESPARK, TECH_ID_CAN_SKIP_DOOR_LOCK,
-    TECH_ID_CAN_SPEEDBALL, TECH_ID_CAN_STUTTER_WATER_SHINECHARGE, TECH_ID_CAN_TEMPORARY_BLUE,
+    DoorOrientation, ExitCondition, GameData, Link, MainEntranceCondition, NodeId, NotableId,
+    NotableIdx, Requirement, RoomId, SparkPosition, StratId, StratVideo, TechId, VertexAction,
+    VertexKey, TECH_ID_CAN_ARTIFICIAL_MORPH, TECH_ID_CAN_BOMB_HORIZONTALLY,
+    TECH_ID_CAN_DISABLE_EQUIPMENT, TECH_ID_CAN_ENEMY_STUCK_MOONFALL, TECH_ID_CAN_ENTER_G_MODE,
+    TECH_ID_CAN_ENTER_G_MODE_IMMOBILE, TECH_ID_CAN_ENTER_R_MODE, TECH_ID_CAN_EXTENDED_MOONDANCE,
+    TECH_ID_CAN_GRAPPLE_JUMP, TECH_ID_CAN_GRAPPLE_TELEPORT, TECH_ID_CAN_HEATED_G_MODE,
+    TECH_ID_CAN_HORIZONTAL_SHINESPARK, TECH_ID_CAN_MIDAIR_SHINESPARK, TECH_ID_CAN_MOCKBALL,
+    TECH_ID_CAN_MOONDANCE, TECH_ID_CAN_MOONFALL, TECH_ID_CAN_PRECISE_GRAPPLE,
+    TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK, TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK_FROM_WATER,
+    TECH_ID_CAN_SAMUS_EATER_TELEPORT, TECH_ID_CAN_SHINECHARGE_MOVEMENT, TECH_ID_CAN_SHINESPARK,
+    TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP, TECH_ID_CAN_SKIP_DOOR_LOCK, TECH_ID_CAN_SPEEDBALL,
+    TECH_ID_CAN_SPRING_BALL_BOUNCE, TECH_ID_CAN_STATIONARY_SPIN_JUMP,
+    TECH_ID_CAN_STUTTER_WATER_SHINECHARGE, TECH_ID_CAN_TEMPORARY_BLUE, TECH_ID_CAN_WALLJUMP,
 };
 use maprando_logic::{GlobalState, Inventory, LocalState};
 use std::path::PathBuf;
@@ -34,6 +41,8 @@ struct RoomStrat {
     to_node_id: usize,
     to_node_name: String,
     note: String,
+    detail_note: String,
+    dev_note: String,
     entrance_condition: Option<String>,
     requires: String, // new-line separated requirements
     exit_condition: Option<String>,
@@ -69,6 +78,8 @@ struct TechTemplate<'a> {
     tech_id: TechId,
     tech_name: String,
     tech_note: String,
+    tech_detail_note: String,
+    tech_dev_note: String,
     tech_dependencies: String,
     tech_difficulty_idx: usize,
     tech_difficulty_name: String,
@@ -226,7 +237,6 @@ fn make_tech_templates<'a>(
     room_templates: &[RoomTemplate<'a>],
     preset_data: &'a PresetData,
     _global: &GlobalState,
-    area_order: &[String],
     video_storage_url: &str,
     version_info: &VersionInfo,
 ) -> Vec<TechTemplate<'a>> {
@@ -239,44 +249,199 @@ fn make_tech_templates<'a>(
             let to_node_id = strat_json["link"][1].as_usize().unwrap();
             let strat_name = strat_json["name"].as_str().unwrap().to_string();
             let ids = (room_id, from_node_id, to_node_id, strat_name);
+            let from_node_json = &game_data.node_json_map[&(room_id, from_node_id)];
+            let to_node_json = &game_data.node_json_map[&(room_id, to_node_id)];
             let mut tech_set: HashSet<usize> = HashSet::new();
+
+            // TODO: think about if we could automate extracting tech requirements, as this
+            // code is error-prone and awkward to maintain, as it can easily fall out of sync
+            // with the requirements actually used in the randomizer logic. At the very least,
+            // it could probably be extracted from the results from `get_cross_room_reqs`` below:
             for req in strat_json["requires"].members() {
                 extract_tech_rec(req, &mut tech_set, game_data);
             }
             if strat_json["bypassesDoorShell"].as_bool() == Some(true) {
                 tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_SKIP_DOOR_LOCK]);
             }
+            if strat_json.has_key("gModeRegainMobility") {
+                tech_set
+                    .insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE_IMMOBILE]);
+                if game_data.get_room_heated(room_json, from_node_id).unwrap() {
+                    tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_HEATED_G_MODE]);
+                }
+            }
+            let entrance_condition_techs = vec![
+                ("comeInShinecharged", vec![TECH_ID_CAN_SHINECHARGE_MOVEMENT]),
+                (
+                    "comeInShinechargedJumping",
+                    vec![TECH_ID_CAN_SHINECHARGE_MOVEMENT],
+                ),
+                ("comeInWithBombBoost", vec![TECH_ID_CAN_BOMB_HORIZONTALLY]),
+                (
+                    "comeInStutterShinecharging",
+                    vec![TECH_ID_CAN_STUTTER_WATER_SHINECHARGE],
+                ),
+                (
+                    "comeInWithDoorStuckSetup",
+                    vec![TECH_ID_CAN_STATIONARY_SPIN_JUMP],
+                ),
+                ("comeInSpeedballing", vec![TECH_ID_CAN_SPEEDBALL]),
+                ("comeInWithTemporaryBlue", vec![TECH_ID_CAN_TEMPORARY_BLUE]),
+                ("comeInWithMockball", vec![TECH_ID_CAN_MOCKBALL]),
+                (
+                    "comeInWithSpringBallBounce",
+                    vec![TECH_ID_CAN_SPRING_BALL_BOUNCE],
+                ),
+                (
+                    "comeInWithBlueSpringBallBounce",
+                    vec![TECH_ID_CAN_SPRING_BALL_BOUNCE],
+                ),
+                ("comeInWithStoredFallSpeed", vec![TECH_ID_CAN_MOONFALL]),
+                ("comeInWithGMode", vec![TECH_ID_CAN_ENTER_G_MODE]),
+                ("comeInWithRMode", vec![TECH_ID_CAN_ENTER_R_MODE]),
+                ("comeInWithGrappleSwing", vec![TECH_ID_CAN_PRECISE_GRAPPLE]),
+                ("comeInWithGrappleJump", vec![TECH_ID_CAN_GRAPPLE_JUMP]),
+                (
+                    "comeInWithGrappleTeleport",
+                    vec![TECH_ID_CAN_GRAPPLE_TELEPORT],
+                ),
+                (
+                    "comeInWithSamusEaterTeleport",
+                    vec![TECH_ID_CAN_SAMUS_EATER_TELEPORT],
+                ),
+                ("comeInWithWallJumpBelow", vec![TECH_ID_CAN_WALLJUMP]),
+                (
+                    "comeInWithSidePlatform",
+                    vec![TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP],
+                ),
+            ];
+
+            for (entrance_name, tech_ids) in entrance_condition_techs {
+                if strat_json["entranceCondition"].has_key(entrance_name) {
+                    for t in tech_ids {
+                        tech_set.insert(game_data.tech_isv.index_by_key[&t]);
+                    }
+                }
+            }
+
+            let speedbooster_entrance_conditions = vec![
+                "comeInRunning",
+                "comeInJumping",
+                "comeInSpaceJumping",
+                "comeInWithMockball",
+            ];
+            for entrance_name in speedbooster_entrance_conditions {
+                if strat_json["entranceCondition"].has_key(entrance_name) {
+                    if strat_json["entranceCondition"][entrance_name]["speedBooster"].as_bool()
+                        == Some(false)
+                    {
+                        tech_set.insert(
+                            game_data.tech_isv.index_by_key[&TECH_ID_CAN_DISABLE_EQUIPMENT],
+                        );
+                    }
+                }
+            }
+
+            if strat_json["entranceCondition"].has_key("comeInWithDoorStuckSetup") {
+                if from_node_json["doorOrientation"].as_str() == Some("right") {
+                    tech_set.insert(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK],
+                    );
+                    tech_set.insert(
+                        game_data.tech_isv.index_by_key
+                            [&TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK_FROM_WATER],
+                    );
+                }
+            }
+            if strat_json["entranceCondition"].has_key("comeInWithSpark") {
+                let door_orientation = from_node_json["doorOrientation"].as_str().unwrap();
+                if door_orientation == "right" || door_orientation == "left" {
+                    tech_set.insert(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_HORIZONTAL_SHINESPARK],
+                    );
+                    if strat_json["entranceCondition"]["comeInWithSpark"]["position"].as_str()
+                        == Some("top")
+                    {
+                        tech_set.insert(
+                            game_data.tech_isv.index_by_key[&TECH_ID_CAN_MIDAIR_SHINESPARK],
+                        );
+                    }
+                }
+            }
+            if strat_json["entranceCondition"].has_key("comeInWithSidePlatformJump") {
+                for p in strat_json["entranceCondition"]["comeInWithSidePlatformJump"]["platforms"]
+                    .members()
+                {
+                    if p.has_key("requires") {
+                        for req in p["requires"].members() {
+                            extract_tech_rec(req, &mut tech_set, game_data);
+                        }
+                    }
+                }
+            }
+
             if strat_json["entranceCondition"].has_key("comeInWithGMode") {
-                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE]);
+                if strat_json["entranceCondition"]["comeInWithGMode"]["morphed"].as_bool()
+                    == Some(true)
+                {
+                    tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_ARTIFICIAL_MORPH]);
+                }
+                if game_data.get_room_heated(room_json, from_node_id).unwrap() {
+                    tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_HEATED_G_MODE]);
+                }
             }
-            if strat_json["entranceCondition"].has_key("comeInWithRMode") {
-                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_R_MODE]);
+
+            let exit_condition_techs = vec![
+                ("leaveShinecharged", vec![TECH_ID_CAN_SHINECHARGE_MOVEMENT]),
+                ("leaveWithTemporaryBlue", vec![TECH_ID_CAN_TEMPORARY_BLUE]),
+                ("leaveWithMockball", vec![TECH_ID_CAN_MOCKBALL]),
+                (
+                    "leaveWithSpringBallBounce",
+                    vec![TECH_ID_CAN_SPRING_BALL_BOUNCE],
+                ),
+                ("leaveWithGModeSetup", vec![TECH_ID_CAN_ENTER_G_MODE]),
+                ("leaveWithGMode", vec![TECH_ID_CAN_ENTER_G_MODE]),
+                (
+                    "leaveWithGrappleTeleport",
+                    vec![TECH_ID_CAN_GRAPPLE_TELEPORT],
+                ),
+                (
+                    "leaveWithSamusEaterTeleport",
+                    vec![TECH_ID_CAN_SAMUS_EATER_TELEPORT],
+                ),
+                (
+                    "leaveWithSidePlatform",
+                    vec![TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP],
+                ),
+            ];
+
+            for (exit_name, tech_ids) in exit_condition_techs {
+                if strat_json["exitCondition"].has_key(exit_name) {
+                    for t in tech_ids {
+                        tech_set.insert(game_data.tech_isv.index_by_key[&t]);
+                    }
+                }
             }
-            if strat_json["entranceCondition"].has_key("comeInSpeedballing") {
-                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_SPEEDBALL]);
-            }
-            if strat_json["entranceCondition"].has_key("comeInStutterShinecharging") {
-                tech_set.insert(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_STUTTER_WATER_SHINECHARGE],
-                );
-            }
-            if strat_json["entranceCondition"].has_key("comeInWithTemporaryBlue") {
-                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_TEMPORARY_BLUE]);
-            }
-            if strat_json["entranceCondition"].has_key("comeInWithBombBoost") {
-                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_BOMB_HORIZONTALLY]);
-            }
-            if strat_json["entranceCondition"].has_key("comeInWithGrappleTeleport") {
-                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_GRAPPLE_TELEPORT]);
+
+            if strat_json["exitCondition"].has_key("leaveWithSpark") {
+                let door_orientation = to_node_json["doorOrientation"].as_str().unwrap();
+                if door_orientation == "right" || door_orientation == "left" {
+                    tech_set.insert(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_HORIZONTAL_SHINESPARK],
+                    );
+                    if strat_json["exitCondition"]["leaveWithSpark"]["position"].as_str()
+                        == Some("top")
+                    {
+                        tech_set.insert(
+                            game_data.tech_isv.index_by_key[&TECH_ID_CAN_MIDAIR_SHINESPARK],
+                        );
+                    }
+                }
             }
             if strat_json["exitCondition"].has_key("leaveWithGModeSetup") {
-                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE]);
-            }
-            if strat_json["exitCondition"].has_key("leaveWithGMode") {
-                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE]);
-            }
-            if strat_json["exitCondition"].has_key("leaveWithGrappleTeleport") {
-                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_GRAPPLE_TELEPORT]);
+                if game_data.get_room_heated(room_json, to_node_id).unwrap() {
+                    tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_HEATED_G_MODE]);
+                }
             }
 
             for tech_idx in tech_set {
@@ -303,7 +468,7 @@ fn make_tech_templates<'a>(
     let mut tech_templates: Vec<TechTemplate<'a>> = vec![];
     for (tech_idx, tech_ids) in tech_strat_ids.iter().enumerate() {
         let tech_id = game_data.tech_isv.keys[tech_idx].clone();
-        let tech_note = game_data.tech_description[&tech_id].clone();
+        let tech_json = &game_data.tech_json_map[&tech_id];
         let tech_dependency_names: Vec<String> = game_data.tech_dependencies[&tech_id]
             .iter()
             .map(|tech_id| {
@@ -326,7 +491,11 @@ fn make_tech_templates<'a>(
         }
         strats.sort_by_key(|s| {
             (
-                area_order.iter().position(|a| a == &s.area).unwrap(),
+                game_data
+                    .area_order
+                    .iter()
+                    .position(|a| a == &s.area)
+                    .unwrap(),
                 s.room_name.clone(),
                 s.from_node_id,
                 s.to_node_id,
@@ -337,11 +506,10 @@ fn make_tech_templates<'a>(
             version_info: version_info.clone(),
             preset_data,
             tech_id,
-            tech_name: game_data.tech_json_map[&tech_id]["name"]
-                .as_str()
-                .unwrap()
-                .to_string(),
-            tech_note,
+            tech_name: tech_json["name"].as_str().unwrap().to_string(),
+            tech_note: game_data.parse_note(&tech_json["note"]).join(" "),
+            tech_detail_note: game_data.parse_note(&tech_json["detailNote"]).join(" "),
+            tech_dev_note: game_data.parse_note(&tech_json["devNote"]).join(" "),
             tech_dependencies,
             tech_difficulty_idx: difficulty_idx,
             tech_difficulty_name: difficulty_name,
@@ -360,7 +528,6 @@ fn make_notable_templates<'a>(
     room_templates: &[RoomTemplate<'a>],
     preset_data: &'a PresetData,
     _global: &GlobalState,
-    area_order: &[String],
     video_storage_url: &str,
     version_info: &VersionInfo,
 ) -> Vec<NotableTemplate<'a>> {
@@ -418,7 +585,11 @@ fn make_notable_templates<'a>(
         }
         strats.sort_by_key(|s| {
             (
-                area_order.iter().position(|a| a == &s.area).unwrap(),
+                game_data
+                    .area_order
+                    .iter()
+                    .position(|a| a == &s.area)
+                    .unwrap(),
                 s.room_name.clone(),
                 s.from_node_id,
                 s.to_node_id,
@@ -452,70 +623,258 @@ fn get_cross_room_reqs(link: &Link, game_data: &GameData) -> Requirement {
     let mut reqs: Vec<Requirement> = vec![];
     let from_vertex_key = &game_data.vertex_isv.keys[link.from_vertex_id];
     let to_vertex_key = &game_data.vertex_isv.keys[link.to_vertex_id];
+
+    // TODO: handle gModeRegainMobility in some cleaner way:
+    for (l, _) in game_data
+        .node_gmode_regain_mobility
+        .get(&(from_vertex_key.room_id, from_vertex_key.node_id))
+        .unwrap_or(&vec![])
+    {
+        if l.strat_id.is_some() && l.strat_id == link.strat_id {
+            reqs.push(Requirement::Tech(
+                game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE_IMMOBILE],
+            ));
+            if game_data
+                .get_room_heated(
+                    &game_data.room_json_map[&from_vertex_key.room_id],
+                    from_vertex_key.node_id,
+                )
+                .unwrap()
+            {
+                reqs.push(Requirement::Tech(
+                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_HEATED_G_MODE],
+                ));
+            }
+        }
+    }
+
     for action in &from_vertex_key.actions {
         if let VertexAction::Enter(entrance_condition) = action {
-            let main = &entrance_condition.main;
-            if let MainEntranceCondition::ComeInWithGMode { .. } = main {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE],
-                ));
-            }
-            if let MainEntranceCondition::ComeInWithRMode { .. } = main {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_R_MODE],
-                ));
-            }
-            if let MainEntranceCondition::ComeInSpeedballing { .. } = main {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_SPEEDBALL],
-                ));
-            }
-            if let MainEntranceCondition::ComeInStutterShinecharging { .. } = main {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_STUTTER_WATER_SHINECHARGE],
-                ));
-            }
-            if let MainEntranceCondition::ComeInWithTemporaryBlue { .. } = main {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_TEMPORARY_BLUE],
-                ));
-            }
-            if let MainEntranceCondition::ComeInWithBombBoost {} = main {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_BOMB_HORIZONTALLY],
-                ));
-            }
-            if let MainEntranceCondition::ComeInWithGrappleTeleport { .. } = main {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_GRAPPLE_TELEPORT],
-                ));
-            }
-            if let MainEntranceCondition::ComeInWithStoredFallSpeed { .. } = main {
-                reqs.push(Requirement::Or(vec![
-                    Requirement::Tech(game_data.tech_isv.index_by_key[&TECH_ID_CAN_MOONDANCE]),
-                    Requirement::Tech(
-                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENEMY_STUCK_MOONFALL],
-                    ),
-                ]));
+            match &entrance_condition.main {
+                MainEntranceCondition::ComeInNormally { .. } => {}
+                MainEntranceCondition::ComeInRunning { .. } => {}
+                MainEntranceCondition::ComeInJumping { .. } => {}
+                MainEntranceCondition::ComeInSpaceJumping { .. } => {}
+                MainEntranceCondition::ComeInGettingBlueSpeed { .. } => {}
+                MainEntranceCondition::ComeInShinecharging { .. } => {}
+                MainEntranceCondition::ComeInShinecharged { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SHINECHARGE_MOVEMENT],
+                    ));
+                }
+                MainEntranceCondition::ComeInShinechargedJumping { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SHINECHARGE_MOVEMENT],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithSpark {
+                    position,
+                    door_orientation,
+                } => {
+                    if [DoorOrientation::Left, DoorOrientation::Right].contains(&door_orientation) {
+                        reqs.push(Requirement::Tech(
+                            game_data.tech_isv.index_by_key[&TECH_ID_CAN_HORIZONTAL_SHINESPARK],
+                        ));
+                        if position == &SparkPosition::Top {
+                            reqs.push(Requirement::Tech(
+                                game_data.tech_isv.index_by_key[&TECH_ID_CAN_MIDAIR_SHINESPARK],
+                            ));
+                        }
+                    }
+                }
+                MainEntranceCondition::ComeInWithBombBoost {} => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_BOMB_HORIZONTALLY],
+                    ));
+                }
+                MainEntranceCondition::ComeInStutterShinecharging { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_STUTTER_WATER_SHINECHARGE],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithDoorStuckSetup {
+                    door_orientation, ..
+                } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_STATIONARY_SPIN_JUMP],
+                    ));
+                    if door_orientation == &DoorOrientation::Right {
+                        reqs.push(Requirement::Tech(
+                            game_data.tech_isv.index_by_key[&TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK],
+                        ));
+                    }
+                }
+                MainEntranceCondition::ComeInSpeedballing { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SPEEDBALL],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithTemporaryBlue { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_TEMPORARY_BLUE],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithMockball { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_MOCKBALL],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithSpringBallBounce { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SPRING_BALL_BOUNCE],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithBlueSpringBallBounce { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SPRING_BALL_BOUNCE],
+                    ));
+                }
+                MainEntranceCondition::ComeInSpinning { .. } => {}
+                MainEntranceCondition::ComeInBlueSpinning { .. } => {}
+                MainEntranceCondition::ComeInBlueSpaceJumping { .. } => {}
+                MainEntranceCondition::ComeInWithStoredFallSpeed {
+                    fall_speed_in_tiles,
+                } => {
+                    reqs.push(Requirement::Or(vec![
+                        Requirement::Tech(game_data.tech_isv.index_by_key[&TECH_ID_CAN_MOONDANCE]),
+                        Requirement::Tech(
+                            game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENEMY_STUCK_MOONFALL],
+                        ),
+                    ]));
+                    if fall_speed_in_tiles == &2 {
+                        reqs.push(Requirement::Tech(
+                            game_data.tech_isv.index_by_key[&TECH_ID_CAN_EXTENDED_MOONDANCE],
+                        ));
+                    }
+                }
+                MainEntranceCondition::ComeInWithRMode { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_R_MODE],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithGMode { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithWallJumpBelow { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_WALLJUMP],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithSpaceJumpBelow { .. } => {}
+                MainEntranceCondition::ComeInWithPlatformBelow { .. } => {}
+                MainEntranceCondition::ComeInWithSidePlatform { platforms } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP],
+                    ));
+                    for p in platforms {
+                        reqs.push(p.requirement.clone());
+                    }
+                }
+                MainEntranceCondition::ComeInWithGrappleSwing { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_PRECISE_GRAPPLE],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithGrappleJump { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_GRAPPLE_JUMP],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithGrappleTeleport { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_GRAPPLE_TELEPORT],
+                    ));
+                }
+                MainEntranceCondition::ComeInWithSamusEaterTeleport { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SAMUS_EATER_TELEPORT],
+                    ));
+                }
             }
         }
     }
     for action in &to_vertex_key.actions {
         if let VertexAction::Exit(exit_condition) = action {
-            if let ExitCondition::LeaveWithGMode { .. } = exit_condition {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE],
-                ));
-            }
-            if let ExitCondition::LeaveWithGModeSetup { .. } = exit_condition {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE],
-                ));
-            }
-            if let ExitCondition::LeaveWithGrappleTeleport { .. } = exit_condition {
-                reqs.push(Requirement::Tech(
-                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_GRAPPLE_TELEPORT],
-                ));
+            match exit_condition {
+                ExitCondition::LeaveNormally { .. } => {}
+                ExitCondition::LeaveWithRunway { .. } => {}
+                ExitCondition::LeaveShinecharged { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SHINECHARGE_MOVEMENT],
+                    ));
+                }
+                ExitCondition::LeaveWithTemporaryBlue { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_TEMPORARY_BLUE],
+                    ));
+                }
+                ExitCondition::LeaveWithSpark {
+                    position,
+                    door_orientation,
+                } => {
+                    if [DoorOrientation::Left, DoorOrientation::Right].contains(&door_orientation) {
+                        reqs.push(Requirement::Tech(
+                            game_data.tech_isv.index_by_key[&TECH_ID_CAN_HORIZONTAL_SHINESPARK],
+                        ));
+                        if position == &SparkPosition::Top {
+                            reqs.push(Requirement::Tech(
+                                game_data.tech_isv.index_by_key[&TECH_ID_CAN_MIDAIR_SHINESPARK],
+                            ));
+                        }
+                    }
+                }
+                ExitCondition::LeaveSpinning { .. } => {}
+                ExitCondition::LeaveWithMockball { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_MOCKBALL],
+                    ));
+                }
+                ExitCondition::LeaveWithSpringBallBounce { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SPRING_BALL_BOUNCE],
+                    ));
+                }
+                ExitCondition::LeaveSpaceJumping { .. } => {}
+                ExitCondition::LeaveWithStoredFallSpeed { .. } => {}
+                ExitCondition::LeaveWithGModeSetup { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE],
+                    ));
+                }
+                ExitCondition::LeaveWithGMode { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE],
+                    ));
+                }
+                ExitCondition::LeaveWithDoorFrameBelow { .. } => {}
+                ExitCondition::LeaveWithPlatformBelow { .. } => {}
+                ExitCondition::LeaveWithSidePlatform { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP],
+                    ));
+                }
+                ExitCondition::LeaveWithGrappleSwing { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_PRECISE_GRAPPLE],
+                    ));
+                }
+                ExitCondition::LeaveWithGrappleJump { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_GRAPPLE_JUMP],
+                    ));
+                }
+                ExitCondition::LeaveWithGrappleTeleport { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_GRAPPLE_TELEPORT],
+                    ));
+                }
+                ExitCondition::LeaveWithSamusEaterTeleport { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SAMUS_EATER_TELEPORT],
+                    ));
+                }
             }
         }
     }
@@ -564,14 +923,8 @@ fn get_strat_difficulty(
         }
         let difficulty_idx = preset_data.difficulty_levels.index_by_key[&difficulty.name];
 
-        let local = LocalState {
-            energy_used: 0,
-            reserves_used: 0,
-            missiles_used: 0,
-            supers_used: 0,
-            power_bombs_used: 0,
-            shinecharge_frames_remaining: 180 - difficulty.shinecharge_leniency_frames,
-        };
+        let mut local = LocalState::new();
+        local.shinecharge_frames_remaining = 180 - difficulty.shinecharge_leniency_frames;
 
         let key = (room_id, from_node_id, to_node_id, strat_name.clone());
         if !links_by_ids.contains_key(&key) {
@@ -623,16 +976,7 @@ fn make_room_template<'a>(
         node_name_map.insert(node_id, node_name.to_string());
         nodes.push((node_id, node_name.to_string()));
     }
-    let area = room_json["area"].as_str().unwrap().to_string();
-    let sub_area = room_json["subarea"].as_str().unwrap_or("").to_string();
-    let sub_sub_area = room_json["subsubarea"].as_str().unwrap_or("").to_string();
-    let full_area = if sub_sub_area != "" {
-        format!("{} {} {}", sub_sub_area, sub_area, area)
-    } else if sub_area != "" && sub_area != "Main" {
-        format!("{} {}", sub_area, area)
-    } else {
-        area
-    };
+    let full_area = game_data.room_full_area[&room_id].clone();
 
     for strat_json in room_json["strats"].members() {
         if !strat_json["id"].is_number() {
@@ -712,6 +1056,8 @@ fn make_room_template<'a>(
             to_node_id,
             to_node_name: node_name_map[&to_node_id].clone(),
             note: game_data.parse_note(&strat_json["note"]).join(" "),
+            detail_note: game_data.parse_note(&strat_json["detailNote"]).join(" "),
+            dev_note: game_data.parse_note(&strat_json["devNote"]).join(" "),
             entrance_condition,
             requires: make_requires(&strat_json["requires"]),
             unlocks_doors,
@@ -771,33 +1117,9 @@ impl LogicData {
         let room_diagram_listing = list_room_diagram_files();
         let mut room_templates: Vec<RoomTemplate> = vec![];
 
-        let area_order: Vec<String> = vec![
-            "Central Crateria",
-            "West Crateria",
-            "East Crateria",
-            "Blue Brinstar",
-            "Green Brinstar",
-            "Pink Brinstar",
-            "Red Brinstar",
-            "Kraid Brinstar",
-            "East Upper Norfair",
-            "West Upper Norfair",
-            "Crocomire Upper Norfair",
-            "West Lower Norfair",
-            "East Lower Norfair",
-            "Wrecked Ship",
-            "Outer Maridia",
-            "Pink Inner Maridia",
-            "Yellow Inner Maridia",
-            "Green Inner Maridia",
-            "Tourian",
-        ]
-        .into_iter()
-        .map(|x| x.to_string())
-        .collect();
-
         let items = vec![true; game_data.item_isv.keys.len()];
-        let weapon_mask = game_data.get_weapon_mask(&items);
+        let tech = vec![true; game_data.tech_isv.keys.len()];
+        let weapon_mask = game_data.get_weapon_mask(&items, &tech);
         let global = GlobalState {
             inventory: Inventory {
                 items: items,
@@ -806,6 +1128,9 @@ impl LogicData {
                 max_missiles: 230,
                 max_supers: 50,
                 max_power_bombs: 50,
+                collectible_missile_packs: 0,
+                collectible_super_packs: 0,
+                collectible_power_bomb_packs: 0,
             },
             flags: vec![true; game_data.flag_isv.keys.len()],
             doors_unlocked: vec![],
@@ -878,7 +1203,6 @@ impl LogicData {
             &room_templates,
             preset_data,
             &global,
-            &area_order,
             video_storage_url,
             version_info,
         );
@@ -902,7 +1226,6 @@ impl LogicData {
             &room_templates,
             preset_data,
             &global,
-            &area_order,
             video_storage_url,
             version_info,
         );
@@ -934,7 +1257,7 @@ impl LogicData {
             rooms: &room_templates,
             tech: &tech_templates,
             _notables: &notable_templates,
-            area_order: &area_order,
+            area_order: &game_data.area_order,
             tech_difficulties: preset_data.difficulty_levels.keys.clone(),
         };
         out.index_html = index_template.render().unwrap();

@@ -6,10 +6,12 @@
 !deathhook82 = $82DDC7 ;$82 used for death hook (game state $19)
 
 ;free space: make sure it doesnt override anything you have
+!bank_80_free_space_start = $80d310
+!bank_80_free_space_end = $80d330
+!bank_82_free_space_start = $82FE70
+!bank_82_free_space_end = $82FE80
 !bank_85_free_space_start = $859880
 !bank_85_free_space_end = $859980
-!bank_82_free_space_start = $82FE00
-!bank_82_free_space_end = $82FE80
 
 !spin_lock_button_combo = $82FE7C   ; This should be inside free space, and also consistent with reference in customize.rs
 !reload_button_combo = $82FE7E   ; This should be inside free space, and also consistent with reference in customize.rs
@@ -32,12 +34,12 @@ deathhook:
 
     jsl $82be17       ; Stop sounds
     jsl load_save_slot
-	jsl $80858C		  ; load map
+    jsl $80858C       ; load map
 
     ; In case we're on an elevator ride, reset this state so that Samus will have control after the reload:
     stz $0E18
 
-    lda #$0006        
+    lda #$0006
     sta $0998         ; Goto game mode 6 (load game)
     plp
     rts
@@ -56,44 +58,49 @@ org $848D16
 org $85811E
     jsl hook_ship_save
 
-; $08, $14, $15, $16, $17
-
 org !bank_85_free_space_start
+SupportedStates:
+    dw #$0007  ; Main gameplay fading in
+    dw #$0008  ; Main gameplay
+    dw #$0009  ; Hit a door block
+    dw #$000a  ; Loading next room
+    dw #$000b  ; Loading next room
+    dw #$000c  ; Pausing, normal gameplay but darkening
+    dw #$000d  ; Pausing, loading pause menu
+    dw #$000e  ; Paused, loading pause menu
+    dw #$000f  ; Paused, objective/map/equipment screens
+    dw #$0012  ; Unpausing, normal gameplay but brightening
+    dw #$0013  ; Death sequence, start
+    dw #$0014  ; Death sequence, black out surroundings
+    dw #$0015  ; Death sequence, wait for music
+    dw #$0016  ; Death sequence, pre-flashing
+    dw #$0017  ; Death sequence, flashing
+    dw #$0018  ; Death sequence, explosion white out
+    dw #$001b  ; Reserve tanks auto.
+    dw #$0027  ; Ending and credits. Cinematic. (reboot only)
+    dw #$ffff
 
 hook_main:
-    lda $0998
-    cmp #$0007
-    beq .check
-    cmp #$0008
-    beq .check
-    cmp #$000c
-    beq .check
-    cmp #$0012
-    beq .check
-    cmp #$0013
-    beq .check
-    cmp #$0014
-    beq .check
-    cmp #$0015
-    beq .check
-    cmp #$0016
-    beq .check
-    cmp #$0017
-    beq .check
-    cmp #$0018
-    beq .check
-    ; inapplicable game state, so skip check for quick reload inputs.
     jsl $808338  ; run hi-jacked instruction
+    phb
+    phk
+    plb
+    ldx #$0000
+.next_check
+    lda SupportedStates,X
+    bmi .leave
+    cmp $0998
+    beq .check
+    inx : inx
+    bra .next_check
+.leave    ; inapplicable game state, so skip check for quick reload inputs.
+    plb
     rtl
-.check:
-    jsl $808338  ; run hi-jacked instruction
-    jmp check_reload
 
-
-check_reload:
-    PHP
-    REP #$30
-    PHA
+.check
+    plb
+    php
+    rep #$30
 
     ; Disable quick reload during the Samus fanfare at the start of the game (or when loading game from menu)
     lda $0A44
@@ -122,34 +129,52 @@ check_reload:
     cmp !reload_button_combo
     bne .noreset ; If any of the inputs are not currently held, then do not reset.
 
+    ; Only check new press with gamestates 7 & 8
+    lda $0998
+    cmp #$0007
+    beq .check_newpress
+    cmp #$0008
+    bne .reset
+.check_newpress
     lda $8F      ; Newly pressed controller 1 input
     and !reload_button_combo   ; L + R + Select + Start
     bne .reset   ; Reset only if at least one of the inputs is newly pressed
 .noreset
-    PLA
-    PLP
-    RTL
+    plp
+    rtl
 .reset:
-    PLA
-    PLP
-    jsl deathhook_wrapper
-    RTL
+    plp
+    lda #$0027
+    cmp $0998    ; in credits?
+    bne .no_reboot
+
+    ; stop MSU
+    stz $2006
+    stz $2007
+        
+    ; direct APU write to stop music
+    stz $00
+    stz $02
+    jsl $808024
+
+    jml $80841c ; reboot
+    
+.no_reboot
+    stz $0727    ; Reset pause menu index
+    stz $0797    ; Reset door transition flag
+    lda #$0000
+    sta $7EC400  ; clear palette change numerator, in case of reload during fade-in/fade-out
+    stz $05F5    ; enable sounds
+    pea $f70d    ; $82f70e = rtl
+    jml !deathhook82
 
 warnpc !bank_85_free_space_end
-
-org !bank_82_free_space_start
-
-deathhook_wrapper:
-    jsr deathhook
-    rtl
-
-warnpc !spin_lock_button_combo
 
 org !spin_lock_button_combo
     dw $0870
 
 org !reload_button_combo
-    dw $0303  ; L + R + Select + Start  (overridable by the customizer)
+    dw $3030  ; L + R + Select + Start  (overridable by the customizer)
 
 ; Hook setting up game
 org $80a088
@@ -168,8 +193,7 @@ org $91e164
     jsl setup_samus : nop : nop
 
 org $82E309
-    jsl hook_door_transition
-    nop : nop
+    jsl hook_door_transition : nop : nop
 
 ; Free space somewhere for hooked code
 org !freespacea0
@@ -182,7 +206,7 @@ setup_music:
     rtl
 
 setup_game_1:
-	jsl $82be17       ; Stop sounds
+    jsl $82be17       ; Stop sounds
     lda #$ffff
     sta !loadback_ready   ; Set the state that allows loading back to previous save.
     lda !QUICK_RELOAD
@@ -203,7 +227,7 @@ setup_game_2:
     jsl $82e071
     jml $80a0d2
 .quick
-    jml $80a0d9
+    jml $80a0d5
 
 setup_game_3:
     jsl $82be17       ; Stop sounds
@@ -328,3 +352,28 @@ hook_ship_save:
 
 warnpc $A18000
 
+; load game room pointer hook
+org $80c45e
+    jsr hook_room
+
+org !bank_80_free_space_start
+hook_room:
+    cmp #$A98D  ; crocomire spawn?
+    bne .leave
+; clear 7e2000-3000 to avoid layer 2 corruption
+    pha
+    phx
+    ldx #$0000
+    lda #$0338
+.clr_lp
+    sta $7E2000,x
+    inx : inx
+    cpx #$1000
+    bmi .clr_lp
+    plx
+    pla
+.leave
+    sta $079B  ; replaced code
+    rts
+
+warnpc !bank_80_free_space_end

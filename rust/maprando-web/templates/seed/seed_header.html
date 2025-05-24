@@ -32,7 +32,7 @@
         <div class="row">
             <div class="col-5 col-sm-4 col-md-3">Settings preset:</div>
             <div class="col-7 col-sm-8 col-md-9">
-            {{ settings.name }}
+            {{ settings.name.as_ref().unwrap_or("Custom".to_string()|as_ref) }}
             <a href="data/settings.json" download="settings.json" class="text-decoration-none link-secondary">
                 <i class="bi bi-download ms-2"></i>
             </a>
@@ -52,7 +52,7 @@
         </div>
         <div class="row">
             <div class="col-5 col-sm-4 col-md-3">Objectives:</div>
-            <div class="col-7 col-sm-8 col-md-9">{{+ objectives }}</div>
+            <div class="col-7 col-sm-8 col-md-9">{{+ settings.objective_settings.preset.as_ref().unwrap_or("Custom".to_string()|as_ref) }}</div>
         </div>
         <div class="row">
             <div class="col-5 col-sm-4 col-md-3">Map layout:</div>
@@ -124,6 +124,15 @@
                     </div>
                     <div class="card-body">
                         {% include "quality_of_life_details.html" %}
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        Objective details
+                    </div>
+                    <div class="card-body">
+                        {% include "objective_details.html" %}
                     </div>
                 </div>
             </div>

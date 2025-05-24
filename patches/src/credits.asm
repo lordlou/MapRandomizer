@@ -9,7 +9,7 @@ incsrc "constants.asm"
 !bank_8b_free_space_start = $8bf770
 !bank_8b_free_space_end = $8bf900
 !bank_ce_free_space_start = $ceb240  ; must match address in patch.rs
-!bank_ce_free_space_end = $ced200
+!bank_ce_free_space_end = $cee000
 !bank_df_free_space_start = $dfd4df
 !bank_df_free_space_end = $dfe200
 !credits_script_address = $dfd91b
@@ -55,6 +55,10 @@ org $8b9a19
 ;; Hijack after decompression of regular credits tilemaps
 org $8be0d1
     jsl copy
+
+;; Hijack just before final screen to restore credits tilemap
+org $8bf600
+    jsr restore_credits
 
 org !bank_8b_free_space_start
 
@@ -115,11 +119,22 @@ patch4:
     sta $19fb
     jml $8b9a1f
 
-;; Copy custom credits tilemap data from ROM to $7f2000,x
 copy:
+;; Credits overflow causes beam corruption on final screen
+;; Back up 7f4000-5000 to SRAM 703000-4000
     pha
     phx
     ldx #$0000
+    phx
+.bkp_lp
+    lda $7f4000, x
+    sta $703000, x
+    inx : inx
+    cpx #$1000
+    bmi .bkp_lp
+
+;; Copy custom credits tilemap data from ROM to $7f2000,x
+    plx
 -
     lda.l credits, x
     cmp #$0000
@@ -151,6 +166,19 @@ copy:
     pla
     jsl $8b95ce
     rtl
+
+; restore original credits tilemap to vram for final screen
+restore_credits:
+    sta $1b3d,x ; replaced code
+    phx
+    ldx $0330
+    lda #$1000                         : sta $00d0,x ; Number of bytes
+    lda #$7000                         : sta $00d3,x 
+    lda #$3000                         : sta $00d2,x ; Source address = $703000
+    lda #$0000                         : sta $00d5,x ; Destination in Vram
+    txa : clc : adc #$0007             : sta $0330   ; Update the stack pointer
+    plx
+    rts
 
 warnpc !bank_8b_free_space_end
 
@@ -464,10 +492,8 @@ script:
     dw !draw, !blank
     dw !draw, !row*13     ;; HIROFUMI MATSUOKA
     dw !draw, !row*14
-    dw !draw, !blank
     dw !draw, !row*15     ;; MASAHIKO MASHIMO
     dw !draw, !row*16
-    dw !draw, !blank
     dw !draw, !row*17     ;; HIROYUKI KIMURA
     dw !draw, !row*18
     dw !draw, !blank
@@ -475,7 +501,6 @@ script:
     dw !draw, !blank
     dw !draw, !row*20     ;; TOHRU OHSAWA
     dw !draw, !row*21
-    dw !draw, !blank
     dw !draw, !row*22     ;; TOMOYOSHI YAMANE
     dw !draw, !row*23
     dw !draw, !blank
@@ -499,7 +524,6 @@ script:
     dw !draw, !blank
     dw !draw, !row*84     ;; KENJI YAMAMOTO
     dw !draw, !row*85
-    dw !draw, !blank
     dw !draw, !row*87     ;; MINAKO HAMANO
     dw !draw, !row*88
     dw !draw, !blank
@@ -547,7 +571,6 @@ script:
     dw !draw, !blank
     dw !draw, !row*105    ;; KATSUYA YAMANO
     dw !draw, !row*106
-    dw !draw, !blank
     dw !draw, !row*63     ;; TSUTOMU KANESHIGE
     dw !draw, !row*96
     dw !draw, !blank
@@ -555,19 +578,14 @@ script:
     dw !draw, !blank
     dw !draw, !row*90    ;; MASAFUMI SAKASHITA
     dw !draw, !row*91
-    dw !draw, !blank
     dw !draw, !row*92    ;; YASUO INOUE
     dw !draw, !row*93
-    dw !draw, !blank
     dw !draw, !row*94    ;; MARY COCOMA
     dw !draw, !row*95
-    dw !draw, !blank
     dw !draw, !row*99    ;; YUSUKE NAKANO
     dw !draw, !row*100
-    dw !draw, !blank
     dw !draw, !row*108   ;; SHINYA SANO
     dw !draw, !row*109
-    dw !draw, !blank
     dw !draw, !row*110   ;; NORIYUKI SATO
     dw !draw, !row*111
     dw !draw, !blank
@@ -575,49 +593,34 @@ script:
     dw !draw, !blank
     dw !draw, !row*33    ;; DAN OWSEN
     dw !draw, !row*34
-    dw !draw, !blank
     dw !draw, !row*35    ;; GEORGE SINFIELD
     dw !draw, !row*36
-    dw !draw, !blank
     dw !draw, !row*39    ;; MASARU OKADA
     dw !draw, !row*40
-    dw !draw, !blank
     dw !draw, !row*43    ;; TAKAHIRO HARADA
     dw !draw, !row*44
-    dw !draw, !blank
     dw !draw, !row*47    ;; KOHTA FUKUI
     dw !draw, !row*48
-    dw !draw, !blank
     dw !draw, !row*49    ;; KEISUKE TERASAKI
     dw !draw, !row*50
-    dw !draw, !blank
     dw !draw, !row*51    ;; MASARU YAMANAKA
     dw !draw, !row*52
-    dw !draw, !blank
     dw !draw, !row*53    ;; HITOSHI YAMAGAMI
     dw !draw, !row*54
-    dw !draw, !blank
     dw !draw, !row*57    ;; NOBUHIRO OZAKI
     dw !draw, !row*58
-    dw !draw, !blank
     dw !draw, !row*59    ;; KENICHI NAKAMURA
     dw !draw, !row*60
-    dw !draw, !blank
     dw !draw, !row*61    ;; TAKEHIKO HOSOKAWA
     dw !draw, !row*62
-    dw !draw, !blank
     dw !draw, !row*97    ;; SATOSHI MATSUMURA
     dw !draw, !row*98
-    dw !draw, !blank
     dw !draw, !row*122   ;; TAKESHI NAGAREDA
     dw !draw, !row*123
-    dw !draw, !blank
     dw !draw, !row*124   ;; MASAHIRO KAWANO
     dw !draw, !row*125
-    dw !draw, !blank
     dw !draw, !row*45    ;; HIRO YAMADA
     dw !draw, !row*46
-    dw !draw, !blank
     dw !draw, !row*112   ;; AND ALL OF R&D1 STAFFS
     dw !draw, !row*113
     dw !draw, !blank
@@ -630,24 +633,35 @@ script:
     dw !draw, !blank
     dw !draw, !blank
     dw !draw, !blank
+    dw !draw, !blank
+    dw !draw, !blank
+    dw !draw, !blank
 
     ;; Custom randomizer credits text
     dw !draw, !row*128  ; MAP RANDO CONTRIBUTORS
     dw !draw, !blank
-    dw !draw, !row*129  ; MAIN DEVELOPER
+    dw !draw, !row*129  ; LEAD DEVELOPER
     dw !draw, !blank
     ;; Set scroll speed to 2 frames per pixel
     dw !speed, $0002
     dw !draw, !row*130
     dw !draw, !row*131
     dw !draw, !blank
-    dw !draw, !row*132  ; ADDITIONAL DEVELOPERS
+    dw !draw, !row*132  ; MAIN DEVELOPERS
     dw !draw, !blank
     dw !draw, !row*133
     dw !draw, !row*134
     dw !draw, !blank
     dw !draw, !row*135
     dw !draw, !row*136
+    dw !draw, !blank
+    dw !draw, !row*254  ; ADDITIONAL DEVELOPERS
+    dw !draw, !blank
+    dw !draw, !row*255
+    dw !draw, !row*256
+    dw !draw, !blank
+    dw !draw, !row*257
+    dw !draw, !row*258
     dw !draw, !blank
     dw !draw, !row*137  ; LOGIC DATA
     dw !draw, !blank
@@ -669,6 +683,9 @@ script:
     dw !draw, !blank
     dw !draw, !row*145
     dw !draw, !row*146
+    dw !draw, !blank
+    dw !draw, !row*259
+    dw !draw, !row*260
     dw !draw, !blank
     dw !draw, !row*157
     dw !draw, !row*158
@@ -915,27 +932,27 @@ credits:
     !pink
     dw "     MAP RANDO CONTRIBUTORS     " ;; 128
     !yellow
-    dw "         MAIN DEVELOPER         " ;; 129
+    dw "         LEAD DEVELOPER         " ;; 129
     !big
     dw "             MADDO              " ;; 130
     dw "             maddo              " ;; 131
-    !yellow
-    dw "     ADDITIONAL DEVELOPERS      " ;; 132
+    !orange
+    dw "        MAIN DEVELOPERS         " ;; 132
     !big
     dw "      KYLEB         OSSE101     " ;; 133
     dw "      kyleb         osse!}!     " ;; 134
-    dw "   AMOEBAOFDOOM     SELICRE     " ;; 135
-    dw "   amoebaofdoom     selicre     " ;; 136
+    dw "          AMOEBAOFDOOM          " ;; 135
+    dw "          amoebaofdoom          " ;; 136
 
-    !orange
+    !green
     dw "    LOGIC DATA MAIN AUTHORS     " ;; 137
     !big
-    dw "    RUSHLIGHT        OSSE101    " ;; 138
-    dw "    rushlight        osse!}!    " ;; 139
-    dw "    MATRETHEWEY      KYLEB      " ;; 140
-    dw "    matrethewey      kyleb      " ;; 141
-    dw "    DIPROGAN         MADDO      " ;; 142
-    dw "    diprogan         maddo      " ;; 143
+    dw "    KYLEB           OSSE101     " ;; 138
+    dw "    kyleb           osse!}!     " ;; 139
+    dw "    MADDO           RUSHLIGHT   " ;; 140
+    dw "    maddo           rushlight   " ;; 141
+    dw "    MATRETHEWEY     DIPROGAN    " ;; 142
+    dw "    matrethewey     diprogan    " ;; 143
     !cyan
     dw "                                " ;; 144
     !big
@@ -1070,6 +1087,15 @@ credits:
     dw " tourian            }}.}}.}}.}} " ;; 251
     dw " PAUSE MENU         00.00.00 00 " ;; 252
     dw " pause menu         }}.}}.}}.}} " ;; 253
+    !orange
+    dw "     ADDITIONAL DEVELOPERS      " ;; 254
+    !big
+    dw "     SELICRE       STAG SHOT    " ;; 255
+    dw "     selicre       stag shot    " ;; 256
+    dw "             CHANGE             " ;; 257
+    dw "             change             " ;; 258
+    dw "   SAMLITTLEHORNS      KEWLAN   " ;; 259
+    dw "   samlittlehorns      kewlan   " ;; 260
 
     dw $0000
 warnpc !bank_ce_free_space_end

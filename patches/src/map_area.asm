@@ -4,14 +4,17 @@ lorom
 !bank_81_freespace_start = $81F100  ; TODO: remove this (not being used at the moment)
 !bank_81_freespace_end = $81F140
 !bank_82_freespace_start = $82F70F
-!bank_82_freespace_end = $82FA80
+!bank_82_freespace_end = $82F810
+!bank_85_freespace_start = $85A280  ; must match reference in item_dots_disappear.asm and fix_kraid_hud.asm
+!bank_85_freespace_end = $85A880
 !etank_color = $82FFFE   ; must match addess customize.rs (be careful moving this, will probably break customization on old versions)
 !bank_a7_freespace_start = $A7FFC0
 !bank_a7_freespace_end = $A7FFE0
-!bank_e8_freespace_start = $E88000
-!bank_e8_freespace_end = $E98000
 
-!tiles_2bpp_address = $C000
+incsrc "constants.asm"
+
+!tiles_2bpp_address = $B200
+!tiles_2bpp_bank = $009A
 
 !backup_area = $1F62
 !map_switch_direction = $1F66
@@ -101,19 +104,28 @@ org $8FC90C  ; Tourian first room gives area map (TODO: change this)
 org $84B19C  ; At map station, check if current area map already collected
     ldx $1F5B
 
-;;; Hijack code that loads area from room header
-org $82DE80
-    jsl load_area
-    jmp $DE89
-warnpc $82DE89
+org $82E488
+    bra +    ; skip reloading BG3 tiles in door transition
+org $82E492
++
+
+;;; Hijack code that loads room state, in order to populate map area
+org $82DEF7
+    jsr load_area_wrapper
 
 ;org $828D08
 ;org $828D4B
 org $828D44
-    jsr pause_start_hook
+    jsr pause_start_hook_wrapper
 
-org $82936A
-    jsr pause_end_hook
+; org $82936A
+org $80A15F
+    jsl pause_end_hook
+
+; hook library background load in Kraid Room:
+org $82E63E
+    jsl kraid_room_load_hook
+    nop
 
 org $829130 : jsr draw_samus_indicator
 org $82915A : jsr draw_samus_indicator
@@ -136,24 +148,24 @@ org $829E38  ; TODO: remove this (should be unused?)
     jsr horizontal_scroll_hook
 
 org $82E7C9
-    jsr load_tileset_palette_hook
+    jsr load_tileset_palette_hook_wrapper
     nop : nop : nop : nop
 
 org $82E1F7
     jsr palette_clear_hook
 
-; Don't preserve palette 7 color 1 (used for FX), let it fade to black:
-org $82E21E
-    nop : nop : nop  ; was: STA $C23A
+;; Don't preserve palette 7 color 1 (used for FX), let it fade to black:
+;org $82E21E
+;    nop : nop : nop  ; was: STA $C23A
 
 ;org $82E464
 ;org $82E55F
 ;org $82E780
 org $82E764
-    jsr door_transition_hook
+    jsr door_transition_hook_wrapper
 
 org $82E4A2
-    jsr load_target_palette_hook
+    jsr load_target_palette_hook_wrapper
 
 org $90AB4A
     jsl samus_minimap_flash_hook : nop : nop
@@ -167,22 +179,22 @@ org $809BDC
     LDX #$2C31     ; was: LDX #$2831
 
 
-; Use palette 6 (gray/white, same as unexplored tiles) for fixed HUD (e.g. "ENERGY"),
-; For blank tiles, use palette 7, which has an opaque black (color 3).
+; Use palette 7 (gray/white, same as unexplored tiles) for fixed HUD (e.g. "ENERGY"),
+; For blank tiles, use palette 3, which has an opaque black (color 3).
 org $80988B
-dw $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $381D, $381D, $381D, $381D, $381D, $381C,
-   $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3812, $3812, $3823, $3812, $3812, $381E,
-   $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $2822, $2822, $2823, $2813, $3814, $381E,
-   $3C0F, $380B, $380C, $380D, $3832, $3C0F, $3809, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3C0F, $3812, $3812, $A824, $2815, $3816, $381E
+dw $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $3C1D, $3C1D, $3C1D, $3C1D, $3C1D, $3C1C,
+   $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $3C12, $3C12, $3C23, $3C12, $3C12, $3C1E,
+   $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $2822, $2822, $2823, $2813, $3C14, $3C1E,
+   $0C0F, $3C0B, $3C0C, $3C0D, $3C32, $0C0F, $3C09, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $0C0F, $3C12, $3C12, $A824, $2815, $3C16, $3C1E
 
-; Use palette 6 (gray/white, same as unexplored tiles) for HUD digits
-org $809DBF : dw $3809, $3800, $3801, $3802, $3803, $3804, $3805, $3806, $3807, $3808
-org $809DD3 : dw $3809, $3800, $3801, $3802, $3803, $3804, $3805, $3806, $3807, $3808
+; Use palette 7 (gray/white, same as unexplored tiles) for HUD digits
+org $809DBF : dw $3C00, $3C01, $3C02, $3C03, $3C04, $3C05, $3C06, $3C07, $3C08, $3C09
+org $809DD3 : dw $3C00, $3C01, $3C02, $3C03, $3C04, $3C05, $3C06, $3C07, $3C08, $3C09
 
-; Use palette 7 (instead of 6) when initializing (clearing) FX tilemap:
-org $82E569 : lda #$1C4E   ; was: lda #$184E
-org $80A214 : lda #$1C4E   ; was: lda #$184E
-;org $80A2F7 : dw $1C4E   ; was: dw $184E  (not doing this, since it's overwritten in hud_expansion_opaque.asm instead)
+;; Use palette 7 (instead of 6) when initializing (clearing) FX tilemap:
+;org $82E569 : lda #$1C0F   ; was: lda #$184E
+;org $80A214 : lda #$1C0F   ; was: lda #$184E
+;;org $80A2F7 : dw $1C0F   ; was: dw $184E  (not doing this, since it's overwritten in hud_expansion_opaque.asm instead)
 
 ; For message boxes, skip modifying palette 6:
 org $858150 : rep $19 : nop
@@ -193,137 +205,73 @@ org $80998B
         $2047, $2048,
         $A033, $A046
 
-; Use palette 6 for empty auto reserve
+; Use palette 7 for empty auto reserve
 org $809997             
-dw $3833, $3846,
-   $3847, $3848,
-   $B833, $B846
+dw $3C33, $3C46,
+   $3C47, $3C48,
+   $BC33, $BC46
 
-; Use palette 7 for palette blends (FX: water, lava, etc.)
-org $89AB62 : STA $7EC03A   ; was: STA $7EC032
-org $89AB6A : STA $7EC03C   ; was: STA $7EC034
-org $89AB72 : nop : nop : nop : nop   ; was: STA $7EC036
-;org $89AB72 : STA $7EC03E   ; was: STA $7EC036
-org $89AB7B : nop : nop : nop : nop   ; was: STA $7EC036
+;; Use palette 7 for palette blends (FX: water, lava, etc.)
+;org $89AB62 : STA $7EC03A   ; was: STA $7EC032
+;org $89AB6A : STA $7EC03C   ; was: STA $7EC034
+;org $89AB72 : nop : nop : nop : nop   ; was: STA $7EC036
+;;org $89AB72 : STA $7EC03E   ; was: STA $7EC036
+;org $89AB7B : nop : nop : nop : nop   ; was: STA $7EC036
+;
+;org $89AC05 : STA $7EC23A   ; was: STA $7EC232
+;org $89AC0D : STA $7EC23C   ; was: STA $7EC234
+;org $89AC15 : nop : nop : nop : nop   ; was: STA $7EC236
+;;org $89AC15 : STA $7EC23E   ; was: STA $7EC236
+;org $89AC1E : nop : nop : nop : nop   ; was: STA $7EC236
 
-org $89AC05 : STA $7EC23A   ; was: STA $7EC232
-org $89AC0D : STA $7EC23C   ; was: STA $7EC234
-org $89AC15 : nop : nop : nop : nop   ; was: STA $7EC236
-;org $89AC15 : STA $7EC23E   ; was: STA $7EC236
-org $89AC1E : nop : nop : nop : nop   ; was: STA $7EC236
+org $8291F9
+    jsr load_map_screen_wrapper
 
-org $82920B
-    jsr fix_map_palette
-
-org $829237
-    jsr fix_equipment_palette
+org $8291D0
+    jsr load_equipment_screen_wrapper
 
 ;;; Put new code in free space at end of bank $82:
 org !bank_82_freespace_start
 
+; This function must come first, in order to be at the address expected in pause_menu_objectives.asm
+switch_map_area_wrapper:
+    jsl switch_map_area
+    rts
+
 ; when switching from equipment screen to map screen, restore certain palette colors
-fix_map_palette:
-    ; flashing reserve tank arrow color (used on map screen for tourian arrows)
-    lda $B6F0CC
-    sta $7EC0CC
-    lda $B6F0D6
-    sta $7EC0D6
-
-    ; green door color:
-    lda $B6F05C
-    sta $7EC05C
-    ; pink door color:
-    lda $B6F0CE
-    sta $7EC0CE
-    ; gray door color:
-    lda $B6F0DE
-    sta $7EC0DE
-    sta $7EC05E
-
-    ; Partially revealed tiles: black color for item dots, door locks
-    lda #$0000
-    sta $7EC07A
-    sta $7EC06E
-
-    lda #$0000  ; run hi-jacked instruction
+load_map_screen_wrapper:
+    jsl load_map_screen
     rts
 
-fix_equipment_palette:
-    ; Fix color used for pink doors on map screen
-    lda #$6E7A
-    sta $7EC0CE
-    ; Fix color used for green doors on map screen
-    lda #$5EF7
-    sta $7EC05C
-    ; Fix color used for gray doors on map screen
-    lda #$318C
-    sta $7EC0DE
-    sta $7EC05E
-
-    ; Fix colors used for partially revealed tiles on map screen
-    lda #$7FFF
-    sta $7EC07A
-    lda #$5EF7
-    sta $7EC06E
-
-    lda #$0001 ; run hi-jacked instruction
+load_equipment_screen_wrapper:
+    jsl load_equipment_screen
     rts
 
-;;; X = room header pointer
-load_area:
-    phx
-    phy
+load_area_wrapper:
+    jsl load_area
+    rts
 
-    ;;; Load the original area number into $079F
-    lda $0001,x
-    and #$00FF
-    sta $079F
-
-    ;;; Load the new area number (for use in map) into $1F5B
-    asl
-    tay
-    lda $E99B, y
-    clc
-    adc $079D
-    tay
-    lda $0000, y   ; new/map room area = [[$8F:E99B + (original area) * 2] + room index]
-    and #$00FF
-    sta $1F5B
-
-    ; mark area as explored (determinines set of valid area maps to cycle through in pause menu):
-    jsl $80818E    ; convert map area to bitmask
-    lda $05E7      ; load bitmask
-    ora !area_explored_mask    ; combine with area explored mask
-    sta !area_explored_mask    ; update area explored mask
-
-    lda $1F5B
-    ply
-    plx
+vram_transfer_wrapper:
+    jsr $E5EB
     rtl
-
 
 PauseRoutineIndex:
 	DW $9120, $9142, $9156, $91AB, $9231, $9186, $91D7, $9200	;same as $9110
-	DW $9156, switch_map_area, $9200		;fade out / map construction / fade in
+	DW $9156, switch_map_area_wrapper, $9200		;fade out / map construction / fade in
 
-pause_start_hook:
-    lda $1F5B
-    sta !backup_area  ; back up map area
-    jsr set_hud_map_colors
-    jsr update_pause_map_palette
-    ;jsr remove_samus_hud_indicator
-    jsl $8085C6  ; save current map explored bits
-    ;jsr $8D51  ; run hi-jacked instruction
-    ;inc $0998  ; run hi-jacked instruction
-    stz $05FF  ; run hi-jacked instruction
+pause_start_hook_wrapper:
+    jsl pause_start_hook
     rts
 
 pause_end_hook:
+    jsl $82E97C  ; run hi-jacked instruction (load library background)
     lda !backup_area
     sta $1F5B  ; restore map area
     jsl $80858C ; restore map explored bits
-    jsr $A2BE  ; run hi-jacked instruction
-    rts
+    jsl load_bg3_map_tiles_wrapper
+    jsl load_bg3_map_tilemap_wrapper
+    jsl set_hud_map_colors_wrapper
+    rtl
 
 check_start_select:
     php
@@ -356,6 +304,319 @@ check_start_select:
     jsr $A5B7      ; run hi-jacked code (handle pause screen start button)
     rts
 
+area_palettes_explored:
+    dw $6c12  ; Crateria
+    dw $0240  ; Brinstar
+    dw $0017  ; Norfair
+    dw $0230  ; Wrecked Ship
+    dw $7583  ; Maridia
+    dw $0195  ; Tourian
+
+area_palettes_explored_light:
+    dw $7dfb  ; Crateria
+    dw $332c  ; Brinstar
+    dw $319f  ; Norfair
+    dw $2ef7  ; Wrecked Ship
+    dw $7e8c  ; Maridia
+    dw $323d  ; Tourian
+
+draw_samus_indicator:
+	lda !backup_area
+    cmp $1F5B 
+    bne .skip		; check if area shown is the same area as samus
+	jsr $B9C8       ; if so, draw the indicator showing where samus is.
+.skip:
+    rts
+
+horizontal_scroll_hook:
+    ; round BG1 scroll X to a multiple of 8, to make grid lines consistently align with tiles:
+    sbc #$0080   ; run hi-jacked instruction
+    and #$FFF8
+    rts
+
+load_tileset_palette_hook_wrapper:
+    jsl load_tileset_palette_hook
+    rts
+
+palette_clear_hook:
+    lda $C016  ; preserve explored white color (2bpp palette 2, color 3)
+    sta $C216
+
+    lda $C03A  ; preserve unexplored gray color (2bpp palette 6, color 1)
+    sta $C23A
+
+    lda $C03C  ; preserve unexplored light gray color (2bpp palette 6, color 2)
+    sta $C23C
+
+    lda $C03E  ; preserve unexplored white color (2bpp palette 6, color 2)
+    sta $C23E
+
+    ; Preserve full Auto reserve color, PB door, Samus HUD indicator, etc.: palette 0, color 1-3
+    lda $C002
+    sta $C202
+    lda $C004
+    sta $C204
+    lda $C006
+    sta $C206
+
+    lda $C014  ; run hi-jacked instruction
+    rts
+
+load_target_palette_hook_wrapper:
+    jsl load_target_palette_hook
+    rts
+
+door_transition_hook_wrapper:
+    jsl door_transition_hook
+    rts
+
+reset_pause_animation_wrapper:
+    jsr $A0F7    ; Reset pause menu animations
+    rtl
+
+determine_map_scroll_wrapper:
+    jsr $9EC4    ; Determine map scroll limits
+    rtl
+
+print pc
+warnpc !bank_82_freespace_end
+
+org !bank_85_freespace_start
+
+; this function must go first, to match the reference in item_dots_disappear.asm
+load_bg3_map_tilemap_wrapper:
+    jsr load_bg3_map_tilemap
+    rtl
+
+warnpc $85A290
+org $85A290
+; must match the reference in fix_kraid_hud.asm
+load_bg3_map_tiles_wrapper:
+    jsr load_bg3_map_tiles
+    rtl
+
+clear_hud_minimap:
+    ; clear HUD minimap during area transitions
+    LDX #$0000             ;|
+    lda #$3C1F
+.clear_minimap_loop:
+    STA $7EC63C,x          ;|
+    STA $7EC67C,x          ;} HUD tilemap (1Ah..1Eh, 1..3) = 3C1Fh
+    STA $7EC6BC,x          ;|
+    INX                    ;|
+    INX                    ;|
+    CPX #$000A             ;|
+    BMI .clear_minimap_loop
+
+    ; update VRAM for HUD
+    LDX $0330       ;\
+    LDA #$00C0      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    INX             ;|
+    LDA #$C608      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    INX             ;} Queue transfer of $7E:C608..C7 to VRAM $5820..7F (HUD tilemap)
+    LDA #$007E      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    LDA #$5820      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    INX             ;|
+    STX $0330       ;/
+    
+    rtl
+
+;;; X = room header pointer
+load_area:
+    phy
+
+    ;;; Load the new area number (for use in map) into $1F5B
+    ldx $07bb      ; x <- room state pointer
+    lda $8F0010,x
+    tax            ; x <- extra room data pointer
+    lda $B80000,x  ; a <- [extra room data pointer]
+    and #$00FF
+    sta $1F5B
+
+    ; mark area as explored (determinines set of valid area maps to cycle through in pause menu):
+    jsl $80818E    ; convert map area to bitmask
+    lda $05E7      ; load bitmask
+    ora !area_explored_mask    ; combine with area explored mask
+    sta !area_explored_mask    ; update area explored mask
+
+    ply
+    ldx $07bb      ; run hi-jacked instruction: x <- room state pointer
+    rtl
+
+door_transition_hook:
+    jsr set_hud_map_colors
+    lda #$0008   ; run hi-jacked instruction
+    rtl
+
+pause_start_hook:
+    lda $1F5B
+    sta !backup_area  ; back up map area
+    jsr set_hud_map_colors
+    jsr update_pause_map_palette
+    jsl load_bg3_map_tiles_wrapper
+    ;jsr remove_samus_hud_indicator
+    jsl $8085C6  ; save current map explored bits
+    ;jsr $8D51  ; run hi-jacked instruction
+    ;inc $0998  ; run hi-jacked instruction
+    stz $05FF  ; run hi-jacked instruction
+    rtl
+
+load_tileset_palette_hook:
+    ; run hi-jacked instruction:
+    jsl $80B0FF
+    dl $7EC200
+
+    jsr set_hud_map_colors
+    jsr load_target_palette
+    rtl
+
+load_map_screen:
+    ; run hi-jacked instruction:
+    sta $0763
+
+    ; palette 2:
+    lda $B6F05C
+    sta $7EC05C
+    lda $B6F05E
+    sta $7EC05E
+
+    ; palette 3:
+    lda $B6F06E
+    sta $7EC06E
+    lda $B6F07A
+    sta $7EC07A
+
+    ; palette 6:
+    lda $B6F0CC
+    sta $7EC0CC
+    lda $B6F0D6
+    sta $7EC0D6
+    lda $B6F0CE
+    sta $7EC0CE
+    lda $B6F0DE
+    sta $7EC0DE
+
+    ; palette 7:
+    lda $B6F0E2
+    sta $7EC0E2
+    lda $B6F0E4
+    sta $7EC0E4
+    lda $B6F0E6
+    sta $7EC0E6
+    lda $B6F0EC
+    sta $7EC0EC
+    lda $B6F0F6
+    sta $7EC0F6
+    lda $B6F0FA
+    sta $7EC0FA
+    lda $B6F0FC
+    sta $7EC0FC
+
+    ; Partially revealed tiles: black color for item dots, door locks
+    lda #$0000
+    sta $7EC07A
+    sta $7EC06E
+
+    ; Load map tile graphics
+    jsl $828E75
+    rtl
+
+load_equipment_screen:
+    ; run hi-jacked instruction:
+    sta $0725
+
+    ; Fix color used for pink doors on map screen
+    lda #$6E7A
+    sta $7EC0CE
+    ; Fix color used for green doors on map screen
+    lda #$5EF7
+    sta $7EC05C
+    ; Fix color used for gray doors on map screen
+    lda #$318C
+    sta $7EC0DE
+    sta $7EC05E
+
+    ; Fix colors used for partially revealed tiles on map screen
+    lda #$7FFF
+    sta $7EC07A
+    lda #$5EF7
+    sta $7EC06E
+
+    ; Palette 7 (unexplored map colors):
+    lda #$7FFF
+    sta $7EC0E2
+    lda #$4A52
+    sta $7EC0E4
+    sta $7EC0F6
+    lda #$318C
+    sta $7EC0E6
+    sta $7EC0EC
+    lda #$7FFF
+    sta $7EC0FA
+    lda #$6318
+    sta $7EC0FC
+
+    ; transfer equipment screen tile graphics to VRAM
+    LDA #$0080
+    STA $2115  ; video port control
+    LDA #$0000
+    STA $2116  ; VRAM (destination) address = $0000
+
+    lda #$1801
+    STA $4310  ; DMA control: DMA transfer from CPU to VRAM, incrementing CPU address
+    
+    lda #$8000 ; source address = $8000
+    sta $4312
+
+    ; Set source bank to $B6:
+    lda #$00B6
+    sta $4314
+
+    lda #$6000
+    sta $4315 ; transfer size = $6000 bytes
+
+    sep #$30
+    lda #$02
+    sta $420B  ; perform DMA transfer on channel 1
+    rtl
+
+load_target_palette_hook:
+    jsr load_target_palette
+    lda #$E4A9   ; run hi-jacked instruction
+    rtl
+
+load_target_palette:
+    ; Prevent HUD map colors from gradually changing (e.g. to blue/pink) during door transition:
+    lda $7EC01A  ; etank color (pink): palette 3, color 1 
+    sta $7EC21A
+
+    lda $7EC012  ; explored color (area-themed): palette 2, color 1
+    sta $7EC212
+
+    lda $7EC014  ; explored light color (area-themed): palette 2, color 2
+    sta $7EC214
+
+    lda $7EC016  ; explored white: palette 2, color 3
+    sta $7EC216
+
+    lda !unexplored_gray
+    sta $7EC23A
+
+    lda !unexplored_light_gray
+    sta $7EC23C
+
+    lda #$7FFF
+    sta $7EC23E
+
+    rts
 
 switch_map_area:
     lda !map_switch_direction
@@ -366,7 +627,6 @@ switch_map_area:
     jsr next_area
 .update:
     jsr update_pause_map_palette
-    jsl load_bg1_2_tiles
 	jsl $80858C     ;load explored bits for area
 	lda $7ED908,x : and #$00FF : sta $0789	;set flag of map station for next area (TODO: remove this, should be unnecessary now.)
     jsl $8293C3		;update area label and construct new area map
@@ -384,76 +644,8 @@ switch_map_area:
     STA $0723             ;} Screen fade delay = 0
 
     inc $0727
-    rts
+    rtl
 
-update_pause_map_palette:
-    lda $1F5B
-    asl
-    tax
-;    lda area_palettes_unexplored, x
-
-;    ; Set unexplored color to gray: palette 3, color 1
-;    lda !unexplored_gray
-;    sta $7EC062
-
-    ; Set unexplored gray color: palette 6, color 1
-    lda !unexplored_gray
-    sta $7EC0C2
-
-    ; Set unexplored light gray color: palette 6, color 2
-    lda !unexplored_light_gray
-    sta $7EC0C4
-
-    ; Set unexplored white color: palette 6, color 3
-    lda #$FFFF
-    sta $7EC0C6
-
-;    ; Set color 3 to black (instead of red)
-;    lda #$0000
-;    sta $7EC066
-;    sta $7EC046
-
-    ; Set explored color based on area: palette 2, color 1
-    lda area_palettes_explored, x
-    sta $7EC042
-
-    ; Set light explored color based on area: palette 2, color 2
-    lda area_palettes_explored_light, x
-    sta $7EC044
-
-    ; Set explored white: palette 2, color 3
-    lda #$7FFF
-    sta $7EC046
-
-;    lda !backup_area
-;    cmp $1F5B
-;    bne .skip_hud_color
-;    lda area_palettes_explored, x
-;    sta $7EC012  ; set the current area HUD color
-
-    rts
-
-;remove_samus_hud_indicator:
-;    ; Remove HUD Samus indicator
-;    lda $7EC042
-;    sta $7EC03A
-
-
-area_palettes_explored:
-    dw $6c12  ; Crateria
-    dw $0240  ; Brinstar
-    dw $0017  ; Norfair
-    dw $0230  ; Wrecked Ship
-    dw $7583  ; Maridia
-    dw $0195  ; Tourian
-
-area_palettes_explored_light:
-    dw $7dfb  ; Crateria
-    dw $332c  ; Brinstar
-    dw $319f  ; Norfair
-    dw $2ef7  ; Wrecked Ship
-    dw $7e8c  ; Maridia
-    dw $323d  ; Tourian
 
 next_area:
     lda $1F5B
@@ -487,103 +679,56 @@ prev_area:
 
     rts
 
-draw_samus_indicator:
-	lda !backup_area
-    cmp $1F5B 
-    bne .skip		; check if area shown is the same area as samus
-	jsr $B9C8       ; if so, draw the indicator showing where samus is.
-.skip:
-    rts
+update_pause_map_palette:
+    lda $1F5B
+    asl
+    tax
 
-horizontal_scroll_hook:
-    ; round BG1 scroll X to a multiple of 8, to make grid lines consistently align with tiles:
-    sbc #$0080   ; run hi-jacked instruction
-    and #$FFF8
-    rts
-
-load_tileset_palette_hook:
-    ; run hi-jacked instruction:
-    jsl $80B0FF
-    dl $7EC200
-
-    jsr set_hud_map_colors
-    jsr load_target_palette
-
-    rts
-
-palette_clear_hook:
-    lda $C016  ; preserve unexplored white color (2bpp palette 2, color 3)
-    sta $C216
-
-    lda $C032  ; preserve unexplored gray color (2bpp palette 6, color 1)
-    sta $C232
-
-    lda $C034  ; preserve unexplored light gray color (2bpp palette 6, color 2)
-    sta $C234
-
-    lda $C036  ; preserve unexplored white color (2bpp palette 6, color 2)
-    sta $C236
-
-    ; Preserve full Auto reserve color, PB door, Samus HUD indicator, etc.: palette 0, color 1-3
-    lda $C002
-    sta $C202
-    lda $C004
-    sta $C204
-    lda $C006
-    sta $C206
-
-;    lda $C03A  ; preserve pink color for full E-tank energy squares (2-bit palette 7, color 1)
-;    sta $C23A
-
-;    lda $C03C  ; preserve white color for full E-tank energy squares (2-bit palette 7, color 2)
-;    sta $C23C
-
-;    lda $C03C  ; preserve off-white color in Samus indicator (2-bit palette 7, color 1)
-;    sta $C23C
-
-    lda $C014  ; run hi-jacked instruction
-    rts
-
-load_target_palette:
-    ; Prevent HUD map colors from gradually changing (e.g. to blue/pink) during door transition:
-    lda $7EC01A  ; etank color (pink): palette 3, color 1 
-    sta $7EC21A
-
-    lda $7EC012  ; explored color (area-themed): palette 2, color 1
-    sta $7EC212
-
-    lda $7EC014  ; explored light color (area-themed): palette 2, color 2
-    sta $7EC214
-
-    lda $7EC016  ; explored white: palette 2, color 3
-    sta $7EC216
-
-    ; FX palette: target palette 6, colors 1-2 -> copy to palette 7, colors 1-2
-    lda $7EC032
-    sta $7EC23A
-    lda $7EC034
-    sta $7EC23C
-
+    ; Set unexplored gray color: palette 7, color 1
     lda !unexplored_gray
-    sta $7EC232
+    sta $7EC0E2
 
+    ; Set unexplored light gray color: palette 7, color 2
     lda !unexplored_light_gray
-    sta $7EC234
+    sta $7EC0E4
 
+    ; Set unexplored white color: palette 7, color 3
+    lda #$FFFF
+    sta $7EC0E6
+
+    ; Set explored color based on area: palette 2, color 1
+    lda area_palettes_explored, x
+    sta $7EC042
+
+    ; Set light explored color based on area: palette 2, color 2
+    lda area_palettes_explored_light, x
+    sta $7EC044
+
+    ; Set explored white: palette 2, color 3
     lda #$7FFF
-    sta $7EC236
+    sta $7EC046
 
     rts
 
-load_target_palette_hook:
-    jsr load_target_palette
-    lda #$E4A9   ; run hi-jacked instruction
-    rts
+samus_minimap_flash_hook:
+    lda $0998
+    cmp #$000C
+    bne .normal
 
-door_transition_hook:
+    ; Paused: skip showing Samus indicator:
+    lda #$0001
+    rtl
+    
+    ; Run hi-jacked instructions (use frame counter to determine whether to show Samus indicator)
+.normal    
+    lda $05B5
+    and #$0008 
+
+    rtl
+
+set_hud_map_colors_wrapper:
     jsr set_hud_map_colors
-    lda #$0008   ; run hi-jacked instruction
-    rts
+    rtl
 
 set_hud_map_colors:
     ; Set colors for HUD map:
@@ -591,17 +736,17 @@ set_hud_map_colors:
     asl
     tax
 
-    ; Set unexplored gray: palette 6, color 1
+    ; Set unexplored gray: palette 7, color 1
     lda !unexplored_gray
-    sta $7EC032
+    sta $7EC03A
 
-    ; Set unexplored light gray: palette 6, color 2
+    ; Set unexplored light gray: palette 7, color 2
     lda !unexplored_light_gray
-    sta $7EC034
+    sta $7EC03C
 
-    ; Set unexplored white: palette 6, color 3
+    ; Set unexplored white: palette 7, color 3
     lda #$7FFF
-    sta $7EC036
+    sta $7EC03E
 
     ; Set explored color based on area: palette 2, color 1
     lda.l area_palettes_explored, x
@@ -624,29 +769,13 @@ set_hud_map_colors:
     lda #$7FFF
     sta $7EC01C
 
-;    ; water FX: palette 3, color 1 & 2 
-;    lda #$0421
-;    STA $7EC03A
-;;    lda #$1084
-;    lda #$0C63
-;    STA $7EC03C
-
-;    ; Set unexplored color 3 to pink color for full E-tank energy squares (used for black in vanilla)
-;    sta $7EC01E
-
-;    ; Set Samus marker to solid white instead of orange/red (palette 7, colors 1-2)
-;    lda #$7FFF
-;    sta $7EC03A
-;    lda #$6318
-;    sta $7EC03C
-
     rts
 
 
 simple_scroll_setup:
     ; Like $829028 but without using Samus position, just midpoints.
-    JSR $A0F7    ; Reset pause menu animations
-    JSR $9EC4    ; Determine map scroll limits
+    jsl reset_pause_animation_wrapper
+    jsl determine_map_scroll_wrapper
     LDA $05AE    ;\
     SEC          ;|
     SBC $05AC    ;|
@@ -677,132 +806,391 @@ simple_scroll_setup:
 
     RTS
 
-print pc
-warnpc !bank_82_freespace_end
+hud_minimap_tile_addresses:
+    dw $C63C, $C63E, $C640, $C642, $C644
+    dw $C67C, $C67E, $C680, $C682, $C684
+    dw $C6BC, $C6BE, $C6C0, $C6C2, $C6C4
+    dw $0000
 
-org !bank_e8_freespace_start
-
-samus_minimap_flash_hook:
-    lda $0998
-    cmp #$000C
-    bne .normal
-
-    ; Paused: skip showing Samus indicator:
-    lda #$0001
-    rtl
+save_hud_tiles:
+    ; copy the 15 currently visible HUD mini-map tiles to tiles $20-$2E (VRAM $4100),
+    ; via temporary SRAM $702D00-$702DF0
+    ldx #$0000
+    ldy #$2D00
     
-    ; Run hi-jacked instructions (use frame counter to determine whether to show Samus indicator)
-.normal    
-    lda $05B5
-    and #$0008 
-
-    rtl
-
-load_bg3_tiles:
-    php
-
-    rep #$30
-    LDA #$0080
-    STA $2115  ; video port control
-    LDA #$4000
-    STA $2116  ; VRAM (destination) address = $4000
-
-    lda #$1801
-    STA $4310  ; DMA control: DMA transfer from CPU to VRAM, incrementing CPU address
-    
-    lda #!tiles_2bpp_address ; source address
-    sta $4312
-
-    ; Set source bank to $E2 + map area:
-    lda $1F5B  ; map area (0-5)
+save_hud_gfx_loop:
+    lda.l hud_minimap_tile_addresses,x
+    beq .done
+    phx
+    tax
+    lda $7E0000,x          ; A <- tilemap word from HUD mini-map
+    and #$03FF             ; A <- within-room tile number
+    sec
+    sbc #$0050             ; A <- within-room tile number - $50
+    asl
     clc
-    adc #$00E2
-    sta $4314
-
-    lda #$E00
-    sta $4315 ; transfer size = $E00 bytes
-
-    sep #$30
-    lda #$02
-    sta $420B  ; perform DMA transfer on channel 1
-    
-    plp
-    rtl
-
-load_bg3_tiles_kraid:
-    php
-
-    rep #$30
-    LDA #$0080
-    STA $2115  ; video port control
-    LDA #$2000
-    STA $2116  ; VRAM (destination) address = $2000
-
-    lda #$1801
-    STA $4310  ; DMA control: DMA transfer from CPU to VRAM, incrementing CPU address
-    
-    lda #!tiles_2bpp_address ; source address
-    sta $4312
-
-    ; Set source bank to $E2 + map area:
-    lda $1F5B  ; map area (0-5)
+    adc !room_map_tile_gfx
+    tax
+    lda $E40000,x          ; A <- global tile number
+    asl : asl : asl : asl
     clc
-    adc #$00E2
-    sta $4314
-
-    lda #$0C00
-    sta $4315 ; transfer size = $0C00 bytes
-
-    sep #$30
-    lda #$02
-    sta $420B  ; perform DMA transfer on channel 1
+    adc #$8000
+    tax  ; X = source address (in bank $E3) = $8000 + $10 * global tile number
     
-    plp
-    rtl
+    ; transfer 16 bytes (a single map tile) from bank $E3 to bank $70
+    phb
+    lda #$000F
+    mvn $70,$E3
+    plb
+    plx
 
+    inx : inx
+    bra save_hud_gfx_loop
+.done:
+
+    LDX $0330       ;\
+    LDA #$00F0      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    INX             ;|
+    LDA #$2D00      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    INX             ;} Queue transfer of $70:2D00..2DF0 to VRAM $4100
+    LDA #$0070      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    LDA #$4100      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    INX             ;|
+    STX $0330       ;/
+
+    ldx #$0000
+    lda #$0020
+    sta $00         ; $00 <- destination tile number
+save_hud_tilemap_loop:
+    lda.l hud_minimap_tile_addresses,x
+    beq .done
+    phx
+    tax
+
+    lda $7E0000,x   ; A <- tilemap word from HUD mini-map
+    and #$03FF
+    cmp #$0050
+    bcc .invariant  ; Skip modifying tiles with tile number <= $50
+
+    lda $7E0000,x   ; A <- tilemap word from HUD mini-map
+    and #$FC00
+    ora $00         ; replace tile number with tile in $20-$2E
+    sta $7E0000,x
+
+.invariant:
+    lda $00
+    inc
+    sta $00
+    plx
+    inx : inx
+    bra save_hud_tilemap_loop
+.done:
+
+    LDX $0330    ;\
+    LDA #$00C0   ;|
+    STA $D0,x    ;|
+    INX          ;|
+    INX          ;|
+    LDA #$C608   ;|
+    STA $D0,x    ;|
+    INX          ;|
+    INX          ;} Queue transfer of $7E:C608..C7 to VRAM $5820..7F (HUD tilemap)
+    LDA #$007E   ;|
+    STA $D0,x    ;|
+    INX          ;|
+    LDA #$5820   ;|
+    STA $D0,x    ;|
+    INX          ;|
+    INX          ;|
+    STX $0330    ;/
+
+    rts
 
 load_bg3_tiles_door_transition:
     php
 
-    ; source = $E2C000 + map area * $10000
-    lda #!tiles_2bpp_address
-    sta $05C0
-    sep #$30
-    lda $1F5B  ; map area (0-5)
-    clc
-    adc #$E2
-    sta $05C2
-    rep #$30
-    
-    ; destination = $4000
-    lda #$4000
-    sta $05BE
+    ; Wait for NMI, to avoid VRAM writes sometimes getting lost,
+    ; which could happen if NMI interrupts the code that queues up a write.
+    jsl $808338
+    jsr save_hud_tiles
+    jsl $808338
+    jsr load_bg3_map_tiles
+    jsr load_bg3_map_tilemap
 
-    ; size = $1000
-    lda #$1000
-    STA $05C3
-
-    LDA #$8000             ;\
-    TSB $05BC              ;} Flag door transition VRAM update
-
-.spin:
-    LDA $05BC  ;\
-    BMI .spin  ;} Wait for door transition VRAM update
-
-    ;lda $1F5B
-    ;lda $05F7
-    ;sta $09c6
-
-    ; update HUD minimap
-    ; jsl $90A91B
-    ;lda #$0001
-    ;sta $05F7
-    ;jsl $809B44
-
+    ; run hi-jacked instructions:
     plp
+    lda $0791
+    and #$0003 
     rtl
 
-load_bg1_2_tiles:
+load_bg3_map_tiles:
+    phx
+    phy
+    php
+
+    rep #$30
+    ldx $07BB      ; x <- room state pointer
+    lda $8F0010,x
+    tax            ; x <- extra room data pointer
+    lda $B80003,x
+    sta $00        ; $00 <- room map tile graphics pointer (in bank $E4)
+    sta !room_map_tile_gfx
+
+    ; transfer room map tile graphics to $70:7400
+    ldx $00
+    ldy #$7400
+gfx_transfer_loop:
+    phx
+    lda $E40000,x
+    beq .done
+    asl : asl : asl : asl
+    clc
+    adc #$8000
+    tax
+
+    ; transfer 16 bytes (a single map tile) from bank $E3 to bank $7E
+    phb
+    lda #$000F
+    mvn $70,$E3
+    plb
+
+    plx
+    inx : inx
+    bra gfx_transfer_loop
+.done:
+    plx
+
+    ; load room map tile graphics to VRAM:
+    LDX $0330
+    LDA #$0500
+    STA $D0,x
+    INX
+    INX
+    LDA #$7400
+    STA $D0,x
+    INX
+    INX
+    LDA #$0070
+    STA $D0,x
+    INX
+    LDA $079B
+    CMP #$A59F      ; Is this Kraid Room?
+    BNE +
+    LDA $0998
+    CMP #$000D      ; Is the pause screen loading?
+    BEQ +
+    CMP #$000E      ; Is the pause screen loading?
+    BEQ +
+    CMP #$000F      ; Is it in pause screen?
+    BEQ +
+    LDA $099C
+    CMP #$E2F7      ; Are we leaving Kraid Room?
+    BEQ +
+    ; For Kraid's Room gameplay (not paused), load tiles into $2280 instead.
+    LDA #$2280
+    BRA ++
++
+    LDA #$4280
+++
+    STA $D0,x
+    INX
+    INX
+    STX $0330
+
+    plp
+    ply
+    plx
+    rts
+
+load_bg3_map_tilemap:
+    php
+    phx
+    phy
+
+    ldx $07BB      ; x <- room state pointer
+    lda $8F0010,x
+    tax            ; x <- extra room data pointer
+    lda $B80005,x
+    sta $02        ; $02 <- room map tilemap pointer (in bank $E4)
+
+    ; load room map tilemap
+    lda $07A3
+    sec
+    sbc #$0001
+    sta $04        ; $04 <- current tilemap row index = room y coordinate - 1
+    clc
+    adc $07AB
+    adc #$0002
+    sta $06        ; $06 <- end tilemap row index = current tilemap row index + room height + 2
+
+tilemap_transfer_row_loop:
+    lda $07A1
+    sec
+    sbc #$0002
+    sta $08        ; $08 <- current tilemap column index = room x coordinate - 1
+    clc
+    adc $07A9
+    adc #$0004
+    sta $0A        ; $0A <- end tilemap col index = current tilemap col index + room width + 4
+
+tilemap_transfer_col_loop:
+    lda $08
+    cmp #$0020
+    bcs .second_page
+
+    lda $04
+    asl : asl : asl : asl : asl
+    clc
+    adc $08
+    asl      ; A <- (row index * 32 + col index) * 2
+    bra .transfer_word
+
+.second_page:
+    lda $04
+    asl : asl : asl : asl : asl
+    clc
+    adc $08
+    adc #$03E0
+    asl          ; A <- (row index * 32 + col index - 32) * 2 + 0x800
+    bra .transfer_word
+
+.transfer_word:
+    tay    
+    ldx $02
+    lda $E40000,x
+    inx : inx
+    stx $02
+    tyx
+    sta $703040,x
+
+    lda $08
+    inc
+    sta $08
+    cmp $0A
+    bne tilemap_transfer_col_loop
+
+    lda $04
+    inc
+    sta $04
+    cmp $06
+    bne tilemap_transfer_row_loop
+
+    ply
+    plx
+    plp
+    rts
+
+start_game_hook:
+    jsl load_bg3_map_tiles_wrapper
+    jsl load_bg3_map_tilemap_wrapper
+    
+    ; run hi-jacked instructions
+    ldy #$0020
+    ldx #$0000
+    rtl
+
+area_cross_hook:
+    jsl $80858C  ; run hi-jacked instruction
+    jsl clear_hud_minimap
+    rtl
+
+kraid_room_load_hook:
+    ; wait for NMI, to ensure the vanilla BG3 VRAM transfer
+    ; happens atomically with the update to the HUD mini-map
+    phy
+    jsl $808338
+    ply
+
+    jsl vram_transfer_wrapper
+
+    pha
+    phx
+    ; load current HUD mini-map tiles to VRAM $2100:
+    LDX $0330       ;\
+    LDA #$00F0      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    INX             ;|
+    LDA #$2D00      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    INX             ;} Queue transfer of $70:2D00..2DF0 to VRAM $2100
+    LDA #$0070      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    LDA #$2100      ;|
+    STA $D0,x       ;|
+    INX             ;|
+    INX             ;|
+    STX $0330       ;/
+
+    jsr load_bg3_map_tiles    
+
+    plx
+    pla
+
+    ; run hi-jacked instruction:
+    sep #$20
+    rtl
+
+warnpc !bank_85_freespace_end
+
+org $82DFC2
+    jsl area_cross_hook
+
+; Unexplored gray: palette 7, color 1
+org $B6F03A : dw !unexplored_gray  ; 2bpp palette
+org $B6F0E2 : dw !unexplored_gray  ; 2bpp palette
+
+; Unexplored light gray: 2bpp palette 7, color 2
+org $B6F03C : dw !unexplored_light_gray  ; 2bpp palette
+org $B6F0E4 : dw !unexplored_light_gray  ; 2bpp palette
+
+; Unexplored white: 2bpp palette 7, color 3
+org $B6F03E : dw $7FFF  ; 2bpp palette
+org $B6F0E6 : dw $7FFF  ; 2bpp palette
+
+; Patch tile data for button letters. Changing the palettes to 3:
+; This takes into account the changes to the tileset from hud_expansion_opaque.asm.
+org $858426            
+    dw $2CC0, ; A
+       $2CC1, ; B
+       $2CD7, ; X
+       $2CD8, ; Y
+       $2CFA, ; Select
+       $2CCB, ; L
+       $2CD1, ; R
+       $2C0F  ; Blank
+
+; Phantoon power-on palette:
+;org $A7CA77 : dw #$48FB            ; 2bpp palette 2, color 3: pink color for E-tanks (instead of black)
+;org $A7CA7B : dw !unexplored_gray   ; 2bpp palette 3, color 1: gray color for HUD dotted grid lines
+
+org $A7CA7B : dw #$48FB            ; 2bpp palette 3, color 1: pink color for E-tanks
+;org $A7CA97 : dw #$7FFF            ; 2bpp palette 6, color 3: white color for HUD text/digits
+
+; hook start of game to load correct BG3 tiles based on room:
+org $82806E
+    jsl start_game_hook
+    nop : nop
+
+; Patch door transition code to reload BG3 tiles based on room:
+org $82E46A : beq $1c
+org $82E472 : beq $14
+org $82E492
+    jsl load_bg3_tiles_door_transition
+    nop : nop
+
+; Patch pause menu start to load BG1/2 tiles, including the expanded set of map tiles:
+org $828E75
     ; Load 4bpp tiles for the area into VRAM:
     php
     rep #$30
@@ -818,133 +1206,40 @@ load_bg1_2_tiles:
     lda #$8000 ; source address = $8000
     sta $4312
 
-    ; Set source bank to $E2 + map area:
-    lda $1F5B  ; map area (0-5)
-    clc
-    adc #$00E2
+    ; Set source bank to $E2:
+    lda #$00E2
     sta $4314
 
-    lda #$4000
-    sta $4315 ; transfer size = $2000 bytes
+    lda #$6000
+    sta $4315 ; transfer size = $6000 bytes
 
     sep #$30
     lda #$02
     sta $420B  ; perform DMA transfer on channel 1
 
+    lda $0998
+    cmp #$0D
+    bne .skip_load_bg3  ; only load BG3 tiles when first entering pause menu, not when switching screens
+
+    ; load reduced set of BG3 tiles, to avoid overwriting FX tiles:
+    ; VRAM $4000..4600 = [$9A:B200..] (standard BG3 tiles)
+    LDA #$00
+    STA $2116
+    LDA #$40
+    STA $2117
+    LDA #$80
+    STA $2115
+    JSL $8091A9
+    db $01, $01, $18, $00, $B2, $9A, $00, $0C
+    LDA #$02
+    STA $420B
+
+    jsl load_bg3_map_tiles_wrapper
+
+.skip_load_bg3
     plp
     rtl
-
-
-reload_map_hook:
-    phx
-
-    LDA $830002,x  ; run hi-jacked instruction
-    BIT #$0040
-    beq .skip
-
-    ; clear HUD minimap
-    LDX #$0000             ;|
-    lda #$381f
-.clear_minimap_loop:
-    STA $7EC63C,x          ;|
-    STA $7EC67C,x          ;} HUD tilemap (1Ah..1Eh, 1..3) = 2C1Fh
-    STA $7EC6BC,x          ;|
-    INX                    ;|
-    INX                    ;|
-    CPX #$000A             ;|
-    BMI .clear_minimap_loop
-
-    ; update VRAM for HUD
-    LDX $0330       ;\
-    LDA #$00C0      ;|
-    STA $D0,x       ;|
-    INX             ;|
-    INX             ;|
-    LDA #$C608      ;|
-    STA $D0,x       ;|
-    INX             ;|
-    INX             ;} Queue transfer of $7E:C608..C7 to VRAM $5820..7F (HUD tilemap)
-    LDA #$007E      ;|
-    STA $D0,x       ;|
-    INX             ;|
-    LDA #$5820      ;|
-    STA $D0,x       ;|
-    INX             ;|
-    INX             ;|
-    STX $0330       ;/
-
-.skip:
-    plx
-    LDA $830002,x  ; run hi-jacked instruction
-    rtl
-
-start_game_hook:
-    jsl load_bg3_tiles
-    jsl $809A79  ; run hi-jacked instruction
-    rtl
-
-warnpc !bank_e8_freespace_end
-
-org $82DFB9
-    jsl reload_map_hook
-
-;; Pause menu: Pink color for full E-tank energy squares in HUD (palette 3, color 1)
-;org $B6F01A : dw $48FB
-;
-;; Pause menu: White color for full E-tank energy squares in HUD (palette 3, color 2)
-;org $B6F01C : dw $7FFF
-
-; Unexplored gray: palette 6, color 1
-org $B6F032 : dw !unexplored_gray
-
-; Unexplored light gray: palette 6, color 2
-org $B6F034 : dw !unexplored_light_gray
-
-; Unexplored white: palette 6, color 3
-org $B6F036 : dw $7FFF
-
-; Patch tile data for button letters. Changing the palettes to 3:
-org $858426            
-    dw $2CE0, ; A
-       $2CE1, ; B
-       $2CF7, ; X
-       $2CF8, ; Y
-       $2CD0, ; Select
-       $2CEB, ; L
-       $2CF1, ; R
-       $2C4E  ; Blank
-
-; Phantoon power-on palette:
-;org $A7CA77 : dw #$48FB            ; 2bpp palette 2, color 3: pink color for E-tanks (instead of black)
-;org $A7CA7B : dw !unexplored_gray   ; 2bpp palette 3, color 1: gray color for HUD dotted grid lines
-
-org $A7CA7B : dw #$48FB            ; 2bpp palette 3, color 1: pink color for E-tanks
-org $A7CA97 : dw #$7FFF            ; 2bpp palette 6, color 3: white color for HUD text/digits
-
-; Skip loading BG3 tiles initially. They will be loaded later, once the map area is determined.
-org $8282F4
-    rep 17 : nop
-
-; hook start of game to load correct BG3 tiles based on area:
-org $828063
-    jsl start_game_hook
-
-; Patch door transition code to always reload BG3 tiles, based on map area:
-org $82E46A : beq $1c
-org $82E472 : beq $14
-org $82E488
-    jsl load_bg3_tiles_door_transition
-    rep 6 : nop
-
-; Patch pause menu start to load BG1/2 tiles based on map area:
-org $828E87 
-    jsl load_bg1_2_tiles
-    rep 13 : nop
-
-; Patch pause menu start to load BG3 tiles based on map area:
-org $828EC7
-    jsl load_bg3_tiles
-    rep 13 : nop
+warnpc $828EDA
 
 ; Use palette 4 instead of palette 2 or non-map pause menu content
 ; (to free up more colors in palette 2 for use in map tiles).
@@ -975,35 +1270,15 @@ org !etank_color : dw $48FB  ; default pink E-tank color
 ;    RTS
 ;warnpc !bank_81_freespace_end
 
-; Use palette 6 instead of 3 when mini-map is disabled (during boss fights)
+; Use palette 7 instead of 3 when mini-map is disabled (during boss fights)
 org $90A7F1
-    ORA #$3800   ; was: ORA #$2C00
+    ORA #$3C00   ; was: ORA #$2C00
 
-; Make slope tile $A8 have the same functionality as $28, to trigger automatically exploring tile above Samus.
-; (Tile $A8 is used in Crocomire Speedway, the heated version of $28 used in Terminator Room.)
+; Make slope tiles $10 and $11 have the functionality that tile $28 does in vanilla,
+; to trigger automatically exploring tile above Samus.
+; (Tile $11 is used in Crocomire Speedway, the heated version of $10 used in Terminator Room.)
 org $90AAFD
-    AND #$017F   ; was: AND #$01FF
-
-; Kraid load BG3 from area-specific tiles:
-org $A7C78B : lda #!tiles_2bpp_address
-org $A7C790 : jsr get_area_bg3_bank
-org $A7C7B1 : lda #!tiles_2bpp_address+$400
-org $A7C7B6 : jsr get_area_bg3_bank
-org $A7C7D7 : lda #!tiles_2bpp_address+$800
-org $A7C7DC : jsr get_area_bg3_bank
-org $A7C7FD : lda #!tiles_2bpp_address+$C00
-org $A7C802 : jsr get_area_bg3_bank
-
-org $A7C23A
-    jsl load_bg3_tiles_kraid
-    rep 13 : nop
-
-org !bank_a7_freespace_start
-get_area_bg3_bank:
-    ; Bank = $E2 + map area
-    lda #$00E2
-    clc
-    adc $1F5B  ; Map area
-    rts
+    AND #$83FE   ; was: AND #$01FF
+    CMP #$0010
 
 warnpc !bank_a7_freespace_end
