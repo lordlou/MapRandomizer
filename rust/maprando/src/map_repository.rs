@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::randomize::Randomizer;
 use maprando_game::{GameData, Map};
 
+#[derive(Clone)]
 pub struct MapRepository {
     pub base_path: PathBuf,
     pub filenames: Vec<String>,

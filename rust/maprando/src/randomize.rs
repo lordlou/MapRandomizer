@@ -45,6 +45,7 @@ use std::{cmp::min, convert::TryFrom, hash::Hash, iter, time::SystemTime};
 use strum::VariantNames;
 
 use self::escape_timer::SpoilerEscape;
+use pyo3::prelude::*;
 
 // Once there are fewer than 20 item locations remaining to be filled, key items will be
 // placed as quickly as possible. This helps prevent generation failures particularly on lower
@@ -281,19 +282,20 @@ pub struct RandomizationState {
 }
 
 // Info about an item used during ROM patching, to show info in the credits
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct EssentialItemSpoilerInfo {
     pub item: Item,
     pub step: Option<usize>,
     pub area: Option<String>,
 }
 // Spoiler data that is used during ROM patching (e.g. to show info in the credits)
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct EssentialSpoilerData {
     pub item_spoiler_info: Vec<EssentialItemSpoilerInfo>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[pyclass]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Randomization {
     pub objectives: Vec<Objective>,
     pub save_animals: SaveAnimals,

@@ -9,12 +9,11 @@ use std::cmp::min;
 use std::path::Path;
 
 use crate::patch::glowpatch_writer::write_glowpatch;
-use crate::patch::{apply_ips_patch, snes2pc, write_credits_big_char, Rom};
+use crate::patch::{apply_ips_patch, snes2pc, Rom};
 use maprando_game::{GameData, Map};
 use mosaic::MosaicTheme;
 use retiling::apply_retiling;
 use room_palettes::apply_area_themed_palettes;
-use samus_sprite::SamusSpriteCategory;
 
 struct AllocatorBlock {
     start_addr: usize,
@@ -163,7 +162,7 @@ fn remove_mother_brain_flashing(rom: &mut Rom) -> Result<()> {
 
     Ok(())
 }
-
+/*
 fn apply_custom_samus_sprite(
     rom: &mut Rom,
     settings: &CustomizeSettings,
@@ -234,7 +233,7 @@ fn apply_custom_samus_sprite(
 
     Ok(())
 }
-
+*/
 pub fn parse_controller_button(s: &str) -> Result<ControllerButton> {
     Ok(match s {
         "Left" => ControllerButton::Left,
@@ -325,7 +324,7 @@ pub fn customize_rom(
     map: &Option<Map>,
     settings: &CustomizeSettings,
     game_data: &GameData,
-    samus_sprite_categories: &[SamusSpriteCategory],
+    //samus_sprite_categories: &[SamusSpriteCategory],
     mosaic_themes: &[MosaicTheme],
 ) -> Result<()> {
     rom.resize(0x400000);
@@ -358,7 +357,7 @@ pub fn customize_rom(
     // customized HUD colors which would get messed up.
     rom.write_u16(snes2pc(0xA7DC6E), 0x0040)?;
 
-    apply_custom_samus_sprite(rom, settings, samus_sprite_categories)?;
+    //apply_custom_samus_sprite(rom, settings, samus_sprite_categories)?;
     if let Some((r, g, b)) = settings.etank_color {
         let color = (r as isize) | ((g as isize) << 5) | ((b as isize) << 10);
         rom.write_u16(snes2pc(0x82FFFE), color)?; // Gameplay ETank color

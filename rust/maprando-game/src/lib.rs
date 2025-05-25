@@ -65,6 +65,7 @@ pub const TECH_ID_CAN_ENEMY_STUCK_MOONFALL: TechId = 28;
 pub const TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP: TechId = 197;
 pub const TECH_ID_CAN_HYPER_GATE_SHOT: TechId = 10001;
 
+#[pyclass]
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Map {
     pub rooms: Vec<(usize, usize)>, // (x, y) of upper-left corner of room on map
@@ -504,7 +505,7 @@ pub struct RoomGeometry {
     pub heated: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct EscapeTimingDoor {
     pub name: String,
     pub direction: String,
@@ -530,13 +531,13 @@ pub enum EscapeConditionRequirement {
     CanOneTapShortcharge,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct EscapeTimingCondition {
     pub requires: Vec<EscapeConditionRequirement>,
     pub in_game_time: f32,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct EscapeTiming {
     pub to_door: EscapeTimingDoor,
     pub in_game_time: Option<f32>,
@@ -544,13 +545,13 @@ pub struct EscapeTiming {
     pub conditions: Vec<EscapeTimingCondition>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct EscapeTimingGroup {
     pub from_door: EscapeTimingDoor,
     pub to: Vec<EscapeTiming>,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct EscapeTimingRoom {
     pub room_name: String,
     pub timings: Vec<EscapeTimingGroup>,
@@ -1061,7 +1062,7 @@ fn compute_runway_effective_length(geom: &RunwayGeometry) -> f32 {
     effective_length
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct LinksDataGroup {
     pub links: Vec<Link>,
     pub links_by_src: Vec<Vec<(LinkIdx, Link)>>,
@@ -1173,7 +1174,7 @@ fn parse_hex(v: &JsonValue, default: f32) -> Result<f32> {
 
 type TitleScreenImage = ndarray::Array3<u8>;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct TitleScreenData {
     pub top_left: Vec<TitleScreenImage>,
     pub top_right: Vec<TitleScreenImage>,
@@ -1233,7 +1234,7 @@ pub struct NotableInfo {
     pub note: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct StratVideo {
     pub room_id: usize,
     pub strat_id: usize,
@@ -1399,7 +1400,7 @@ struct MapTileDataFile {
 // with sm-json-data and cut back on the amount of different
 // keys/IDs/indexes for rooms, nodes, and doors.
 #[pyclass]
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct GameData {
     pub apworld_path: Option<String>,
     cached_mosaic_patches: Vec<u8>,
@@ -4671,15 +4672,35 @@ impl GameData {
 
     fn load_connections(&mut self) -> Result<()> {
         let connection_pattern =
-            self.sm_json_data_path.to_str().unwrap().to_string() + "/connection/**/*.json";
-        for entry in glob::glob(&connection_pattern)? {
-            if let Ok(path) = entry {
-                if !path.to_str().unwrap().contains("ceres") {
-                    self.process_connections(&self.read_json(&path)?)?;
-                }
-            } else {
-                bail!("Error processing connection path: {}", entry.err().unwrap());
-            }
+            self.sm_json_data_path.to_str().unwrap().to_string();
+        let files = [
+            "/connection/brinstar/blue.json",
+            "/connection/brinstar/green.json",
+            "/connection/brinstar/intra.json",
+            "/connection/brinstar/kraid.json",
+            "/connection/brinstar/pink.json",
+            "/connection/brinstar/red.json",
+            "/connection/crateria/central.json",
+            "/connection/crateria/east.json",
+            "/connection/crateria/intra.json",
+            "/connection/crateria/west.json",
+            "/connection/lowernorfair/east.json",
+            "/connection/lowernorfair/intra.json",
+            "/connection/lowernorfair/west.json",
+            "/connection/maridia/inner.json",
+            "/connection/maridia/intra.json",
+            "/connection/maridia/outer.json",
+            "/connection/norfair/crocomire.json",
+            "/connection/norfair/east.json",
+            "/connection/norfair/intra.json",
+            "/connection/norfair/west.json",
+            "/connection/tourian/main.json",
+            "/connection/wreckedship/main.json",
+            "/connection/inter.json"
+        ];
+        for entry in files {
+            let path = connection_pattern.clone() + entry;
+            self.process_connections(&self.read_json(Path::new(&path))?)?;
         }
         Ok(())
     }
@@ -4858,7 +4879,7 @@ impl GameData {
     }
 
     fn load_escape_timings(&mut self, path: &Path) -> Result<()> {
-        let escape_timings_str = std::fs::read_to_string(path)
+        let escape_timings_str = self.read_to_string(path)
             .with_context(|| format!("Unable to load escape timings at {}", path.display()))?;
         self.escape_timings = serde_json::from_str(&escape_timings_str)?;
         assert_eq!(self.escape_timings.len(), self.room_geometry.len());
@@ -4866,7 +4887,7 @@ impl GameData {
     }
 
     fn load_start_locations(&mut self, path: &Path) -> Result<()> {
-        let start_locations_str = std::fs::read_to_string(path)
+        let start_locations_str = self.read_to_string(path)
             .with_context(|| format!("Unable to load start locations at {}", path.display()))?;
         let mut start_locations: Vec<StartLocation> = serde_json::from_str(&start_locations_str)?;
         let mut start_location_id_map: HashMap<(usize, usize), usize> = HashMap::new();
@@ -4907,7 +4928,7 @@ impl GameData {
     }
 
     fn load_hub_locations(&mut self, path: &Path) -> Result<()> {
-        let hub_locations_str = std::fs::read_to_string(path)
+        let hub_locations_str = self.read_to_string(path)
             .with_context(|| format!("Unable to load hub locations at {}", path.display()))?;
         let mut hub_locations: Vec<HubLocation> = serde_json::from_str(&hub_locations_str)?;
         for loc in &mut hub_locations {
@@ -4939,7 +4960,7 @@ impl GameData {
     }
 
     fn load_room_geometry(&mut self, path: &Path) -> Result<()> {
-        let room_geometry_str = std::fs::read_to_string(path)
+        let room_geometry_str = self.read_to_string(path)
             .with_context(|| format!("Unable to load room geometry at {}", path.display()))?;
         let room_geometry: Vec<RoomGeometry> = serde_json::from_str(&room_geometry_str)?;
         for (room_idx, room) in room_geometry.iter().enumerate() {
@@ -5027,7 +5048,7 @@ impl GameData {
     }
 
     fn load_reduced_flashing_patch(&mut self, path: &Path) -> Result<()> {
-        let reduced_flashing_str = std::fs::read_to_string(path).with_context(|| {
+        let reduced_flashing_str = self.read_to_string(path).with_context(|| {
             format!(
                 "Unable to load reduced flashing patch at {}",
                 path.display()
@@ -5038,7 +5059,7 @@ impl GameData {
     }
 
     fn load_strat_videos(&mut self, path: &Path) -> Result<()> {
-        let strat_videos_str = std::fs::read_to_string(path)
+        let strat_videos_str = self.read_to_string(path)
             .with_context(|| format!("Unable to load strat videos at {}", path.display()))?;
         let strat_videos: Vec<StratVideo> = serde_json::from_str(&strat_videos_str)?;
         for video in strat_videos {
@@ -5051,7 +5072,7 @@ impl GameData {
     }
 
     fn load_map_tile_data(&mut self, path: &Path) -> Result<()> {
-        let map_tile_data_str = std::fs::read_to_string(path)
+        let map_tile_data_str = self.read_to_string(path)
             .with_context(|| format!("Unable to load map tile data at {}", path.display()))?;
         let map_tile_data_file: MapTileDataFile = serde_json::from_str(&map_tile_data_str)?;
         self.map_tile_data = map_tile_data_file.rooms;

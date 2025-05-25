@@ -32,6 +32,7 @@ pub struct NotableData {
     pub video_id: Option<usize>,
 }
 
+#[derive(Clone)]
 pub struct PresetData {
     pub tech_data_map: HashMap<TechId, TechData>,
     pub notable_data_map: HashMap<(RoomId, NotableId), NotableData>,

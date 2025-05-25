@@ -1222,14 +1222,13 @@ dependencies = [
  "libc",
  "pkg-config",
 ]
- 
+
 [[package]]
 name = "lznint"
 version = "1.0.1"
 dependencies = [
  "thiserror",
 ]
-
 
 [[package]]
 name = "maprando-game"
@@ -1732,6 +1731,7 @@ dependencies = [
  "ips",
  "json",
  "log",
+ "lznint",
  "maprando-game",
  "maprando-logic",
  "ndarray",
