@@ -24,7 +24,7 @@ struct InvalidRomTemplate {}
 
 #[derive(MultipartForm)]
 struct CustomizeRequest {
-    rom: Bytes,
+    rom: Vec<u8>,
     samus_sprite: Text<String>,
     etank_color: Text<String>,
     reserve_hud_style: Text<bool>,
@@ -77,7 +77,7 @@ async fn customize_seed(
     app_data: web::Data<AppData>,
 ) -> impl Responder {
     let seed_name = &info.0;
-    let orig_rom = Rom::new(req.rom.data.to_vec());
+    let orig_rom = Rom::new(req.rom);
     let mut rom = orig_rom.clone();
 
     let seed_data_str: String = String::from_utf8(
