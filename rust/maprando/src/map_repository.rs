@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
 use log::info;
+use reqwest::blocking::get;
+use url::Url;
 use std::path::{Path, PathBuf};
 
 use crate::randomize::Randomizer;
@@ -39,10 +41,10 @@ impl MapRepository {
                         } 
                         else {
                             Path::new(if name == "Standard" {
-                                        "worlds/sm_map_rando/data/maps/v117c-standard"
+                                            "https://storage.googleapis.com/super-metroid-map-rando/maps/v110c-tame/"
                                         } 
                                         else {
-                                            "worlds/sm_map_rando/data/maps/v117c-wild"
+                                            "https://storage.googleapis.com/super-metroid-map-rando/maps/v110c-wild/"
                                         }).to_owned()
                         },
             filenames,
@@ -57,26 +59,27 @@ impl MapRepository {
     ) -> Result<Map> {
         let idx = seed % self.filenames.len();
         let path = self.base_path.join(&self.filenames[idx]).with_extension("json");
-        let map_string = game_data.read_to_string(&path).with_context(|| {
-            format!(
-                "[attempt {attempt_num_rando}] Unable to read map file at {}",
-                path.display()
-            )
-        })?;
-        info!("[attempt {attempt_num_rando}] Map: {}", path.display());
-        let mut map: Map = serde_json::from_str(&map_string).with_context(|| {
-            format!(
-                "[attempt {attempt_num_rando}] Unable to parse map file at {}",
-                path.display()
-            )
-        })?;
-        /*
-        let url = Url::parse(path.to_str().unwrap()).unwrap();
-        let response = get(url)
-            .with_context(|| format!("Unable to fetch map file from {}", path.display()))?;
-        let map: Map = response.json()
-            .with_context(|| format!("Unable to parse map file at {}", path.display()))?;
-        */
+        let mut map = if self.filenames.len() == 1 {
+            let map_string = game_data.read_to_string(&path).with_context(|| {
+                format!(
+                    "[attempt {attempt_num_rando}] Unable to read map file at {}",
+                    path.display()
+                )
+            })?;
+            info!("[attempt {attempt_num_rando}] Map: {}", path.display());
+            serde_json::from_str(&map_string).with_context(|| {
+                format!(
+                    "[attempt {attempt_num_rando}] Unable to parse map file at {}",
+                    path.display()
+                )
+            })?
+        } else {
+            let url = Url::parse(path.to_str().unwrap()).unwrap();
+            let response = get(url)
+                .with_context(|| format!("Unable to fetch map file from {}", path.display()))?;
+            response.json()
+                .with_context(|| format!("Unable to parse map file at {}", path.display()))?
+        };
         // Make Toilet area/subarea align with its intersecting room(s):
         // TODO: Push this upstream into the map generation
         let toilet_intersections = Randomizer::get_toilet_intersections(&map, game_data);

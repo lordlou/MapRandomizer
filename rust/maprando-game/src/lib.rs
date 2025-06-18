@@ -106,7 +106,15 @@ pub type TilesetIdx = usize; // Tileset index
 pub type AreaIdx = usize; // Area index (0..5)
 pub type LinkIdx = u32;
 
+#[pyclass]
 #[derive(Default, Clone)]
+pub struct IndexedVecString {
+    #[pyo3(get)]
+    pub keys: Vec<String>,
+    pub index_by_key: HashMap<String, usize>,
+}
+
+#[derive(Default, Clone, IntoPyObject)]
 pub struct IndexedVec<T: Hash + Eq> {
     pub keys: Vec<T>,
     pub index_by_key: HashMap<T, usize>,
@@ -1406,11 +1414,14 @@ pub struct GameData {
     cached_mosaic_patches: Vec<u8>,
     cached_mosaic_patches_map: Option<JsonValue>,
     sm_json_data_path: PathBuf,
+    #[pyo3(get)]
     pub tech_isv: IndexedVec<TechId>,
+    #[pyo3(get)]
     pub notable_isv: IndexedVec<(RoomId, NotableId)>,
     pub notable_info: Vec<NotableInfo>,
     pub flag_isv: IndexedVec<String>,
-    pub item_isv: IndexedVec<String>,
+    #[pyo3(get)]
+    pub item_isv: IndexedVecString,
     weapon_isv: IndexedVec<String>,
     weapon_categories: HashMap<String, Vec<String>>, // map from weapon category to specific weapons with that category
     enemy_attack_damage: HashMap<(String, String), Capacity>,
@@ -1496,6 +1507,19 @@ impl<T: Hash + Eq> IndexedVec<T> {
     }
 }
 
+impl IndexedVecString {
+    pub fn add<U: ToOwned<Owned = String> + ?Sized>(&mut self, name: &U) -> usize {
+        if !self.index_by_key.contains_key(&name.to_owned()) {
+            let idx = self.keys.len();
+            self.index_by_key.insert(name.to_owned(), self.keys.len());
+            self.keys.push(name.to_owned());
+            idx
+        } else {
+            self.index_by_key[&name.to_owned()]
+        }
+    }
+}
+
 // TODO: Take steep slopes into account here:
 pub fn get_effective_runway_length(used_tiles: f32, open_end: f32) -> f32 {
     used_tiles + open_end * 0.5
@@ -1512,6 +1536,27 @@ struct RequirementContext<'a> {
     unlocks_doors_json: Option<&'a JsonValue>,
     node_implicit_door_unlocks: Option<&'a HashMap<NodeId, bool>>,
     notable_map: Option<&'a HashMap<String, NotableIdx>>,
+}
+
+#[pymethods]
+impl GameData {
+    pub fn get_location_names(&self) -> Vec<String> {
+        let mut item_loc: Vec<String> = Vec::new();
+        for i in 0..self.item_locations.len() {
+            let room_name = self.room_json_map[&self.item_locations[i].0]["name"].to_string();
+            let location_name = self.node_json_map[&self.item_locations[i]]["name"].to_string();
+            item_loc.push(format!("{room_name} {location_name}"));
+        }
+        item_loc
+    }
+
+    pub fn get_location_addresses(&self) -> Vec<usize> {
+        let mut addresses: Vec<usize> = Vec::new();
+        for i in 0..self.item_locations.len() {
+            addresses.push(self.node_ptr_map[&self.item_locations[i]]);
+        }
+        addresses
+    }
 }
 
 impl GameData {
@@ -2801,45 +2846,20 @@ impl GameData {
 
     fn load_regions(&mut self) -> Result<()> {
         let region_pattern =
-            self.sm_json_data_path.to_str().unwrap().to_string();
-        let files = [
-            "/region/brinstar/blue.json",
-            "/region/brinstar/green.json",
-            "/region/brinstar/kraid.json",
-            "/region/brinstar/pink.json",
-            "/region/brinstar/red.json",
-            "/region/crateria/central.json",
-            "/region/crateria/east.json",
-            "/region/crateria/west.json",
-            "/region/lowernorfair/east.json",
-            "/region/lowernorfair/west.json",
-            "/region/maridia/inner-green.json",
-            "/region/maridia/inner-pink.json",
-            "/region/maridia/inner-yellow.json",
-            "/region/maridia/outer.json",
-            "/region/norfair/crocomire.json",
-            "/region/norfair/east.json",
-            "/region/norfair/west.json",
-            "/region/tourian/main.json",
-            "/region/wreckedship/main.json"
-        ];
-        let mut room_json_map: HashMap<usize, JsonValue> = HashMap::new();
+            self.sm_json_data_path.to_str().unwrap().to_string() + "/region/**/*.json";
+        let files = self.glob_filepaths(region_pattern.as_str(), "/region/", "json");
         for entry in files {
-            let path_str = region_pattern.clone() + entry;
-            let room_json = self.read_json(Path::new(&path_str))?;
-            room_json_map.insert(room_json["id"].as_usize().unwrap(), room_json);
-        } 
-
-        let mut room_id_vec: Vec<usize> = room_json_map.keys().cloned().collect();
-        room_id_vec.sort();
-        for room_id in room_id_vec {
-            let room_json = &room_json_map[&room_id];
-            let room_name = room_json["name"].clone();
-            let preprocessed_room_json = self
-                .preprocess_room(&room_json)
-                .with_context(|| format!("Preprocessing room {}", room_name))?;
-            self.process_room(&preprocessed_room_json)
-                .with_context(|| format!("Processing room {}", room_name))?;
+            let entry_str = entry.to_str().unwrap();
+            if entry_str.contains("ceres") || entry_str.contains("roomDiagrams") {
+                continue;
+            }
+                let room_json = self.read_json(entry.as_path())?;
+                let room_name = room_json["name"].clone();
+                let preprocessed_room_json = self
+                    .preprocess_room(&room_json)
+                    .with_context(|| format!("Preprocessing room {}", room_name))?;
+                self.process_room(&preprocessed_room_json)
+                    .with_context(|| format!("Processing room {}", room_name))?;
         }
 
         let ignored_notable_strats = get_ignored_notable_strats();
@@ -5058,6 +5078,7 @@ impl GameData {
         Ok(())
     }
 
+/*
     fn load_strat_videos(&mut self, path: &Path) -> Result<()> {
         let strat_videos_str = self.read_to_string(path)
             .with_context(|| format!("Unable to load strat videos at {}", path.display()))?;
@@ -5070,7 +5091,7 @@ impl GameData {
         }
         Ok(())
     }
-
+*/
     fn load_map_tile_data(&mut self, path: &Path) -> Result<()> {
         let map_tile_data_str = self.read_to_string(path)
             .with_context(|| format!("Unable to load map tile data at {}", path.display()))?;
@@ -5104,7 +5125,6 @@ impl GameData {
         hub_locations_path: &Path,
         title_screen_path: &Path,
         reduced_flashing_path: &Path,
-        strat_videos_path: &Path,
         map_tile_path: &Path,
         apworld_path: Option<String>
     ) -> Result<GameData> {
@@ -5120,7 +5140,7 @@ impl GameData {
         game_data.sm_json_data_path = sm_json_data_path.to_owned();
 
         game_data.load_reduced_flashing_patch(reduced_flashing_path)?;
-        game_data.load_strat_videos(strat_videos_path)?;
+        //game_data.load_strat_videos(strat_videos_path)?;
 
         game_data.load_items_and_flags()?;
         game_data.load_tech()?;

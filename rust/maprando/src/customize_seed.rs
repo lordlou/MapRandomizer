@@ -62,6 +62,102 @@ pub struct CustomizeRequest {
     moonwalk: bool,
 }
 
+#[pymethods]
+impl CustomizeRequest{
+    #[new]
+    pub fn new(rom: Vec<u8>,
+        samus_sprite: String,
+        etank_color: String,
+        reserve_hud_style: bool,
+        room_palettes: String,
+        tile_theme: String,
+        door_theme: String,
+        music: String,
+        disable_beeping: bool,
+        shaking: String,
+        flashing: String,
+        vanilla_screw_attack_animation: bool,
+        control_shot: String,
+        control_jump: String,
+        control_dash: String,
+        control_item_select: String,
+        control_item_cancel: String,
+        control_angle_up: String,
+        control_angle_down: String,
+        spin_lock_left: Option<String>,
+        spin_lock_right: Option<String>,
+        spin_lock_up: Option<String>,
+        spin_lock_down: Option<String>,
+        spin_lock_x: Option<String>,
+        spin_lock_y: Option<String>,
+        spin_lock_a: Option<String>,
+        spin_lock_b: Option<String>,
+        spin_lock_l: Option<String>,
+        spin_lock_r: Option<String>,
+        spin_lock_select: Option<String>,
+        spin_lock_start: Option<String>,
+        quick_reload_left: Option<String>,
+        quick_reload_right: Option<String>,
+        quick_reload_up: Option<String>,
+        quick_reload_down: Option<String>,
+        quick_reload_x: Option<String>,
+        quick_reload_y: Option<String>,
+        quick_reload_a: Option<String>,
+        quick_reload_b: Option<String>,
+        quick_reload_l: Option<String>,
+        quick_reload_r: Option<String>,
+        quick_reload_select: Option<String>,
+        quick_reload_start: Option<String>,
+        moonwalk: bool) -> Self {
+        CustomizeRequest {
+            rom,
+            samus_sprite,
+            etank_color,
+            reserve_hud_style,
+            room_palettes,
+            tile_theme,
+            door_theme,
+            music,
+            disable_beeping,
+            shaking,
+            flashing,
+            vanilla_screw_attack_animation,
+            control_shot,
+            control_jump,
+            control_dash,
+            control_item_select,
+            control_item_cancel,
+            control_angle_up,
+            control_angle_down,
+            spin_lock_left,
+            spin_lock_right,
+            spin_lock_up,
+            spin_lock_down,
+            spin_lock_x,
+            spin_lock_y,
+            spin_lock_a,
+            spin_lock_b,
+            spin_lock_l,
+            spin_lock_r,
+            spin_lock_select,
+            spin_lock_start,
+            quick_reload_left,
+            quick_reload_right,
+            quick_reload_up,
+            quick_reload_down,
+            quick_reload_x,
+            quick_reload_y,
+            quick_reload_a,
+            quick_reload_b,
+            quick_reload_l,
+            quick_reload_r,
+            quick_reload_select,
+            quick_reload_start,
+            moonwalk
+        }
+    }
+}
+
 #[pyfunction]
 pub fn customize_seed_ap(
     req: CustomizeRequest,
@@ -71,6 +167,7 @@ pub fn customize_seed_ap(
     map: Map,
     ultra_low_qol: bool
 ) -> Vec<u8> {
+    info!("customize_seed_ap");
     //let seed_name = &info.0;
     let orig_rom = Rom::new(req.rom.clone());
     let mut rom = orig_rom.clone();

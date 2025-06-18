@@ -390,8 +390,8 @@ pub fn get_room_state_ptrs(rom: &Rom, room_ptr: usize) -> Result<Vec<(usize, usi
     }
 }
 
-pub fn apply_ips_patch(rom: &mut Rom, patch_path: &Path) -> Result<()> {
-    let patch_data = std::fs::read(&patch_path)
+pub fn apply_ips_patch(rom: &mut Rom, patch_path: &Path, game_data: &GameData) -> Result<()> {
+    let patch_data = game_data.read_to_bytes(&patch_path)
         .with_context(|| format!("Unable to read patch {}", patch_path.display()))?;
     let patch = ips::Patch::parse(&patch_data)
         .with_context(|| format!("Unable to parse patch {}", patch_path.display()))?;
@@ -401,8 +401,8 @@ pub fn apply_ips_patch(rom: &mut Rom, patch_path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn apply_orig_ips_patches(rom: &mut Rom, settings: &RandomizerSettings) -> Result<()> {
-    let patches_dir = Path::new("../patches/ips/");
+fn apply_orig_ips_patches(rom: &mut Rom, settings: &RandomizerSettings, game_data: &GameData) -> Result<()> {
+    let patches_dir = Path::new("worlds/sm_map_rando/data/patches/ips/");
     let mut patches: Vec<&'static str> = vec![
         "mb_barrier",
         "mb_barrier_clear",
@@ -421,7 +421,7 @@ fn apply_orig_ips_patches(rom: &mut Rom, settings: &RandomizerSettings) -> Resul
 
     for patch_name in patches {
         let patch_path = patches_dir.join(patch_name.to_string() + ".ips");
-        apply_ips_patch(rom, &patch_path)?;
+        apply_ips_patch(rom, &patch_path, game_data)?;
     }
 
     Ok(())
@@ -430,7 +430,7 @@ fn apply_orig_ips_patches(rom: &mut Rom, settings: &RandomizerSettings) -> Resul
 impl<'a> Patcher<'a> {
     fn apply_ips_patches(&mut self) -> Result<()> {
         self.rom.data.resize(0x400000, 0);
-        let patches_dir = Path::new("../patches/ips/");
+        let patches_dir = Path::new("worlds/sm_map_rando/data/patches/ips/");
         let mut patches = vec![
             "complementary_suits",
             "disable_map_icons",
@@ -613,7 +613,7 @@ impl<'a> Patcher<'a> {
 
         for patch_name in patches {
             let patch_path = patches_dir.join(patch_name.to_string() + ".ips");
-            apply_ips_patch(&mut self.rom, &patch_path)?;
+            apply_ips_patch(&mut self.rom, &patch_path, self.game_data)?;
         }
 
         // Write settings flags, e.g. for use by auto-tracking tools:
@@ -3089,7 +3089,7 @@ pub fn make_rom(
     game_data: &GameData,
 ) -> Result<Rom> {
     let mut orig_rom = base_rom.clone();
-    apply_orig_ips_patches(&mut orig_rom, settings)?;
+    apply_orig_ips_patches(&mut orig_rom, settings, game_data)?;
 
     // Remove solid wall that spawns in Tourian Escape Room 1 while coming through right door.
     // Note that this wall spawns in two ways: 1) as a normal PLM which spawns when entering through either door

@@ -285,7 +285,7 @@ fn get_button_list_mask(buttons: &[ControllerButton]) -> isize {
     mask
 }
 
-fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig) -> Result<()> {
+fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig, game_data: &GameData) -> Result<()> {
     let control_data = vec![
         (0x81B325, controller_config.jump, ControllerButton::A),
         (0x81B32B, controller_config.dash, ControllerButton::B),
@@ -311,7 +311,7 @@ fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig) 
     rom.write_u16(snes2pc(0x82FE7E), quick_reload_mask)?;
 
     if controller_config.moonwalk {
-        apply_ips_patch(rom, Path::new("../patches/ips/enable_moonwalk.ips"))?;
+        apply_ips_patch(rom, Path::new("worlds/sm_map_rando/data/patches/ips/enable_moonwalk.ips"), game_data)?;
     }
     // $82FE7E
 
@@ -349,7 +349,7 @@ pub fn customize_rom(
     match settings.door_theme {
         DoorTheme::Vanilla => {}
         DoorTheme::Alternate => {
-            apply_ips_patch(rom, Path::new("../patches/ips/alternate_door_colors.ips"))?;
+            apply_ips_patch(rom, Path::new("worlds/sm_map_rando/data/patches/ips/alternate_door_colors.ips"), game_data)?;
         }
     }
 
@@ -365,7 +365,7 @@ pub fn customize_rom(
         rom.write_u16(snes2pc(0xA7CA7B), color)?; // During Phantoon power-on
     }
     if settings.reserve_hud_style {
-        apply_ips_patch(rom, Path::new("../patches/ips/reserve_hud.ips"))?;
+        apply_ips_patch(rom, Path::new("worlds/sm_map_rando/data/patches/ips/reserve_hud.ips"), game_data)?;
     }
     match settings.music {
         MusicSettings::AreaThemed => {}
@@ -410,13 +410,13 @@ pub fn customize_rom(
     }
     match settings.flashing {
         FlashingSetting::Vanilla => {
-            apply_ips_patch(rom, Path::new("../patches/ips/flashing_placebo.ips"))?;
+            apply_ips_patch(rom, Path::new("worlds/sm_map_rando/data/patches/ips/flashing_placebo.ips"), game_data)?;
         }
         FlashingSetting::Reduced => {
-            apply_ips_patch(rom, Path::new("../patches/ips/flashing_placebo.ips"))?;
+            apply_ips_patch(rom, Path::new("worlds/sm_map_rando/data/patches/ips/flashing_placebo.ips"), game_data)?;
             write_glowpatch(rom, &game_data.reduced_flashing_patch)?;
         }
     }
-    apply_controller_config(rom, &settings.controller_config)?;
+    apply_controller_config(rom, &settings.controller_config, game_data)?;
     Ok(())
 }

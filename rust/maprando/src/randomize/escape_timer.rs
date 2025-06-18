@@ -21,6 +21,8 @@ use maprando_game::{
 use super::DifficultyConfig;
 use super::MotherBrainFight;
 
+use pyo3::prelude::*;
+
 pub type RoomName = &'static str;
 pub type VertexId = usize;
 pub type Cost = usize;
@@ -36,7 +38,8 @@ pub struct RoomDoorGraph {
 }
 
 // Ideally this would contain coords, but whatever
-#[derive(Serialize, Deserialize)]
+#[pyclass]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerEscapeRouteNode {
     room: String,
     node: String,
@@ -44,14 +47,16 @@ pub struct SpoilerEscapeRouteNode {
     pub y: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+#[pyclass]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerEscapeRouteEntry {
     pub from: SpoilerEscapeRouteNode,
     pub to: SpoilerEscapeRouteNode,
     pub base_igt_frames: usize,
 }
 
-#[derive(Serialize, Deserialize)]
+#[pyclass]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerEscape {
     pub base_igt_frames: usize,
     pub base_igt_seconds: f32,

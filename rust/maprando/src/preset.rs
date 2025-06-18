@@ -13,6 +13,7 @@ use crate::{
         SkillAssumptionSettings,
     },
 };
+use pyo3::prelude::*;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TechData {
@@ -32,6 +33,7 @@ pub struct NotableData {
     pub video_id: Option<usize>,
 }
 
+#[pyclass]
 #[derive(Clone)]
 pub struct PresetData {
     pub tech_data_map: HashMap<TechId, TechData>,
@@ -45,6 +47,7 @@ pub struct PresetData {
     pub objective_presets: Vec<ObjectiveSettings>,
     pub difficulty_tiers: Vec<DifficultyConfig>,
     pub full_presets: Vec<RandomizerSettings>,
+    #[pyo3(get)]
     pub default_preset: RandomizerSettings,
 }
 

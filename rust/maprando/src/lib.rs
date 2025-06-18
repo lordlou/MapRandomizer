@@ -14,7 +14,7 @@ pub mod customize_seed;
 use log::{info, error};
 use pyo3::prelude::*;
 use rand::{RngCore, SeedableRng};
-use randomize::{filter_links, get_difficulty_tiers, get_objectives, order_map_areas, randomize_doors, randomize_map_areas, DifficultyConfig, Randomization, Randomizer, SpoilerLog};
+use randomize::{filter_links, get_difficulty_tiers, get_objectives, order_map_areas, randomize_doors, randomize_map_areas, DifficultyConfig, Randomization, Randomizer, SpoilerItemSummary, SpoilerLog, SpoilerSummary};
 use settings::{AreaAssignment, RandomizerSettings, StartLocationMode};
 use std::{path::Path, time::{Instant}};
 use upgrade::try_upgrade_settings;
@@ -39,7 +39,9 @@ pub struct VersionInfo {
 #[pyclass]
 #[derive(Clone)]
 pub struct AppData {
+    #[pyo3(get)]
     pub game_data: GameData,
+    #[pyo3(get)]
     pub preset_data: PresetData,
     pub map_repositories: HashMap<String, MapRepository>,
     //pub seed_repository: SeedRepository,
@@ -58,6 +60,10 @@ pub struct AppData {
 
 #[pyfunction]
 fn build_app_data(apworld_path: Option<String>) -> AppData {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .init();
+
     let start_time = Instant::now();
     let sm_json_data_path = Path::new("worlds/sm_map_rando/data/sm-json-data");
     let room_geometry_path = Path::new("worlds/sm_map_rando/data/room_geometry.json");
@@ -66,7 +72,7 @@ fn build_app_data(apworld_path: Option<String>) -> AppData {
     let hub_locations_path = Path::new("worlds/sm_map_rando/data/hub_locations.json");
     let etank_colors_path = Path::new("worlds/sm_map_rando/data/etank_colors.json");
     let reduced_flashing_path = Path::new("worlds/sm_map_rando/data/reduced_flashing.json");
-    let strat_videos_path = Path::new("worlds/sm_map_rando/data/strat_videos.json");
+    //let strat_videos_path = Path::new("worlds/sm_map_rando/data/strat_videos.json");
     let vanilla_map_path = Path::new("worlds/sm_map_rando/data");
     let standard_maps_path = Path::new("worlds/sm_map_rando/data");
     let wild_maps_path = Path::new("worlds/sm_map_rando/data");
@@ -106,7 +112,6 @@ fn build_app_data(apworld_path: Option<String>) -> AppData {
         hub_locations_path,
         title_screen_path,
         reduced_flashing_path,
-        strat_videos_path,
         map_tiles_path,
         apworld_path
     )
@@ -178,7 +183,9 @@ pub struct AttemptOutput {
         map_seed: usize,
         door_randomization_seed: usize,
         item_placement_seed: usize,
+        #[pyo3(get)]
         randomization: Randomization,
+        #[pyo3(get)]
         spoiler_log: SpoilerLog,
     }
 
@@ -308,6 +315,7 @@ fn randomize_ap(
             &filtered_base_links_data,
             &mut rng,
         );
+
         for _ in 0..max_attempts_per_map {
             let item_placement_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
             attempt_num += 1;
@@ -454,10 +462,13 @@ fn randomize_ap(
 #[pyo3(name = "pysmmaprando")]
 fn pysmmaprando(m: &Bound<'_, PyModule>) -> PyResult<()> {
     //m.add_class::<Map>()?;
-    //m.add_class::<GameData>()?;
+    m.add_class::<GameData>()?;
     //m.add_class::<DifficultyConfig>()?;
     //m.add_class::<APRandomizer>()?;
     m.add_class::<AttemptOutput>()?;
+    //m.add_class::<SpoilerLog>()?;
+    //m.add_class::<SpoilerSummary>()?;
+    //m.add_class::<SpoilerItemSummary>()?;
     m.add_class::<AppData>()?;
     m.add_class::<CustomizeRequest>()?;
     m.add_class::<RandomizerSettings>()?;
