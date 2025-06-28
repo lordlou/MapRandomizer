@@ -1,5 +1,5 @@
-!bank_84_free_space_start = $84F5A0
-!bank_84_free_space_end = $84F5C0
+!bank_84_free_space_start = $84F4C0
+!bank_84_free_space_end = $84F4E0
 
 ; hook checks for if energy is already full (to make it check both regular and reserve energy)
 org $848CB4

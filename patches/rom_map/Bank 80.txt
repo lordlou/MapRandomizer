@@ -17,4 +17,5 @@ E3C0 - E440: disable_etanks.asm
 E440 - E540: load_plms_early.asm
 E540 - E580: hud_expansion_opaque.asm
 E580 - E660: samus_tiles_optim_animated_tiles_fix.asm
-E660 - FFFF: [FREE]
+E660 - EAA1: AP base patch (multiworld.asm and itemextras.asm)
+EAA1 - FFFF: [FREE]

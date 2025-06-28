@@ -1,7 +1,7 @@
 lorom
 
-!bank_84_free_space_start = $84F480
-!bank_84_free_space_end = $84F490
+!bank_84_free_space_start = $84F420
+!bank_84_free_space_end = $84F430
 
 org $848972
 	jsr refill_hook

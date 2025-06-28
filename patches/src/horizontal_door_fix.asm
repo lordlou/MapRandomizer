@@ -10,8 +10,8 @@
 arch 65816
 lorom
 
-!bank_84_free_space_start = $84f590
-!bank_84_free_space_end = $84f5a0
+!bank_84_free_space_start = $84f4B0
+!bank_84_free_space_end = $84f4C0
 
 org $848488
     jsr clr_ints

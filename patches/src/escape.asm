@@ -10,7 +10,7 @@ arch snes.cpu
 !bank_82_free_space_start = $82FCD0
 !bank_82_free_space_end = $82FD00
 !bank_84_free_space_start = $84F380
-!bank_84_free_space_end = $84F480
+!bank_84_free_space_end = $84F420
 !bank_8b_free_space_start = $8BF900
 !bank_8b_free_space_end = $8BF940
 !bank_8f_free_space_start = $8FF600

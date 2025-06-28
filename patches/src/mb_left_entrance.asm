@@ -1,8 +1,8 @@
 arch snes.cpu
 lorom
 
-!bank_84_free_space_start = $84f580
-!bank_84_free_space_end = $84f590
+!bank_84_free_space_start = $84f4A0
+!bank_84_free_space_end = $84f4B0
 !bank_8f_free_space_start = $8fff00
 !bank_8f_free_space_end = $8fffa0
 

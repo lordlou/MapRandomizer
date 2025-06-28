@@ -6,8 +6,8 @@
 
 lorom
 
-!bank_84_free_space_start = $84F500
-!bank_84_free_space_end = $84F580
+!bank_84_free_space_start = $84F440
+!bank_84_free_space_end = $84F4A0
 
 ;--------------------------------SOUNDFX VALUES----------------------------------
 
