@@ -9,12 +9,14 @@ use json::{self, JsonValue};
 use log::{error, info, warn};
 use ndarray::Array3;
 use num_enum::TryFromPrimitive;
+use pyo3::exceptions::PyValueError;
 use serde::{Deserialize, Serialize};
 use std::borrow::ToOwned;
 use std::fmt::{self, Debug, Formatter};
 use std::fs::File;
 use std::hash::Hash;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use strum::VariantNames;
 use strum_macros::{EnumString, EnumVariantNames};
 
@@ -120,6 +122,7 @@ pub struct IndexedVec<T: Hash + Eq> {
     pub index_by_key: HashMap<T, usize>,
 }
 
+#[pyclass]
 #[derive(
     Copy,
     Clone,
@@ -161,10 +164,13 @@ pub enum Item {
     ReserveTank,  // 20
     WallJump,     // 21
     Nothing,      // 22
+    ArchipelagoItem, // 23
+    ArchipelagoProgItem, // 24
 }
 
+#[pymethods]
 impl Item {
-    pub fn is_unique(self) -> bool {
+    pub fn is_unique(&self) -> bool {
         ![
             Item::Missile,
             Item::Super,
@@ -172,8 +178,13 @@ impl Item {
             Item::ETank,
             Item::ReserveTank,
             Item::Nothing,
+            Item::ArchipelagoItem,
         ]
         .contains(&self)
+    }
+    #[new]
+    pub fn new(value: usize) -> Self {
+        Item::try_from(value).unwrap()
     }
 }
 
@@ -1830,7 +1841,10 @@ impl GameData {
         let item_json = self.read_json(&self.sm_json_data_path.join("items.json"))?;
 
         for item_name in Item::VARIANTS {
-            self.item_isv.add(&item_name.to_string());
+            let item = Item::from_str(item_name).unwrap();
+            if item != Item::ArchipelagoItem && item != Item::ArchipelagoProgItem {
+                self.item_isv.add(&item_name.to_string());
+            }
         }
         self.item_isv.add("WallJump");
         ensure!(item_json["gameFlags"].is_array());

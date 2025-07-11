@@ -174,6 +174,7 @@ async fn randomize(
     let time_start_attempts = Instant::now();
     let mut attempt_num = 0;
     let mut output_opt: Option<AttemptOutput> = None;
+    let client = Client::new();
     'attempts: for _ in 0..max_map_attempts {
         let map_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
         let door_randomization_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
@@ -183,7 +184,7 @@ async fn randomize(
             panic!("Unrecognized map layout option: {}", map_layout);
         }
         let mut map = app_data.map_repositories[&map_layout]
-            .get_map(attempt_num, map_seed, &app_data.game_data)
+            .get_map(attempt_num, map_seed, &app_data.game_data, &client)
             .unwrap();
         match settings.other_settings.area_assignment {
             AreaAssignment::Ordered => {

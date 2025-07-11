@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use log::info;
-use reqwest::blocking::get;
+use reqwest::blocking::Client;
 use url::Url;
-use std::path::{Path, PathBuf};
+use std::{path::{Path, PathBuf}};
 
 use crate::randomize::Randomizer;
 use maprando_game::{GameData, Map};
@@ -56,7 +56,8 @@ impl MapRepository {
         attempt_num_rando: usize,
         seed: usize,
         game_data: &GameData,
-    ) -> Result<Map> {
+        client: &Client
+    ) -> Result<Map, anyhow::Error> {
         let idx = seed % self.filenames.len();
         let path = self.base_path.join(&self.filenames[idx]).with_extension("json");
         let mut map = if self.filenames.len() == 1 {
@@ -75,7 +76,7 @@ impl MapRepository {
             })?
         } else {
             let url = Url::parse(path.to_str().unwrap()).unwrap();
-            let response = get(url)
+            let response = client.get(url).send()
                 .with_context(|| format!("Unable to fetch map file from {}", path.display()))?;
             response.json()
                 .with_context(|| format!("Unable to parse map file at {}", path.display()))?

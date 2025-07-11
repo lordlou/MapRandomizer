@@ -282,15 +282,21 @@ pub struct RandomizationState {
 }
 
 // Info about an item used during ROM patching, to show info in the credits
+#[pyclass]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct EssentialItemSpoilerInfo {
+    #[pyo3(get, set)]
     pub item: Item,
+    #[pyo3(get, set)]
     pub step: Option<usize>,
+    #[pyo3(get, set)]
     pub area: Option<String>,
 }
 // Spoiler data that is used during ROM patching (e.g. to show info in the credits)
+#[pyclass]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct EssentialSpoilerData {
+    #[pyo3(get, set)]
     pub item_spoiler_info: Vec<EssentialItemSpoilerInfo>,
 }
 
@@ -306,6 +312,7 @@ pub struct Randomization {
     pub item_placement: Vec<Item>,
     pub start_location: StartLocation,
     pub escape_time_seconds: f32,
+    #[pyo3(get, set)]
     pub essential_spoiler_data: EssentialSpoilerData,
     pub seed: usize,
     pub display_seed: usize,
@@ -4158,7 +4165,7 @@ impl<'r> Randomizer<'r> {
 
         // Include unplaced items at the end:
         for &name in Item::VARIANTS {
-            if name == "Nothing" {
+            if name == "Nothing" || name == "ArchipelagoItem" || name == "ArchipelagoProgItem" {
                 continue;
             }
             if settings.other_settings.wall_jump != WallJump::Collectible && name == "WallJump" {

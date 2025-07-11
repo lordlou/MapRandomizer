@@ -148,11 +148,11 @@ fn get_randomization(
         ),
         settings_json,
     )?;
-
+    let client = Client::new();
     for _ in 0..max_map_attempts {
         let map_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
         let door_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
-        let mut map = map_repo.get_map(attempt_num, map_seed, game_data)?;
+        let mut map = map_repo.get_map(attempt_num, map_seed, game_data, &client)?;
         match settings.other_settings.area_assignment {
             AreaAssignment::Ordered => {
                 order_map_areas(&mut map, map_seed, game_data);

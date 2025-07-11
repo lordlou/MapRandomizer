@@ -19,6 +19,7 @@ use settings::{AreaAssignment, RandomizerSettings, StartLocationMode};
 use std::{path::Path, time::{Instant}};
 use upgrade::try_upgrade_settings;
 use customize_seed::{customize_seed_ap, CustomizeRequest};
+use reqwest::blocking::Client;
 
 use hashbrown::HashMap;
 use crate::{
@@ -26,7 +27,7 @@ use crate::{
     map_repository::MapRepository,
     preset::PresetData,
 };
-use maprando_game::{GameData, LinksDataGroup};
+use maprando_game::{GameData, Item, LinksDataGroup};
 
 pub const VERSION: usize = include!("VERSION");
 
@@ -277,6 +278,7 @@ fn randomize_ap(
     let time_start_attempts = Instant::now();
     let mut attempt_num = 0;
     let mut output_opt: Option<AttemptOutput> = None;
+    let client = Client::new();
     'attempts: for _ in 0..max_map_attempts {
         let map_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
         let door_randomization_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
@@ -286,7 +288,7 @@ fn randomize_ap(
             panic!("Unrecognized map layout option: {}", map_layout);
         }
         let mut map = app_data.map_repositories[&map_layout]
-            .get_map(attempt_num, map_seed, &app_data.game_data)
+            .get_map(attempt_num, map_seed, &app_data.game_data, &client)
             .unwrap();
         match settings.other_settings.area_assignment {
             AreaAssignment::Ordered => {
@@ -462,6 +464,7 @@ fn randomize_ap(
 #[pyo3(name = "pysmmaprando")]
 fn pysmmaprando(m: &Bound<'_, PyModule>) -> PyResult<()> {
     //m.add_class::<Map>()?;
+    m.add_class::<Item>()?;
     m.add_class::<GameData>()?;
     //m.add_class::<DifficultyConfig>()?;
     //m.add_class::<APRandomizer>()?;

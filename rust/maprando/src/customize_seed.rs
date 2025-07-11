@@ -10,7 +10,7 @@ use crate::{
     randomize::Randomization,
     settings::RandomizerSettings,
 };
-use maprando_game::Map;
+use maprando_game::{Item, Map};
 use pyo3::prelude::*;
 
 #[derive(Clone)]
@@ -163,9 +163,10 @@ pub fn customize_seed_ap(
     req: CustomizeRequest,
     app_data: AppData,
     settings: Option<RandomizerSettings>,
-    randomization: Option<Randomization>,
+    mut randomization: Option<Randomization>,
     map: Map,
-    ultra_low_qol: bool
+    ultra_low_qol: bool,
+    new_item_placement: Vec<Item>
 ) -> Vec<u8> {
     info!("customize_seed_ap");
     //let seed_name = &info.0;
@@ -299,6 +300,7 @@ pub fn customize_seed_ap(
 
     if settings.is_some() && randomization.is_some() {
         info!("Patching ROM");
+        randomization.as_mut().unwrap().item_placement = new_item_placement;
         match make_rom(
             &rom,
             settings.as_ref().unwrap(),
