@@ -245,16 +245,16 @@ pub fn customize_seed_ap(
         )),
         reserve_hud_style: req.reserve_hud_style,
         vanilla_screw_attack_animation: req.vanilla_screw_attack_animation,
-        palette_theme: if req.room_palettes == "area-themed" {
+        palette_theme: if req.room_palettes == "area_themed" {
             PaletteTheme::AreaThemed
         } else {
             PaletteTheme::Vanilla
         },
-        tile_theme: if req.tile_theme == "none" {
+        tile_theme: if req.tile_theme == "None" {
             TileTheme::Vanilla
-        } else if req.tile_theme == "scrambled" {
+        } else if req.tile_theme == "Scrambled" {
             TileTheme::Scrambled
-        } else if req.tile_theme == "area_themed" {
+        } else if req.tile_theme == "AreaThemed" {
             TileTheme::AreaThemed
         } else {
             TileTheme::Constant(req.tile_theme.to_string())

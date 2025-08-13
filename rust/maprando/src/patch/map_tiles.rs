@@ -2309,6 +2309,9 @@ impl<'a> MapPatcher<'a> {
 
     fn indicate_items(&mut self) -> Result<()> {
         for (i, &item) in self.randomization.item_placement.iter().enumerate() {
+            let room_name = self.game_data.room_json_map[&self.game_data.item_locations[i].0]["name"].to_string();
+            let location_name = self.game_data.node_json_map[&self.game_data.item_locations[i]]["name"].to_string();
+            println!("indicate_items {i} {room_name} {location_name} {:?}", item);
             let (room_id, node_id) = self.game_data.item_locations[i];
             if room_id == 19
                 && self

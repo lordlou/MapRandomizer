@@ -309,6 +309,7 @@ pub struct Randomization {
     pub map: Map,
     pub toilet_intersections: Vec<RoomGeometryRoomIdx>,
     pub locked_doors: Vec<LockedDoor>,
+    #[pyo3(get)]
     pub item_placement: Vec<Item>,
     pub start_location: StartLocation,
     pub escape_time_seconds: f32,
@@ -5111,8 +5112,11 @@ pub struct SpoilerStartState {
 #[pyclass]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerItemDetails {
+    #[pyo3(get)]
     pub item: String,
+    #[pyo3(get)]
     pub location: SpoilerLocation,
+    #[pyo3(get)]
     pub reachable_step: usize,
     pub difficulty: Option<String>,
     pub obtain_route: Vec<SpoilerRouteEntry>,
@@ -5141,10 +5145,12 @@ pub struct SpoilerDoorDetails {
 #[pyclass]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerDetails {
+    #[pyo3(get)]
     pub step: usize,
     pub start_state: SpoilerStartState,
     pub flags: Vec<SpoilerFlagDetails>,
     pub doors: Vec<SpoilerDoorDetails>,
+    #[pyo3(get)]
     pub items: Vec<SpoilerItemDetails>,
 }
 
@@ -5214,6 +5220,7 @@ pub struct SpoilerLog {
     pub hub_location_name: String,
     pub hub_obtain_route: Vec<SpoilerRouteEntry>,
     pub hub_return_route: Vec<SpoilerRouteEntry>,
+    #[pyo3(get)]
     pub details: Vec<SpoilerDetails>,
     #[pyo3(get)]
     pub all_items: Vec<SpoilerItemLoc>,

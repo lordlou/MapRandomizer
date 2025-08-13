@@ -191,18 +191,27 @@ pub struct AttemptOutput {
     }
 
 #[pyfunction]
-fn randomize_ap(
+fn validate_settings_ap(
     rando_settings: String,
     app_data: AppData,
-) -> Option<AttemptOutput> {
-    let mut settings = match try_upgrade_settings(rando_settings, &app_data, true) {
-        Ok(s) => s.1,
+) -> Option<RandomizerSettings> {
+    match try_upgrade_settings(rando_settings, &app_data, true) {
+        Ok(s) => Some(s.1),
         Err(e) => {
             error!("Failed to upgrade settings: {}", e);
             return None
         }
-    };
+    }
+}
 
+#[pyfunction]
+fn randomize_ap(
+    mut settings: RandomizerSettings,
+    seed: usize,
+    map_seed_ap: Option<usize>,
+    door_seed_ap: Option<usize>,
+    app_data: AppData,
+) -> Option<AttemptOutput> {
     let mut validated_preset = false;
     for s in &app_data.preset_data.full_presets {
         if s == &settings {
@@ -222,7 +231,11 @@ fn randomize_ap(
     let random_seed = if settings.other_settings.random_seed.is_none() || race_mode {
         get_random_seed()
     } else {
-        settings.other_settings.random_seed.unwrap()
+        if settings.other_settings.random_seed.is_none() {
+            seed
+        } else {
+            settings.other_settings.random_seed.unwrap()
+        }
     };
     let display_seed = if race_mode {
         get_random_seed()
@@ -280,8 +293,8 @@ fn randomize_ap(
     let mut output_opt: Option<AttemptOutput> = None;
     let client = Client::new();
     'attempts: for _ in 0..max_map_attempts {
-        let map_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
-        let door_randomization_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
+        let map_seed = if map_seed_ap.is_some() {map_seed_ap.unwrap()} else {(rng.next_u64() & 0xFFFFFFFF) as usize};
+        let door_randomization_seed = if door_seed_ap.is_some() {door_seed_ap.unwrap()} else {(rng.next_u64() & 0xFFFFFFFF) as usize};
 
         if !app_data.map_repositories.contains_key(&map_layout) {
             // TODO: it doesn't make sense to panic on things like this.
@@ -463,20 +476,15 @@ fn randomize_ap(
 #[pymodule]
 #[pyo3(name = "pysmmaprando")]
 fn pysmmaprando(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    //m.add_class::<Map>()?;
     m.add_class::<Item>()?;
     m.add_class::<GameData>()?;
-    //m.add_class::<DifficultyConfig>()?;
-    //m.add_class::<APRandomizer>()?;
     m.add_class::<AttemptOutput>()?;
-    //m.add_class::<SpoilerLog>()?;
-    //m.add_class::<SpoilerSummary>()?;
-    //m.add_class::<SpoilerItemSummary>()?;
     m.add_class::<AppData>()?;
     m.add_class::<CustomizeRequest>()?;
     m.add_class::<RandomizerSettings>()?;
 
     m.add_function(wrap_pyfunction!(build_app_data, m)?)?;
+    m.add_function(wrap_pyfunction!(validate_settings_ap, m)?)?;
     m.add_function(wrap_pyfunction!(randomize_ap, m)?)?;
     m.add_wrapped(wrap_pyfunction!(customize_seed_ap))?;
     Ok(())

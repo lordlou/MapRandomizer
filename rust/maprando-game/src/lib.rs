@@ -186,6 +186,10 @@ impl Item {
     pub fn new(value: usize) -> Self {
         Item::try_from(value).unwrap()
     }
+
+    pub fn to_int(&self) -> usize {
+        self.to_owned() as usize
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -1613,7 +1617,7 @@ impl GameData {
     pub fn read_to_bytes_with_cache(&self, path: &str) -> Result<Vec<u8>> {
         let patches_map = self.cached_mosaic_patches_map.as_ref().unwrap();
         let entry = &patches_map[path];
-        let offset: usize = entry["offset"].as_usize().unwrap();
+        let offset: usize = entry["offset"].as_usize().expect(&format!("mosaic patches not found with name {:?}", path));
         let size: usize = entry["size"].as_usize().unwrap();
         Ok(self.cached_mosaic_patches[offset..(offset+size)].to_vec())
     }
