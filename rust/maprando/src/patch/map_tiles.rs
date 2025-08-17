@@ -15,6 +15,7 @@ use maprando_game::{
 
 use super::{snes2pc, xy_to_explored_bit_ptr, xy_to_map_offset, Rom};
 use anyhow::{bail, Context, Result};
+use log::info;
 
 pub type TilemapOffset = u16;
 pub type TilemapWord = u16;
@@ -2311,7 +2312,7 @@ impl<'a> MapPatcher<'a> {
         for (i, &item) in self.randomization.item_placement.iter().enumerate() {
             let room_name = self.game_data.room_json_map[&self.game_data.item_locations[i].0]["name"].to_string();
             let location_name = self.game_data.node_json_map[&self.game_data.item_locations[i]]["name"].to_string();
-            println!("indicate_items {i} {room_name} {location_name} {:?}", item);
+            info!("indicate_items {i} {room_name} {location_name} {:?}", item);
             let (room_id, node_id) = self.game_data.item_locations[i];
             if room_id == 19
                 && self

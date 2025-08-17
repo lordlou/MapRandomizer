@@ -23,9 +23,9 @@ use reqwest::blocking::Client;
 
 use hashbrown::HashMap;
 use crate::{
-    customize::{mosaic::MosaicTheme},
+    customize::mosaic::MosaicTheme,
     map_repository::MapRepository,
-    preset::PresetData,
+    preset::PresetData, randomize::{EssentialItemSpoilerInfo, EssentialSpoilerData},
 };
 use maprando_game::{GameData, Item, LinksDataGroup};
 
@@ -228,7 +228,7 @@ fn randomize_ap(
     //let qol_settings = &settings.quality_of_life_settings;
     //let other_settings = &settings.other_settings;
     let race_mode = settings.other_settings.race_mode;
-    let random_seed = if settings.other_settings.random_seed.is_none() || race_mode {
+    let random_seed = if race_mode {
         get_random_seed()
     } else {
         if settings.other_settings.random_seed.is_none() {
@@ -486,6 +486,6 @@ fn pysmmaprando(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(build_app_data, m)?)?;
     m.add_function(wrap_pyfunction!(validate_settings_ap, m)?)?;
     m.add_function(wrap_pyfunction!(randomize_ap, m)?)?;
-    m.add_wrapped(wrap_pyfunction!(customize_seed_ap))?;
+    m.add_function(wrap_pyfunction!(customize_seed_ap, m)?)?;
     Ok(())
 }

@@ -1707,7 +1707,7 @@ impl<'a> Patcher<'a> {
             .enumerate()
         {
             let raw_name = Item::VARIANTS[item_info.item as usize].to_string();
-            println!("credits={} {}", item_info.item as usize, raw_name);
+            info!("credits={} {}", item_info.item as usize, raw_name);
             let item_name = item_display_name_map[&raw_name].clone();
             let item_idx = item_name_index[&raw_name];
             match item_info.step {

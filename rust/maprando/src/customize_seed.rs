@@ -1,4 +1,4 @@
-use crate::AppData;
+use crate::{randomize::EssentialItemSpoilerInfo, AppData};
 use log::info;
 use crate::{
     customize::{
@@ -166,7 +166,8 @@ pub fn customize_seed_ap(
     mut randomization: Option<Randomization>,
     map: Map,
     ultra_low_qol: bool,
-    new_item_placement: Vec<Item>
+    new_item_placement: Vec<Item>,
+    new_item_spoiler_infos: Option<Vec<EssentialItemSpoilerInfo>>
 ) -> Vec<u8> {
     info!("customize_seed_ap");
     //let seed_name = &info.0;
@@ -301,6 +302,9 @@ pub fn customize_seed_ap(
     if settings.is_some() && randomization.is_some() {
         info!("Patching ROM");
         randomization.as_mut().unwrap().item_placement = new_item_placement;
+        if new_item_spoiler_infos.is_some() {
+            randomization.as_mut().unwrap().essential_spoiler_data.item_spoiler_info = new_item_spoiler_infos.unwrap();
+        }
         match make_rom(
             &rom,
             settings.as_ref().unwrap(),
