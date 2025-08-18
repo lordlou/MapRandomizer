@@ -21,7 +21,7 @@ impl MapRepository {
         }
         else {
             let contents = game_data.read_to_string(Path::new(base_path
-                .join(if name == "Standard" {"mapRepositoryTame.json"} else {"mapRepositoryWild.json"}).as_path()))?;
+                .join(if name == "Standard" {"mapRepositoryStandard.json"} else {"mapRepositoryWild.json"}).as_path()))?;
             let map_array: Vec<String> = serde_json::from_str(&contents).unwrap();
             for path in map_array {
                 filenames.push(path);
@@ -41,10 +41,10 @@ impl MapRepository {
                         } 
                         else {
                             Path::new(if name == "Standard" {
-                                            "https://storage.googleapis.com/super-metroid-map-rando/maps/v110c-tame/"
+                                            "https://map-rando-artifacts.s3.us-west-004.backblazeb2.com/maps/v117c-standard/"
                                         } 
                                         else {
-                                            "https://storage.googleapis.com/super-metroid-map-rando/maps/v110c-wild/"
+                                            " https://map-rando-artifacts.s3.us-west-004.backblazeb2.com/maps/v117c-wild/"
                                         }).to_owned()
                         },
             filenames,
