@@ -61,7 +61,7 @@ pub struct AppData {
 
 #[pyfunction]
 fn build_app_data(apworld_path: Option<String>) -> AppData {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error"))
         .format_timestamp_millis()
         .init();
 
