@@ -78,10 +78,6 @@ jobs:
   #     - uses: actions/checkout@v3
   #        with:
   #          submodules: 'true'
-  #      - name: Install system dependencies
-  #        run: |
-  #          sudo apt-get update
-  #          sudo apt-get install -y perl libperl5.38
   #      - name: Set environment for vendored OpenSSL
   #        run: echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
   #     - name: Build wheels
