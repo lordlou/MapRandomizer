@@ -24,7 +24,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist -m rust/Cargo.toml
+          args: --release --out dist -m rust/maprando/Cargo.toml
       - name: Set env
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
       - name: Create Release
@@ -58,7 +58,7 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist -m rust/Cargo.toml
+          args: --release --out dist -m rust/maprando/Cargo.toml
       - name: Set env
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
       - name: Create Release
@@ -89,7 +89,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: auto
-          args: --release --out dist -m rust/Cargo.toml -i python${{ matrix.python }}
+          args: --release --out dist -m rust/maprando/Cargo.toml -i python${{ matrix.python }}
       - name: Build aarch64 wheels
         uses: PyO3/maturin-action@v1
         # One of our deps, "ring", needs a newer sysroot than what "manylinux: auto" provides.
@@ -97,7 +97,7 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: 2_28
-          args: --release --out dist -m rust/Cargo.toml -i python${{ matrix.python }}
+          args: --release --out dist -m rust/maprando/Cargo.toml -i python${{ matrix.python }}
       - name: Set env
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
       - name: Create Release
