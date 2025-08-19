@@ -10,6 +10,8 @@ jobs:
         target: ["x86_64", "universal2"]
     steps:
       - uses: actions/checkout@v3
+        with:
+          submodules: 'true'
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python }}
@@ -41,6 +43,8 @@ jobs:
   #       target: [x64]
   #   steps:
   #     - uses: actions/checkout@v3
+  #      with:
+  #        submodules: 'true'
   #     - uses: actions/setup-python@v4
   #       with:
   #         python-version: ${{ matrix.python }}
@@ -72,6 +76,8 @@ jobs:
   #       target: ["x86_64", "aarch64"]
   #   steps:
   #     - uses: actions/checkout@v3
+  #        with:
+  #          submodules: 'true'
   #     - name: Build wheels
   #       uses: PyO3/maturin-action@v1
   #       with:
