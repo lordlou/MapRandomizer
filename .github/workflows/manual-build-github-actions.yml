@@ -81,7 +81,7 @@ jobs:
   #      - name: Install system dependencies
   #        run: |
   #          sudo apt-get update
-  #          sudo apt-get install -y perl perl-modules-5.34
+  #          sudo apt-get install -y perl libperl5.38
   #      - name: Set environment for vendored OpenSSL
   #        run: echo "OPENSSL_STATIC=1" >> $GITHUB_ENV
   #     - name: Build wheels
