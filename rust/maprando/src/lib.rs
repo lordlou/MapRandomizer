@@ -120,7 +120,7 @@ fn build_app_data(apworld_path: Option<String>) -> AppData {
 
     info!("Loading logic preset data");
     let etank_colors: Vec<Vec<String>> =
-        serde_json::from_str(&std::fs::read_to_string(&etank_colors_path).unwrap()).unwrap();
+        serde_json::from_str(&game_data.read_to_string(&etank_colors_path).unwrap()).unwrap();
     //let version_info = VersionInfo {
     //    version: VERSION,
     //    dev: args.dev,
