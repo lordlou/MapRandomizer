@@ -9,6 +9,10 @@ LoRom
 !seed_value_0 = $dfff00
 !seed_value_1 = $dfff02
 
+; see AP's Basepatch multiworld.asm
+!ReceiveQueueCompletedCount_InRamThatGetsSavedToSaveSlot = $7ed8ae
+!SRAM_MW_ITEMS_RECV_WCOUNT = $702606
+
 incsrc "constants.asm"
 
 org $819A47		;Fix File Copy for the new SRAM files
@@ -91,6 +95,8 @@ LoadItems: LDA $D7C0,Y : STA $09A2,Y : DEY : DEY : BPL LoadItems		;Loads current
 	LDA $D918 : STA $079F		;Current Area
     LDA $7EFE00 : STA $1F5B     ;Current Map-area
 	LDA $7EFE04 : STA $1F5D     ;Item set before escape
+	lda.l !ReceiveQueueCompletedCount_InRamThatGetsSavedToSaveSlot
+    sta.l !SRAM_MW_ITEMS_RECV_WCOUNT
     LDA #$0000
     STA !last_samus_map_y  ; reset Samus map Y coordinate, to trigger minimap to update
 	PLY : PLX : PLB : PLP : CLC : RTL

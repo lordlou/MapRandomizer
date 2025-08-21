@@ -492,7 +492,7 @@ impl<'a> Patcher<'a> {
         if self.settings.quality_of_life_settings.momentum_conservation {
             patches.push("momentum_conservation");
         }
-
+        /*
         match self.settings.quality_of_life_settings.fanfares {
             Fanfares::Vanilla => {}
             Fanfares::Trimmed => {
@@ -503,6 +503,8 @@ impl<'a> Patcher<'a> {
                 patches.push("itemsounds");
             }
         }
+        */
+        patches.push("itemsounds");
 
         if self.settings.quality_of_life_settings.buffed_drops {
             patches.push("buffed_drops");
