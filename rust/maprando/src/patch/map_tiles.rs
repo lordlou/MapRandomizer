@@ -1248,7 +1248,7 @@ pub fn get_item_interior(item: Item, settings: &RandomizerSettings) -> MapTileIn
         ItemMarkers::ThreeTiered => {
             if item.is_unique() {
                 MapTileInterior::MajorItem
-            } else if item != Item::Missile && item != Item::Nothing {
+            } else if item != Item::Missile && item != Item::Nothing && item != Item::ArchipelagoItem {
                 MapTileInterior::MediumItem
             } else {
                 MapTileInterior::Item
@@ -1262,7 +1262,7 @@ pub fn get_item_interior(item: Item, settings: &RandomizerSettings) -> MapTileIn
             } else if item == Item::Super || item == Item::PowerBomb {
                 MapTileInterior::AmmoItem
             } else {
-                assert!(item == Item::Missile || item == Item::Nothing);
+                assert!(item == Item::Missile || item == Item::Nothing || item == Item::ArchipelagoItem);
                 MapTileInterior::Item
             }
         }
