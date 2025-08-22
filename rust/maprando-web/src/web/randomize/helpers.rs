@@ -1,18 +1,19 @@
 use super::SeedData;
 use crate::web::{AppData, VersionInfo};
 use actix_web::HttpRequest;
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use askama::Template;
 use hashbrown::{HashMap, HashSet};
 use maprando::{
     helpers::get_item_priorities,
     preset::PresetData,
-    randomize::{DifficultyConfig, ItemPriorityGroup, Randomization, SpoilerLog},
+    randomize::{DifficultyConfig, ItemPriorityGroup, Randomization},
     seed_repository::{Seed, SeedFile},
     settings::{
-        get_objective_groups, AreaAssignment, DoorLocksSize, ETankRefill, FillerItemPriority,
-        ItemDotChange, RandomizerSettings, WallJump,
+        AreaAssignment, DoorLocksSize, ETankRefill, FillerItemPriority, RandomizerSettings,
+        WallJump, get_objective_groups,
     },
+    spoiler_log::SpoilerLog,
     spoiler_map,
 };
 use maprando_game::{GameData, NotableId, RoomId, TechId};
@@ -45,7 +46,6 @@ pub struct SeedHeaderTemplate<'a> {
     escape_enemies_cleared: bool,
     escape_refill: bool,
     escape_movement_items: bool,
-    mark_map_stations: bool,
     item_markers: String,
     all_items_spawn: bool,
     acid_chozo: bool,
@@ -68,7 +68,7 @@ pub struct SeedHeaderTemplate<'a> {
     enabled_notables: HashSet<(RoomId, NotableId)>,
 }
 
-impl<'a> SeedHeaderTemplate<'a> {
+impl SeedHeaderTemplate<'_> {
     fn percent_enabled(&self, preset_name: &str) -> isize {
         let tech = &self.preset_data.tech_by_difficulty[preset_name];
         let tech_enabled_count = tech
@@ -138,26 +138,11 @@ impl<'a> SeedHeaderTemplate<'a> {
             }
             AreaAssignment::Standard => {}
         }
-        if self.settings.other_settings.item_dot_change == ItemDotChange::Disappear {
-            game_variations.push("Item dots disappear after collection");
-        }
-        if !self.settings.other_settings.transition_letters {
-            game_variations.push("Area transitions marked as arrows");
-        }
         if self.settings.other_settings.door_locks_size == DoorLocksSize::Small {
             game_variations.push("Door locks drawn smaller on map");
         }
-        match self.settings.other_settings.wall_jump {
-            WallJump::Collectible => {
-                game_variations.push("Collectible wall jump");
-            }
-            _ => {}
-        }
-        if self.settings.other_settings.maps_revealed == maprando::settings::MapsRevealed::Partial {
-            game_variations.push("Maps partially revealed from start");
-        }
-        if self.settings.other_settings.maps_revealed == maprando::settings::MapsRevealed::Full {
-            game_variations.push("Maps revealed from start");
+        if self.settings.other_settings.wall_jump == WallJump::Collectible {
+            game_variations.push("Collectible wall jump");
         }
         if self.settings.other_settings.map_station_reveal
             == maprando::settings::MapStationReveal::Partial
@@ -186,7 +171,7 @@ pub struct SeedFooterTemplate {
 }
 
 pub fn get_random_seed() -> usize {
-    (rand::rngs::StdRng::from_entropy().next_u64() & 0xFFFFFFFF) as usize
+    (rand::rngs::StdRng::from_entropy().next_u64() & 0xFFFFFFFF) as usize + 1
 }
 
 pub async fn save_seed(
@@ -261,27 +246,27 @@ pub async fn save_seed(
     ));
 
     // Write the spoiler log
-    let spoiler_bytes = serde_json::to_vec_pretty(&spoiler_log).unwrap();
+    let spoiler_bytes = serde_json::to_vec(&spoiler_log).unwrap();
     files.push(SeedFile::new(
-        &format!("{}/spoiler.json", prefix),
+        &format!("{prefix}/spoiler.json"),
         spoiler_bytes,
     ));
 
     // Write the spoiler maps
     let spoiler_maps =
-        spoiler_map::get_spoiler_map(randomization, &app_data.game_data, settings).unwrap();
+        spoiler_map::get_spoiler_map(randomization, &app_data.game_data, settings, false).unwrap();
     files.push(SeedFile::new(
-        &format!("{}/map-explored.png", prefix),
+        &format!("{prefix}/map-explored.png"),
         spoiler_maps.explored,
     ));
     files.push(SeedFile::new(
-        &format!("{}/map-outline.png", prefix),
+        &format!("{prefix}/map-outline.png"),
         spoiler_maps.outline,
     ));
 
     // Write the spoiler visualizer
     for (filename, data) in &app_data.visualizer_files {
-        let path = format!("{}/visualizer/{}", prefix, filename);
+        let path = format!("{prefix}/visualizer/{filename}");
         files.push(SeedFile::new(&path, data.clone()));
     }
 
@@ -346,8 +331,7 @@ pub fn render_seed(
         get_enabled_notables(&seed_data.difficulty.notables, &app_data.game_data);
     let objective_names: HashMap<String, String> = get_objective_groups()
         .iter()
-        .map(|x| x.objectives.clone())
-        .flatten()
+        .flat_map(|x| x.objectives.clone())
         .collect();
     let seed_header_template = SeedHeaderTemplate {
         seed_name: seed_name.to_string(),
@@ -419,7 +403,6 @@ pub fn render_seed(
         escape_enemies_cleared: seed_data.escape_enemies_cleared,
         escape_refill: seed_data.escape_refill,
         escape_movement_items: seed_data.escape_movement_items,
-        mark_map_stations: seed_data.mark_map_stations,
         item_markers: seed_data.item_markers.clone(),
         all_items_spawn: seed_data.all_items_spawn,
         acid_chozo: seed_data.acid_chozo,

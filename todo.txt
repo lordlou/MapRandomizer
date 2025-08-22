@@ -1,94 +1,61 @@
-Planned work to prioritize (v119?):
-- Allow more options to be overridden on the customization step:
-  - examples: Item dots after collection, Area transition markers on map, Door locks size on map
-  - these are all cosmetic changes to how the map is drawn, without affecting the information revealed.
-  - options with more substantial effects could maybe be included, but we'd need to define rules for "Race mode" of which changes are allowed
-- Add QoL setting for limiting starting map reveal to visited area
-  - Currently when using the "Maps revealed from start" option (Partial or Full), all areas are revealed from the start.
-  - This can be useful for "open spoiler" races or Escape start seeds (also very useful for development/debugging).
-  - More generally, it can be overwhelming to the player to digest all that information immediately.
-  - It could be useful to have another option that only reveals the map for areas that the player has visited.
-- Finer-grained map reveal options for specific types of tiles (maybe?)
-  - We can define categories of special tiles: map stations, refills, saves, objectives, items (each of the 4 tiers)
-  - For each category, there could be 3 options: revealed from the start, when visiting the area, or not at all.
-    - default setting would be map stations revealed when visiting the area, other tiles not at all.
-  - Since it's a lot of settings, they need to be tucked away into a modal or collapsible, similar to what is done with "Item pool" or "Starting items", and then we can have mini-presets for popular choices.
-  - Items are a tricky case to handle. Since the item dot does not occupy the whole tile, naively revealing it would also show parts of walls and other room features, which will probably look unacceptably bad.
-    - So it would probably have to be supported by a dynamic partial reveal mechanism, so that initially it can show only the item dot and not other features in that tile.
-    - Or the item case can just be postponed for later.
+v120?:
 - Handle the new wallJumpAvoid property on strats and notables:
   - This identifies strats/notables that are only useful when playing with the "Collectible" wall jump option.
   - So by default we could hide these (on the Generate page as well as in logic pages), to reduce clutter.
   - Controls would need to be available, with 3 settings: to hide the wallJumpAvoid strats, to show them exclusively, or to show everything.
 - Model carrying around a flash suit (in LocalState somewhere, and as another cost metric)
-- Refine how initial ammo capacity works, and relax starting hub constraints:
-  - Currently starting hubs are restricted to rooms where you can farm all types of resources (energy, Missiles, Supers, PBs).
-  - But it may be slow, and this can sometimes result in an unreasonable expectations of managing/farming PBs in the early game.
-  - Instead, what we should do is 1) relax the constraint on starting hubs to require them to only be an energy farm, and 2) not consider starting ammo (Missiles, Supers, PBs) to be available except to the extent that a regular logical farm makes them available.
-- Make `resetRoom` account for the ~10 heat damage required to reset with a heated room (important for strats with `farmCycleDrops`).
-- Refine the fireflea room behavior across tile themes & area palettes, to make sure there is enough visiblity:
-  - The platforms in Red Brinstar Fireflea Room are often a problem currently.
+- save with flash suit QoL
 - Logic work (sm-json-data):
   - Finish adding cross-room temp blue strats and remote runway setups/applications in Norfair
     - Add missing remote runway strats in pink brinstar hopper room left side
   - Populate wallJumpAvoid throughout the logic (strats and notables)
   - Finish checking flash suit logic
-  - Maybe make some progress migrating farm strats (to use `farmCycleDrops`)
-
-v118:
-- DONE: implement comeInBlueSpaceJumping
-- DONE: fix BG color in Warehouse Entrance
-- fix issue with bombs opening wave beam doors.
-- fix wall jump boots palette
-- fix issue with vanilla item fanfare + fast save
-- finish refining stutter water shinecharges.
-- DONE: add side platform strats.
-- mosaic:
+- Allow more options to be overridden on the customization step:
+  - example: Door locks size on map
+  - these are all cosmetic changes to how the map is drawn, without affecting the information revealed.
+  - options with more substantial effects could maybe be included, but we'd need to define rules for "Race mode" of which changes are allowed
+- handle all cost metrics in "or"s
+- Mosaic:
   - restore morph tunnel continuation behind morph tunnel transition
-- DONE: apply Fake Lava patch (resolve conflict with complementary_suits?)
+  - verify that compressed output decompresses to original
 - add more strats from Incomplete videos
-- chaining temp blue after bouncing through should be extreme:
-  - maprando.com/logic/room/59/13/4/134
-- add new samus sprites
-- DONE: rework map tiles (global pause tileset, and room-local mini-map tilesets)
-- DONE: investigate unnecessary scroll bars showing up in Chrome in logic pages.
-- DONE: fix sand hole start locations.
-- DONE: check MB logic: 2+4 shouldn't be in logic without r-mode?
-- DONE: fix disabled tank color
-- DONE: fix color on one samus tile on equipment screen
-- DONE: fix beam door black color
-- DONE: check why speed booster chozo orb visible during scrolling
-- DONE: apply correct setup ASM if Toilet intersects room with glass tube tiles
-- DONE: add X-mode leniency setting and CF clip leniency
-- DONE: remove vanilla music on vanilla map
-- DONE: load barrier-clearing PLMs in Mother Brain setup ASM instead of door ASM
-- DONE: prevent MB1 death unless objectives cleared
-- DONE: override "h_fullEnemyDamageReduction"
-- DONE: handle PowerBombPeriphery correctly in enemyKill logic
-- DONE: handle PowerBombBlast multiplier correctly in enemyKill logic (e.g. for Metroids)
-- DONE: add option to select specific start location
-  - DONE: handle in settings upgrade
-  - DONE: show in seed header
-  - DONE: organize by area
-  - DONE: update help/info
-- DONE: snes mini compatibility with fast decompression
-- DONE: investigate game-start crash reported by HisBeardNis
-- DONE: decide whether or not to leave item PLMs (other than chozo orbs) as early-loading
-- DONE: look into pause fade-in speed (currently asymmetric with fade-out)
-- DONE: switch around palettes, to make acid FX fade, and improve item colors
-- DONE: partial reveal door next to two-door save/refill rooms
-- DONE: handle comeInWithSidePlatform environment
-- DONE: add main hall elevator hazard marker
-- DONE: add/associate video for canTrickyGMode.
-- DONE: fix ultra-low QoL: when selecting QoL preset other than Off, disable ultra-low QoL.
-- DONE: handle "detailNote" in tech and strats.
-- DONE: handle "minExtraRunSpeed" in "leaveWithRunway"
-- DONE: include "objectives" details on seed page.
-- DONE: fix scrolling sky corruption, which got worse with the faster decompression
-- DONE: move crateria tube tiles to CRE
-- DONE: blue brinstar theme
-- DONE: fix spoiler map bug:
-  - non-existent (?) HiJump boots shown: https://maprando.com/seed/7wT9dbFrm/data/visualizer/index.html
+
+
+v119:
+- DONE: update start location camera_offset_x to avoid BG graphical bug.
+- maybe have second spoiler JSON file without the debugging data?
+- DONE: fix issue with double farming energy when energy gets full
+- DONE?: investigate bug with toilet intersection tileset in weekly seed: https://dev.maprando.com/seed/f2HDVGBxJ
+- maybe blank out missing areas in credits area times
+- DONE: Support maps with incomplete room sets.
+- DONE: toilet showing up in aqueduct BG when not placed?
+- DONE: investigate item pool issue reported by somerando: https://dev.maprando.com/seed/D6Xd5mLyN/
+- investigate fog missing in climb, west maridia theme? (zebes asleep)
+- DONE: investigate bug report about MB Skip and "Hyper Beam gives all movement items": https://discord.com/channels/1053421401354285129/1053434532973510748/1396769689119752224
+- DONE: fix Volcano Room heated runway logic
+- DONE: implement "heated" field on leaveWithRunway
+- DONE: implement lavaFramesWithEnergyDrops
+- DONE: resetRoom formatting
+- DONE: fix logic issue with MB fight not requiring objectives?
+- fix fog in Pit Room (Outer Maridia theme?) 
+  - osse stream Jul 12
+- DONE: back-side MB should be notable?
+- DONE: move canStaggeredWalljump to VH
+- DONE: use simpleCycleFrames in bug farm strats.
+- DONE: adjust requirements on canPreciseWalljump strats
+- DONE: add canLongXRayClimb tech (Expert), move canXRayClimb down to Very Hard.
+- DONE: fix crash when processing spoiler route, involving new farm strats.
+- DONE: fix spoiler map room names to be consistent with sm-json-data (room geometry, escape timings)
+- DONE: show farmEnemyDrops in logic pages
+- DONE: handle enemy "amountOfDrops"
+- DONE: fix issue with min/max objectives ui
+- DONE: when two-sided saves are partially revealed, fix issue with neighboring lines showing white
+- DONE: Add QoL setting for limiting starting map reveal to visited area
+- DONE: Finer-grained map reveal options for specific types of tiles (maybe?)
+- DONE: Refine how initial ammo capacity works, and relax starting hub constraints
+- DONE: Make `resetRoom` account for the ~10 heat damage required to reset with a heated room (important for strats with `farmCycleDrops`).
+- Finish migrating farm strats (to use `farmCycleDrops`)
+
 
 Other future work: --------------------------------------------------------------------
 
@@ -167,9 +134,6 @@ Major new features (not clear yet which of these will ever happen):
 - Overhaul the G-mode logic schema, to be able to model using locked doors to overload PLMs, and opening PB doors with artificial morph.
 - Make Gravity-only Samus palette different from Gravity+Varia?
     - Include support for custom sprites to define the new palette.
-- Small-sized map option, where only a subset of the rooms are included?
-  - Could maybe be done without a new map gen model, by chopping off parts of existing maps as an offline processing step.
-  - This needs some thought about how to handle objectives: i.e. if an objective doesn't exist, then it needs to not be required.
 - Support for horizontally mirrored rooms (requires heavy logic work, along with a new map gen model)
 - Support for randomizing room environments: heat and water (massive logic work)
 - make map rando for other hacks (e.g. project base, subversion?)
@@ -192,7 +156,6 @@ Other:
 - add sm-json-data tests:
   - check that if some implicit strats are overridden, then all applicable ones are.
 - if strat includes doorUnlockedAtNode at destination node, then skip redundant unlock requirement.
-- fix clippy lints and set up as part of CI
 - simplify SeedData. It's not clear if we really even need this anymore.
 - Make f_allItemsSpawn (etc.) not be a flag? Could be "i_allItemsSpawn" instead and handled similar to other logic-impacting settings.
 - embed some logic data in video site? (e.g. show strat note when uploading/editing)

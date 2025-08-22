@@ -1,10 +1,11 @@
 use hashbrown::{HashMap, HashSet};
 
 use crate::{
+    customize::{CustomizeSettings, ItemDotChange},
     randomize::{LockedDoor, Randomization},
     settings::{
-        DoorLocksSize, ItemDotChange, ItemMarkers, MapStationReveal, MapsRevealed, Objective,
-        RandomizerSettings,
+        DoorLocksSize, InitialMapRevealSettings, ItemMarkers, MapRevealLevel, MapStationReveal,
+        Objective, RandomizerSettings,
     },
 };
 use maprando_game::{
@@ -13,8 +14,8 @@ use maprando_game::{
     RoomGeometryItem, RoomId, RoomPtr,
 };
 
-use super::{snes2pc, xy_to_explored_bit_ptr, xy_to_map_offset, Rom};
-use anyhow::{bail, Context, Result};
+use super::{Rom, snes2pc, xy_to_explored_bit_ptr, xy_to_map_offset};
+use anyhow::{Context, Result, bail};
 
 pub type TilemapOffset = u16;
 pub type TilemapWord = u16;
@@ -34,6 +35,7 @@ pub struct MapPatcher<'a> {
     pub game_data: &'a GameData,
     pub map: &'a Map,
     pub settings: &'a RandomizerSettings,
+    pub customize_settings: &'a CustomizeSettings,
     pub randomization: &'a Randomization,
     pub map_tile_map: HashMap<(AreaIdx, isize, isize), MapTile>,
     pub gfx_tile_map: HashMap<[[u8; 8]; 8], TilemapWord>,
@@ -96,6 +98,7 @@ pub fn vflip_tile(tile: [[u8; 8]; 8]) -> [[u8; 8]; 8] {
     out
 }
 
+#[allow(clippy::needless_range_loop)]
 pub fn diagonal_flip_tile(tile: [[u8; 8]; 8]) -> [[u8; 8]; 8] {
     let mut out = [[0u8; 8]; 8];
     for y in 0..8 {
@@ -127,12 +130,12 @@ pub fn read_tile_4bpp(rom: &Rom, base_addr: usize, idx: usize) -> Result<[[u8; 8
 }
 
 pub fn write_tile_4bpp(rom: &mut Rom, base_addr: usize, data: [[u8; 8]; 8]) -> Result<()> {
-    for y in 0..8 {
+    for (y, row) in data.iter().enumerate() {
         let addr = base_addr + y * 2;
-        let data_0: u8 = (0..8).map(|x| (data[y][x] & 1) << (7 - x)).sum();
-        let data_1: u8 = (0..8).map(|x| ((data[y][x] >> 1) & 1) << (7 - x)).sum();
-        let data_2: u8 = (0..8).map(|x| ((data[y][x] >> 2) & 1) << (7 - x)).sum();
-        let data_3: u8 = (0..8).map(|x| ((data[y][x] >> 3) & 1) << (7 - x)).sum();
+        let data_0: u8 = (0..8).map(|x| (row[x] & 1) << (7 - x)).sum();
+        let data_1: u8 = (0..8).map(|x| ((row[x] >> 1) & 1) << (7 - x)).sum();
+        let data_2: u8 = (0..8).map(|x| ((row[x] >> 2) & 1) << (7 - x)).sum();
+        let data_3: u8 = (0..8).map(|x| ((row[x] >> 3) & 1) << (7 - x)).sum();
         rom.write_u8(addr, data_0 as isize)?;
         rom.write_u8(addr + 1, data_1 as isize)?;
         rom.write_u8(addr + 16, data_2 as isize)?;
@@ -350,20 +353,18 @@ fn draw_edge(
                 set_wall_pixel(tile, 5, 3);
                 set_wall_pixel(tile, 6, 3);
                 set_wall_pixel(tile, 7, 3);
+            } else if tile_side == TileSide::Bottom {
+                set_wall_pixel(tile, 0, 3);
+                set_wall_pixel(tile, 1, 3);
+                set_wall_pixel(tile, 6, 3);
+                set_wall_pixel(tile, 7, 3);
             } else {
-                if tile_side == TileSide::Bottom {
-                    set_wall_pixel(tile, 0, 3);
-                    set_wall_pixel(tile, 1, 3);
-                    set_wall_pixel(tile, 6, 3);
-                    set_wall_pixel(tile, 7, 3);
-                } else {
-                    set_wall_pixel(tile, 0, 3);
-                    set_wall_pixel(tile, 1, 3);
-                    set_wall_pixel(tile, 2, 3);
-                    set_wall_pixel(tile, 5, 3);
-                    set_wall_pixel(tile, 6, 3);
-                    set_wall_pixel(tile, 7, 3);
-                }
+                set_wall_pixel(tile, 0, 3);
+                set_wall_pixel(tile, 1, 3);
+                set_wall_pixel(tile, 2, 3);
+                set_wall_pixel(tile, 5, 3);
+                set_wall_pixel(tile, 6, 3);
+                set_wall_pixel(tile, 7, 3);
             }
         }
         MapTileEdge::ElevatorEntrance => {
@@ -374,8 +375,8 @@ fn draw_edge(
             set_air_pixel(tile, 0, 3);
             set_air_pixel(tile, 7, 3);
         }
-        MapTileEdge::LockedDoor(lock_type) => {
-            if [Gray, Red, Green, Yellow].contains(&lock_type) {
+        MapTileEdge::LockedDoor(lock_type) => match lock_type {
+            Gray | Red | Green | Yellow => {
                 let color = match lock_type {
                     DoorLockType::Gray => 15,
                     DoorLockType::Red => 7,
@@ -417,7 +418,8 @@ fn draw_edge(
                         set_deep_pixel(tile, 5, 4);
                     }
                 }
-            } else if [Charge, Ice, Wave, Spazer, Plasma].contains(&lock_type) {
+            }
+            Charge | Ice | Wave | Spazer | Plasma => {
                 let color = match lock_type {
                     Charge => 15,
                     Ice => 8,
@@ -459,11 +461,25 @@ fn draw_edge(
                     }
                 }
             }
-        }
+            Wall => {
+                set_wall_pixel(tile, 0, 3);
+                set_wall_pixel(tile, 1, 3);
+                set_wall_pixel(tile, 2, 3);
+                set_wall_pixel(tile, 3, 13);
+                set_wall_pixel(tile, 4, 13);
+                set_wall_pixel(tile, 5, 3);
+                set_wall_pixel(tile, 6, 3);
+                set_wall_pixel(tile, 7, 3);
+            }
+        },
     }
 }
 
-pub fn render_tile(tile: MapTile, settings: &RandomizerSettings) -> Result<[[u8; 8]; 8]> {
+pub fn render_tile(
+    tile: MapTile,
+    settings: &RandomizerSettings,
+    customize_settings: &CustomizeSettings,
+) -> Result<[[u8; 8]; 8]> {
     let bg_color = if tile.heated && !settings.other_settings.ultra_low_qol {
         2
     } else {
@@ -479,53 +495,52 @@ pub fn render_tile(tile: MapTile, settings: &RandomizerSettings) -> Result<[[u8;
         (MapLiquidType::Acid, true) => (2, 1),
         _ => panic!("unexpected liquid type"),
     };
-    if let Some(liquid_level) = tile.liquid_level {
-        if !settings.other_settings.ultra_low_qol {
-            let level = (liquid_level * 8.0).floor() as isize;
-            for y in level..8 {
-                for x in 0..8 {
-                    match tile.liquid_type {
-                        MapLiquidType::Water => {
-                            if (x + y) % 2 == 0 {
-                                data[y as usize][x as usize] = liquid_colors.0;
-                            } else {
-                                data[y as usize][x as usize] = liquid_colors.1;
-                            }
-                        }
-                        MapLiquidType::Lava => {
+    if let Some(liquid_level) = tile.liquid_level
+        && !settings.other_settings.ultra_low_qol
+    {
+        let level = (liquid_level * 8.0).floor() as isize;
+        for y in level..8 {
+            for x in 0..8 {
+                match tile.liquid_type {
+                    MapLiquidType::Water => {
+                        if (x + y) % 2 == 0 {
+                            data[y as usize][x as usize] = liquid_colors.0;
+                        } else {
                             data[y as usize][x as usize] = liquid_colors.1;
                         }
-                        MapLiquidType::Acid => {
-                            if (x + y) % 2 == 0 {
-                                data[y as usize][x as usize] = liquid_colors.1;
-                            }
-                        }
-                        MapLiquidType::None => bail!("unexpected liquid type None"),
                     }
+                    MapLiquidType::Lava => {
+                        data[y as usize][x as usize] = liquid_colors.1;
+                    }
+                    MapLiquidType::Acid => {
+                        if (x + y) % 2 == 0 {
+                            data[y as usize][x as usize] = liquid_colors.1;
+                        }
+                    }
+                    MapLiquidType::None => bail!("unexpected liquid type None"),
                 }
             }
+        }
 
-            if tile.faded
-                && tile.interior.is_item()
-                && (tile.liquid_type == MapLiquidType::Lava
-                    || tile.liquid_type == MapLiquidType::Acid
-                    || (tile.liquid_type == MapLiquidType::Water
-                        && tile.liquid_level.unwrap() > 0.5))
-            {
-                // Improve contrast around faded items:
-                match tile.interior {
-                    MapTileInterior::Item => {
-                        for y in 2..6 {
-                            for x in 2..6 {
-                                data[y][x] = bg_color;
-                            }
+        if tile.faded
+            && tile.interior.is_item()
+            && (tile.liquid_type == MapLiquidType::Lava
+                || tile.liquid_type == MapLiquidType::Acid
+                || (tile.liquid_type == MapLiquidType::Water && tile.liquid_level.unwrap() > 0.5))
+        {
+            // Improve contrast around faded items:
+            match tile.interior {
+                MapTileInterior::Item => {
+                    for y in 2..6 {
+                        for x in 2..6 {
+                            data[y][x] = bg_color;
                         }
                     }
-                    _ => {
-                        for y in 1..7 {
-                            for x in 1..7 {
-                                data[y][x] = bg_color;
-                            }
+                }
+                _ => {
+                    for y in 1..7 {
+                        for x in 1..7 {
+                            data[y][x] = bg_color;
                         }
                     }
                 }
@@ -534,11 +549,7 @@ pub fn render_tile(tile: MapTile, settings: &RandomizerSettings) -> Result<[[u8;
     };
 
     let item_color = if tile.faded {
-        if tile.heated {
-            1
-        } else {
-            2
-        }
+        if tile.heated { 1 } else { 2 }
     } else {
         13
     };
@@ -559,13 +570,13 @@ pub fn render_tile(tile: MapTile, settings: &RandomizerSettings) -> Result<[[u8;
             data[4][5] = item_color;
             data[5][3] = item_color;
             data[5][4] = item_color;
-            if let Some(liquid_level) = tile.liquid_level {
-                if liquid_level < 0.5 {
-                    data[3][3] = liquid_colors.0;
-                    data[3][4] = liquid_colors.0;
-                    data[4][3] = liquid_colors.0;
-                    data[4][4] = liquid_colors.0;
-                }
+            if let Some(liquid_level) = tile.liquid_level
+                && liquid_level < 0.5
+            {
+                data[3][3] = liquid_colors.0;
+                data[3][4] = liquid_colors.0;
+                data[4][3] = liquid_colors.0;
+                data[4][4] = liquid_colors.0;
             }
         }
         MapTileInterior::AmmoItem => {
@@ -940,7 +951,7 @@ pub fn render_tile(tile: MapTile, settings: &RandomizerSettings) -> Result<[[u8;
     };
     match tile.special_type {
         Some(MapTileSpecialType::AreaTransition(area_idx, dir)) => {
-            if settings.other_settings.transition_letters {
+            if customize_settings.transition_letters {
                 match area_idx {
                     0 => {
                         data = [
@@ -1014,7 +1025,7 @@ pub fn render_tile(tile: MapTile, settings: &RandomizerSettings) -> Result<[[u8;
                             [0, 0, 0, 0, 0, 0, 0, 0],
                         ];
                     }
-                    _ => panic!("Unexpected area {}", area_idx),
+                    _ => panic!("Unexpected area {area_idx}"),
                 }
             } else {
                 match dir {
@@ -1292,6 +1303,7 @@ pub fn apply_door_lock(
     let lock_type = match locked_door.door_type {
         DoorType::Blue => panic!("unexpected blue door lock"),
         DoorType::Gray => panic!("unexpected gray door lock"),
+        DoorType::Wall => DoorLockType::Wall,
         DoorType::Red => DoorLockType::Red,
         DoorType::Green => DoorLockType::Green,
         DoorType::Yellow => DoorLockType::Yellow,
@@ -1475,6 +1487,7 @@ impl<'a> MapPatcher<'a> {
         game_data: &'a GameData,
         map: &'a Map,
         settings: &'a RandomizerSettings,
+        customize_settings: &'a CustomizeSettings,
         randomization: &'a Randomization,
         locked_door_state_indices: &'a [usize],
     ) -> Self {
@@ -1528,11 +1541,12 @@ impl<'a> MapPatcher<'a> {
             game_data,
             map,
             settings,
+            customize_settings,
             randomization,
             map_tile_map: HashMap::new(),
             gfx_tile_map: HashMap::new(),
             gfx_tile_reverse_map: HashMap::new(),
-            free_tiles: free_tiles,
+            free_tiles,
             locked_door_state_indices,
             dynamic_tile_data: vec![vec![]; 6],
             transition_tile_coords: vec![],
@@ -1549,8 +1563,10 @@ impl<'a> MapPatcher<'a> {
     }
 
     fn index_fixed_tiles(&mut self) -> Result<()> {
-        let mut tile = MapTile::default();
-        tile.special_type = Some(MapTileSpecialType::SlopeUpFloorLow);
+        let mut tile = MapTile {
+            special_type: Some(MapTileSpecialType::SlopeUpFloorLow),
+            ..MapTile::default()
+        };
         self.index_tile(tile.clone(), Some(0x10))?;
         self.write_hud_tile_2bpp(0x10, self.render_tile(tile.clone())?)?;
         tile.heated = true;
@@ -1642,7 +1658,7 @@ impl<'a> MapPatcher<'a> {
     }
 
     fn render_tile(&self, tile: MapTile) -> Result<[[u8; 8]; 8]> {
-        render_tile(tile, self.settings)
+        render_tile(tile, self.settings, self.customize_settings)
     }
 
     fn write_map_tiles(&mut self) -> Result<()> {
@@ -1704,6 +1720,9 @@ impl<'a> MapPatcher<'a> {
 
         // Write room map offsets:
         for (room_idx, room) in self.game_data.room_geometry.iter().enumerate() {
+            if !self.randomization.map.room_mask[room_idx] {
+                continue;
+            }
             let area = self.randomization.map.area[room_idx];
             let room_x = self.map.rooms[room_idx].0 as isize - self.area_offset_x[area];
             let room_y = self.map.rooms[room_idx].1 as isize - self.area_offset_y[area];
@@ -1768,6 +1787,10 @@ impl<'a> MapPatcher<'a> {
 
         for &room_ptr in &self.game_data.room_ptrs {
             let room_id = self.game_data.raw_room_id_by_ptr[&room_ptr];
+            let room_idx = self.game_data.room_idx_by_ptr[&room_ptr];
+            if !self.map.room_mask[room_idx] {
+                continue;
+            }
             let room_width = self.rom.read_u8(room_ptr + 4)?;
             let room_height = self.rom.read_u8(room_ptr + 5)?;
 
@@ -1786,8 +1809,10 @@ impl<'a> MapPatcher<'a> {
                 [1, 0, 1, 0, 1, 0, 1, 0],
             ];
             gfx_tile_map.insert(empty_tile, 0x001F);
-            let mut slope = MapTile::default();
-            slope.special_type = Some(MapTileSpecialType::SlopeUpFloorLow);
+            let mut slope = MapTile {
+                special_type: Some(MapTileSpecialType::SlopeUpFloorLow),
+                ..MapTile::default()
+            };
             gfx_tile_map.insert(self.render_tile(slope.clone())?, 0x10);
             slope.heated = true;
             gfx_tile_map.insert(self.render_tile(slope)?, 0x11);
@@ -1800,7 +1825,7 @@ impl<'a> MapPatcher<'a> {
                         gfx_tile_map.insert(self.gfx_tile_reverse_map[&idx], next_tile);
                         next_tile += 1;
                     } else {
-                        panic!("Tile not found in global map tileset: {:?}", data);
+                        panic!("Tile not found in global map tileset: {data:?}");
                     }
                 }
                 Self::find_tile(data, &gfx_tile_map).unwrap()
@@ -1809,7 +1834,7 @@ impl<'a> MapPatcher<'a> {
 
             for y in -1..room_height + 1 {
                 for x in -2..room_width + 2 {
-                    let (area, x1, y1) = self.get_room_coords(room_id, x, y);
+                    let (area, x1, y1) = self.get_room_coords(room_id, x, y).unwrap();
                     let tile = self.map_tile_map.get(&(area, x1, y1));
                     let data: [[u8; 8]; 8] = if let Some(x) = tile {
                         self.render_tile(x.clone())?
@@ -1880,7 +1905,7 @@ impl<'a> MapPatcher<'a> {
     }
 
     fn write_tile_4bpp(&mut self, base_addr: usize, data: [[u8; 8]; 8]) -> Result<()> {
-        write_tile_4bpp(&mut self.rom, base_addr, data)
+        write_tile_4bpp(self.rom, base_addr, data)
     }
 
     fn write_map_tile_4bpp(&mut self, idx: usize, data: [[u8; 8]; 8]) -> Result<()> {
@@ -1901,7 +1926,9 @@ impl<'a> MapPatcher<'a> {
 
     fn indicate_objective_tiles(&mut self) -> Result<()> {
         for (room_id, x, y) in get_objective_tiles(&self.randomization.objectives) {
-            let tile = self.get_room_tile(room_id, x as isize, y as isize);
+            let Some(tile) = self.get_room_tile(room_id, x as isize, y as isize) else {
+                continue;
+            };
             tile.interior = MapTileInterior::Objective;
         }
         Ok(())
@@ -1912,7 +1939,9 @@ impl<'a> MapPatcher<'a> {
         // by an X depending on the objective setting.
         let gray_door = MapTileEdge::LockedDoor(DoorLockType::Gray);
         for (room_id, x, y, dir) in get_gray_doors() {
-            let tile = self.get_room_tile(room_id, x, y);
+            let Some(tile) = self.get_room_tile(room_id, x, y) else {
+                continue;
+            };
             match dir {
                 Direction::Left => {
                     tile.left = gray_door;
@@ -1944,14 +1973,23 @@ impl<'a> MapPatcher<'a> {
                 let room_geom = &self.game_data.room_geometry[room_idx];
                 let door = &room_geom.doors[door_idx];
                 let room_id = self.game_data.room_id_by_ptr[&room_geom.rom_address];
-                let tile = self.get_room_tile(room_id, door.x as isize, door.y as isize);
+                let Some(tile) = self.get_room_tile(room_id, door.x as isize, door.y as isize)
+                else {
+                    continue;
+                };
                 let new_tile = apply_door_lock(tile, locked_door, door);
 
-                // Here, to make doors disappear once unlocked, we're (slightly awkwardly) reusing the mechanism for
-                // making item dots disappear. Door bits are stored at $D8B0, which is 512 bits after $D870 where
-                // the item bits start.
-                let item_idx = self.locked_door_state_indices[i] + 512;
-                self.dynamic_tile_data[area].push((item_idx, room_id, new_tile));
+                if locked_door.door_type == DoorType::Wall {
+                    // Walls are permanent, so we apply the change to the tile directly.
+                    // This is necessary in order to support multiple walls on the same tile.
+                    *tile = new_tile;
+                } else {
+                    // Here, to make doors disappear once unlocked, we're (slightly awkwardly) reusing the mechanism for
+                    // making item dots disappear. Door bits are stored at $D8B0, which is 512 bits after $D870 where
+                    // the item bits start.
+                    let item_idx = self.locked_door_state_indices[i] + 512;
+                    self.dynamic_tile_data[area].push((item_idx, room_id, new_tile));
+                }
             }
         }
         Ok(())
@@ -1984,8 +2022,10 @@ impl<'a> MapPatcher<'a> {
             _ => bail!("Unrecognized door direction: {dir}"),
         };
 
-        let mut tile = MapTile::default();
-        tile.special_type = Some(MapTileSpecialType::AreaTransition(other_area, direction));
+        let tile = MapTile {
+            special_type: Some(MapTileSpecialType::AreaTransition(other_area, direction)),
+            ..MapTile::default()
+        };
         self.set_room_tile(room_id, coords.0, coords.1, tile);
         Ok(())
     }
@@ -2090,11 +2130,9 @@ impl<'a> MapPatcher<'a> {
         for i in 0..16 {
             let color = self
                 .rom
-                .read_u16(snes2pc(0xB6F000) + 2 * (0x20 as usize + i as usize))?;
-            self.rom.write_u16(
-                snes2pc(0xB6F000) + 2 * (0x40 as usize + i as usize),
-                color as isize,
-            )?;
+                .read_u16(snes2pc(0xB6F000) + 2 * (0x20 + i as usize))?;
+            self.rom
+                .write_u16(snes2pc(0xB6F000) + 2 * (0x40 + i as usize), color as isize)?;
         }
 
         // Substitute palette 2 with palette 4 in pause tilemaps:
@@ -2111,61 +2149,78 @@ impl<'a> MapPatcher<'a> {
         Ok(())
     }
 
+    fn get_initial_tile_reveal(
+        tile: &MapTile,
+        imr_settings: &InitialMapRevealSettings,
+    ) -> MapRevealLevel {
+        if let Some(MapTileSpecialType::AreaTransition(_, _)) = tile.special_type {
+            return match imr_settings.area_transitions {
+                MapRevealLevel::No => MapRevealLevel::No,
+                // Area transition tiles (arrows/letters) wouldn't render correctly
+                // with partial reveal, so we override it to full reveal:
+                MapRevealLevel::Partial | MapRevealLevel::Full => MapRevealLevel::Full,
+            };
+        }
+        match tile.interior {
+            MapTileInterior::MapStation => imr_settings.map_stations,
+            MapTileInterior::SaveStation => imr_settings.save_stations,
+            MapTileInterior::EnergyRefill => imr_settings.refill_stations,
+            MapTileInterior::AmmoRefill => imr_settings.refill_stations,
+            MapTileInterior::DoubleRefill => imr_settings.refill_stations,
+            MapTileInterior::Ship => imr_settings.ship,
+            MapTileInterior::Item => imr_settings.items1,
+            MapTileInterior::AmmoItem => imr_settings.items2,
+            MapTileInterior::MediumItem => imr_settings.items3,
+            MapTileInterior::MajorItem => imr_settings.items4,
+            MapTileInterior::Objective => imr_settings.objectives,
+            _ => imr_settings.other,
+        }
+    }
+
     fn set_initial_map(&mut self) -> Result<()> {
         let revealed_addr = snes2pc(0xB5F000);
         let partially_revealed_addr = snes2pc(0xB5F800);
         let area_seen_addr = snes2pc(0xB5F600);
-        match self.settings.other_settings.maps_revealed {
-            MapsRevealed::Full => {
-                self.rom.write_n(revealed_addr, &vec![0xFF; 0x600])?; // whole map revealed bits: true
-                self.rom
-                    .write_n(partially_revealed_addr, &vec![0xFF; 0x600])?; // whole map partially revealed bits: true
-                self.rom.write_u16(area_seen_addr, 0x003F)?; // area seen bits: true (for pause map area switching)
-            }
-            MapsRevealed::Partial => {
-                self.rom.write_n(revealed_addr, &vec![0; 0x600])?; // whole map revealed bits: false
-                self.rom
-                    .write_n(partially_revealed_addr, &vec![0xFF; 0x600])?; // whole map partially revealed bits: true
-                self.rom.write_u16(area_seen_addr, 0x003F)?; // area seen bits: true (for pause map area switching)
+        let imr_settings = &self
+            .settings
+            .quality_of_life_settings
+            .initial_map_reveal_settings;
 
-                // Show area-transition markers (arrows or letters) as revealed:
-                for &(area, x, y) in &self.transition_tile_coords {
-                    let (offset, bitmask) = xy_to_explored_bit_ptr(x, y);
-                    let ptr_revealed = revealed_addr + area * 0x100 + offset as usize;
+        if imr_settings.all_areas {
+            // allow pause map area switching to all areas from start of game:
+            self.rom.write_u16(area_seen_addr, 0x003F)?;
+        } else {
+            self.rom.write_u16(area_seen_addr, 0x0000)?;
+        }
+
+        // Initialize all tiles to not-revealed by default
+        self.rom.write_n(revealed_addr, &vec![0; 0x600])?;
+        self.rom.write_n(partially_revealed_addr, &vec![0; 0x600])?;
+
+        for (&(area, x, y), tile) in &self.map_tile_map {
+            let local_x = x - self.area_offset_x[area];
+            let local_y = y - self.area_offset_y[area];
+            let (offset, bitmask) = xy_to_explored_bit_ptr(local_x, local_y);
+            let ptr_revealed = revealed_addr + area * 0x100 + offset as usize;
+            let ptr_partial = partially_revealed_addr + area * 0x100 + offset as usize;
+            match Self::get_initial_tile_reveal(tile, imr_settings) {
+                MapRevealLevel::No => {}
+                MapRevealLevel::Partial => {
+                    self.rom.write_u8(
+                        ptr_partial,
+                        self.rom.read_u8(ptr_partial)? | bitmask as isize,
+                    )?;
+                }
+                MapRevealLevel::Full => {
+                    self.rom.write_u8(
+                        ptr_partial,
+                        self.rom.read_u8(ptr_partial)? | bitmask as isize,
+                    )?;
                     self.rom.write_u8(
                         ptr_revealed,
                         self.rom.read_u8(ptr_revealed)? | bitmask as isize,
                     )?;
                 }
-            }
-            MapsRevealed::No => {
-                self.rom.write_n(revealed_addr, &vec![0; 0x600])?;
-                self.rom.write_n(partially_revealed_addr, &vec![0; 0x600])?;
-                self.rom.write_u16(area_seen_addr, 0x0000)?;
-            }
-        }
-
-        if self.settings.quality_of_life_settings.mark_map_stations {
-            for (room_idx, room) in self.game_data.room_geometry.iter().enumerate() {
-                if !room.name.contains(" Map Room") {
-                    continue;
-                }
-                let area = self.map.area[room_idx];
-                let x = self.rom.read_u8(room.rom_address + 2)?;
-                let y = self.rom.read_u8(room.rom_address + 3)?;
-                let (offset, bitmask) = xy_to_explored_bit_ptr(x, y);
-
-                let ptr_revealed = revealed_addr + area * 0x100 + offset as usize;
-                self.rom.write_u8(
-                    ptr_revealed,
-                    self.rom.read_u8(ptr_revealed)? | bitmask as isize,
-                )?;
-
-                let ptr_partial = partially_revealed_addr + area * 0x100 + offset as usize;
-                self.rom.write_u8(
-                    ptr_partial,
-                    self.rom.read_u8(ptr_partial)? | bitmask as isize,
-                )?;
             }
         }
         Ok(())
@@ -2176,18 +2231,50 @@ impl<'a> MapPatcher<'a> {
         // and then when looking at the map later, don't remember that there's another room behind it.
         // To avoid this, when entering on of these rooms, we do a "partial reveal" on just the door
         // of the neighboring rooms.
-        let room_ids = vec![
-            302, // Frog Savestation
-            190, // Draygon Save Room
-            308, // Nutella Refill
+        // TODO: consider extending this behavior to objective tiles as well.
+        let imr_settings = &self
+            .settings
+            .quality_of_life_settings
+            .initial_map_reveal_settings;
+        let save_partial = imr_settings.save_stations == MapRevealLevel::Partial;
+        let refill_partial = imr_settings.refill_stations == MapRevealLevel::Partial;
+        let mut room_ids = vec![
+            (302, save_partial),   // Frog Savestation
+            (190, save_partial),   // Draygon Save Room
+            (308, refill_partial), // Nutella Refill
         ];
+
+        // Don't show the special reveal if the room is unplaced or blocked by a wall.
+        room_ids.retain(|&(room_id, _)| {
+            let room_idx = self.game_data.room_idx_by_id[&room_id];
+            if !self.randomization.map.room_mask[room_idx] {
+                return false;
+            }
+            for door in &self.randomization.locked_doors {
+                if door.door_type == DoorType::Wall {
+                    let (src_room_idx, _) =
+                        self.game_data.room_and_door_idxs_by_door_ptr_pair[&door.src_ptr_pair];
+                    let src_room_id = self.game_data.room_geometry[src_room_idx].room_id;
+                    if src_room_id == room_id {
+                        return false;
+                    }
+                }
+            }
+            true
+        });
+
         let mut table_addr = snes2pc(0x85A180);
         let partial_revealed_bits_base = 0x2700;
         let tilemap_base = 0x4000;
-        let palette = 0x0800;
         let left_door_tile_idx = 0x12;
 
-        for room_id in room_ids {
+        for (room_id, partial) in room_ids {
+            // If the save/refill tile is initially partially revealed, then we also use
+            // the partial reveal palette for the neighboring markings. This is not completely
+            // ideal as the markings will still show as partial revealed even after the
+            // save/refill tile is explored, but it's the best we can do without a significant
+            // overhaul of the ASM; and it's unclear if this option will find much use anyway.
+            let palette = if partial { 0x0C00 } else { 0x0800 };
             let room_ptr = self.game_data.room_ptr_by_id[&room_id];
             let room_idx = self.game_data.room_idx_by_ptr[&room_ptr];
             let room = &self.game_data.room_geometry[room_idx];
@@ -2256,12 +2343,9 @@ impl<'a> MapPatcher<'a> {
             MapTileInterior::MajorItem,
         ];
         for data in self.dynamic_tile_data.iter_mut() {
-            for (_, room_id, ref tile) in &*data {
+            for (_, room_id, tile) in &*data {
                 if !interior_priority.contains(&tile.interior) {
-                    panic!(
-                        "In room_id={room_id}, unexpected dynamic tile interior: {:?}",
-                        tile
-                    );
+                    panic!("In room_id={room_id}, unexpected dynamic tile interior: {tile:?}");
                 }
             }
 
@@ -2297,7 +2381,7 @@ impl<'a> MapPatcher<'a> {
                 let local_x = tile.coords.0 as isize - self.area_offset_x[area_idx];
                 let local_y = tile.coords.1 as isize - self.area_offset_y[area_idx];
                 let offset = xy_to_map_offset(local_x, local_y);
-                self.rom.write_u16(snes2pc(data_ptr + 2), offset as isize)?; // tilemap offset
+                self.rom.write_u16(snes2pc(data_ptr + 2), offset)?; // tilemap offset
                 self.rom.write_u16(snes2pc(data_ptr + 4), word as isize)?; // tilemap word
                 data_ptr += 6;
             }
@@ -2310,6 +2394,11 @@ impl<'a> MapPatcher<'a> {
     fn indicate_items(&mut self) -> Result<()> {
         for (i, &item) in self.randomization.item_placement.iter().enumerate() {
             let (room_id, node_id) = self.game_data.item_locations[i];
+            let room_ptr = self.game_data.room_ptr_by_id[&room_id];
+            let room_idx = self.game_data.room_idx_by_ptr[&room_ptr];
+            if !self.map.room_mask[room_idx] {
+                continue;
+            }
             if room_id == 19
                 && self
                     .randomization
@@ -2326,7 +2415,7 @@ impl<'a> MapPatcher<'a> {
             let room = &self.game_data.room_geometry[room_idx];
             let area = self.map.area[room_idx];
             let (x, y) = find_item_xy(item_ptr, &room.items)?;
-            let orig_tile = self.get_room_tile(room_id, x, y).clone();
+            let orig_tile = self.get_room_tile(room_id, x, y).unwrap().clone();
             let mut tile = orig_tile.clone();
             tile.faded = false;
             if [MapTileInterior::HiddenItem, MapTileInterior::DoubleItem].contains(&tile.interior) {
@@ -2338,7 +2427,7 @@ impl<'a> MapPatcher<'a> {
             } else {
                 tile.interior = get_item_interior(item, self.settings);
                 self.dynamic_tile_data[area].push((item_idx, room_id, tile.clone()));
-                if self.settings.other_settings.item_dot_change == ItemDotChange::Fade {
+                if self.customize_settings.item_dot_change == ItemDotChange::Fade {
                     tile.interior = apply_item_interior(orig_tile, item, self.settings);
                     tile.faded = true;
                     self.set_room_tile(room_id, x, y, tile.clone());
@@ -2716,9 +2805,17 @@ impl<'a> MapPatcher<'a> {
         Ok(())
     }
 
-    fn get_room_coords(&self, room_id: usize, x: isize, y: isize) -> (AreaIdx, isize, isize) {
+    fn get_room_coords(
+        &self,
+        room_id: usize,
+        x: isize,
+        y: isize,
+    ) -> Option<(AreaIdx, isize, isize)> {
         let room_ptr = self.game_data.room_ptr_by_id[&room_id];
         let room_idx = self.game_data.room_idx_by_ptr[&room_ptr];
+        if !self.map.room_mask[room_idx] {
+            return None;
+        }
         let area = self.map.area[room_idx];
         let mut room_coords = self.map.rooms[room_idx];
         if room_id == 313 {
@@ -2730,16 +2827,18 @@ impl<'a> MapPatcher<'a> {
         }
         let x = room_coords.0 as isize + x;
         let y = room_coords.1 as isize + y;
-        (area, x, y)
+        Some((area, x, y))
     }
 
-    fn get_room_tile(&mut self, room_id: usize, x: isize, y: isize) -> &mut MapTile {
-        let (area, x1, y1) = self.get_room_coords(room_id, x, y);
-        self.map_tile_map.get_mut(&(area, x1, y1)).unwrap()
+    fn get_room_tile(&mut self, room_id: usize, x: isize, y: isize) -> Option<&mut MapTile> {
+        let (area, x1, y1) = self.get_room_coords(room_id, x, y)?;
+        Some(self.map_tile_map.get_mut(&(area, x1, y1)).unwrap())
     }
 
     fn set_room_tile(&mut self, room_id: usize, x: isize, y: isize, mut tile: MapTile) {
-        let (area, x1, y1) = self.get_room_coords(room_id, x, y);
+        let Some((area, x1, y1)) = self.get_room_coords(room_id, x, y) else {
+            return;
+        };
         tile.coords.0 = x1 as usize;
         tile.coords.1 = y1 as usize;
         self.map_tile_map.insert((area, x1, y1), tile);
@@ -2794,6 +2893,9 @@ impl<'a> MapPatcher<'a> {
         }
 
         for area in 0..NUM_AREAS {
+            if self.area_min_x[area] == isize::MAX {
+                continue;
+            }
             let margin_x = (64 - (self.area_max_x[area] - self.area_min_x[area])) / 2;
             let margin_y = (32 - (self.area_max_y[area] - self.area_min_y[area])) / 2;
             self.area_offset_x[area] = self.area_min_x[area] - margin_x;
@@ -2831,8 +2933,8 @@ impl<'a> MapPatcher<'a> {
         self.apply_room_tiles()?;
         self.indicate_objective_tiles()?;
         if !self.settings.other_settings.ultra_low_qol {
-            self.indicate_locked_doors()?;
             self.indicate_gray_doors()?;
+            self.indicate_locked_doors()?;
         }
         self.add_cross_area_arrows()?;
         self.set_map_activation_behavior()?;

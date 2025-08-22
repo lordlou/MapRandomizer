@@ -1,7 +1,8 @@
 use crate::web::AppData;
 use actix_web::{
+    HttpResponse, Responder,
     http::header::{self},
-    post, web, HttpResponse, Responder,
+    post, web,
 };
 use askama::Template;
 use serde_derive::Deserialize;
@@ -53,7 +54,7 @@ async fn unlock_seed(
             Ok(n) => n.as_millis() as usize,
             Err(_) => panic!("SystemTime before UNIX EPOCH!"),
         };
-        let unlock_time_str = format!("{}", timestamp);
+        let unlock_time_str = format!("{timestamp}");
         app_data
             .seed_repository
             .put_file(

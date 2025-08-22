@@ -18,6 +18,10 @@ incsrc "constants.asm"
 
 !credits_tilemap_offset = $0034
 
+!m32_multiplicand    = $20   ; 4 bytes
+!m32_multiplier      = $24   ; 4 bytes
+!m32_result          = $24   ; 8 bytes   (note: shares memory with multiplier)
+
 ;; Defines for the script and credits data
 !speed = set_scroll
 !set = $9a17
@@ -201,6 +205,7 @@ draw_full_time:
     plx
     rtl
 .non_zero:
+    jsr adjust_time_fps
     ; draw colons for time separators
     lda #$005A  ; space
     sta !credits_tilemap_offset-8, y
@@ -211,79 +216,145 @@ draw_full_time:
     ; draw period for hundredths
     lda #$007F
     sta !credits_tilemap_offset+4, y
-    lda #$003c
+    lda #$1770  ; divide by 6000 (hundredths of seconds in a minute)
     sta $12
     lda #$ffff
     sta $1a
-    jsl div32 ;; frames in $14, rest in $16
-    phb ;; convert frames to hundredths
-    phy
-    sep #$30
-    pea $8080 : plb : plb
+    jsl div32 ;; hundredths of seconds in $14, minutes in $16
+
     lda $14
-    sta $4202
-    lda #$64
-    sta $4203
-    pha : pla :  pha : pla
-    lda $4216
-    sta $4204
-    lda $4217
-    sta $4205
-    lda #$3c
-    sta $4206
-    pha : pla :  pha : pla : pha : pla
-    lda $4214
-    sta $14
-    rep #$30
-    ply
-    plb
-    rep 6 : iny ;; Increment Y three positions forward to write the last value
-    lda $14
+    ldx #$0064  ;; 100
+    jsr div16 ;; hundredths of seconds in $4216, seconds in $4214
+    lda $004216
+    sta $1c   ;; copy seconds to $1c
+
+    ; draw seconds:
+    lda $004214
     jsl draw_two
+
+    ; draw hundredths of seconds:
+    rep 2 : iny ;; Skip separator
+    lda $1c
+    jsl draw_two
+
+    lda $16
+    ldx #$003c  ;; 60
+    jsr div16  ;; hours in $4216, minutes in $4214
+    lda $004216
+    sta $1c   ;; copy hours to $1c
+
+    ;; Move Y back by 11 characters
     tya
     sec
-    sbc #$0010
-    tay     ;; Skip back 8 characters to draw the top three things
-    lda $16
-    jsl draw_time
+    sbc #$0016
+    tay
+
+    ; draw hours:
+    lda $004214
+    jsl draw_two
+
+    ; draw minutes:
+    rep 2 : iny ;; Skip separator
+    lda $1c
+    jsl draw_two
+
     plb
     plx
     rtl
 
-;; Draw time as xx:yy:zz
-draw_time:
+adjust_time_fps:
+    ; convert frame count to hundredths of seconds:
+    ; multiply by 100 / 60.09881186
+    ; input: $14 = high 16-bits of frame count, $16 = low 16-bits of frame count
+    ; output: overwrites $14, $16
+
     phx
-    phb
-    rep 6 : dey ;; Decrement Y by 3 characters so the time count fits
-    pea $7f7f : plb : plb
-    sta $004204
-    sep #$20
-    lda #$ff
-    sta $1a
-    lda #$3c
-    sta $004206
-    pha : pla :  pha : pla : rep #$20
-    lda $004216 ;; Seconds
-    sta $12
-    lda $004214 ;; First two groups (hours & minutes)
-    sta $004204
-    sep #$20
-    lda #$3c
-    sta $004206
-    pha : pla :  pha : pla : rep #$20
-    lda $004216
+    phy
+
+    lda $14
+    sta !m32_multiplicand+2
+    lda $16
+    sta !m32_multiplicand
+    
+    ; 100 / 60.09881186 * 2^24 ~= 0x1a9f711
+    lda #$f711
+    sta !m32_multiplier
+    lda #$01a9
+    sta !m32_multiplier+2
+
+    jsr m32_mult
+
+    lda !m32_result+3
+    sta $16
+    lda !m32_result+5
     sta $14
-    lda $004214 ;; First group (hours)
-    jsl draw_two
-    iny : iny ;; Skip past separator
-    lda $14 ;; Second group (minutes)
-    jsl draw_two
-    iny : iny
-    lda $12 ;; Last group (seconds)
-    jsl draw_two
-    plb
+
+    ply
     plx
-    rtl
+    rts
+
+
+m32_mult:
+; 32 bit x 32 bit unsigned multiply, 64 bit result
+; Based on https://github.com/TobyLobster/multiply_test/blob/main/tests/omult22.a
+; On Entry:
+;   multiplier:     four byte value
+;   multiplicand:   four byte value
+; On Exit:
+;   result:         eight byte product (note: 'result' shares memory with 'multiplier')
+;
+    php
+    sep #$20
+    lda #0              ;
+    sta !m32_result+6        ;
+    sta !m32_result+5        ;
+    sta !m32_result+4        ; 32 bits of zero in A, result+6, result+5, result+4
+                        ; (think of A as a local cache of result+7)
+                        ;  Note:    First 8 shifts are  A -> result+6 -> result+5 -> result+4 -> result
+                        ;           Next  8 shifts are  A -> result+6 -> result+5 -> result+4 -> result+1
+                        ;           Next  8 shifts are  A -> result+6 -> result+5 -> result+4 -> result+2
+                        ;           Final 8 shifts are  A -> result+6 -> result+5 -> result+4 -> result+3
+    ldx #$fffc          ; count for outer loop. Loops four times.
+    
+    ; outer loop (4 times)
+outer_loop:
+    ldy #$0008              ; count for inner loop
+    lsr !m32_result+4,x      ; think "result" then later "result+1" then "result+2" then "result+3"
+
+    ; inner loop (8 times)
+inner_loop:
+    bcc +
+
+    ; (result+4, result+5, result+6, A) += (multiplicand, multiplicand+1, multiplicand+2. multiplicand+3)
+    sta !m32_result+7        ; remember A
+    lda !m32_result+4
+    clc
+    adc !m32_multiplicand
+    sta !m32_result+4
+    lda !m32_result+5
+    adc !m32_multiplicand+1
+    sta !m32_result+5
+    lda !m32_result+6
+    adc !m32_multiplicand+2
+    sta !m32_result+6
+    lda !m32_result+7        ; recall A
+    adc !m32_multiplicand+3
+
++
+    ror                 ; shift
+    ror !m32_result+6        ;
+    ror !m32_result+5        ;
+    ror !m32_result+4        ;
+    ror !m32_result+4,x      ; think "result" then later "result+1" then "result+2" then "result+3"
+    dey
+    bne inner_loop      ; go back for 1 more shift?
+
+    inx
+    bne outer_loop      ; go back for 8 more shifts?
+
+    sta !m32_result+7        ;
+    plp
+    rts
 
 ;; Draw 5-digit value to credits tilemap
 ;; A = number to draw, Y = row address
@@ -419,6 +490,19 @@ write_stats:
     plb
     ply
     rtl
+
+;; 16-bit by 8-bit division
+;; input: A = dividend (16-bit),
+;;        X = divisor (8-bit)   
+;; output: $4214 = quotient (16-bit)
+;;         $4216 = remainder (16-bit)
+div16:
+    sta $004204
+    sep #$20
+    txa
+    sta $004206
+    pha : pla :  pha : pla : rep #$20
+    rts
 
 ;; 32-bit by 16-bit division routine total found somewhere
 ;; ($14$16)/$12 : result in $16, remainder in $14
@@ -636,14 +720,18 @@ script:
     dw !draw, !blank
     dw !draw, !blank
     dw !draw, !blank
+    dw !draw, !blank
+    dw !draw, !blank
+    dw !draw, !blank
+    dw !draw, !blank
 
     ;; Custom randomizer credits text
+    ;; Set scroll speed to 2 frames per pixel
+    dw !speed, $0002
     dw !draw, !row*128  ; MAP RANDO CONTRIBUTORS
     dw !draw, !blank
     dw !draw, !row*129  ; LEAD DEVELOPER
     dw !draw, !blank
-    ;; Set scroll speed to 2 frames per pixel
-    dw !speed, $0002
     dw !draw, !row*130
     dw !draw, !row*131
     dw !draw, !blank
@@ -659,9 +747,6 @@ script:
     dw !draw, !blank
     dw !draw, !row*255
     dw !draw, !row*256
-    dw !draw, !blank
-    dw !draw, !row*257
-    dw !draw, !row*258
     dw !draw, !blank
     dw !draw, !row*137  ; LOGIC DATA
     dw !draw, !blank
@@ -941,8 +1026,8 @@ credits:
     !big
     dw "      KYLEB         OSSE101     " ;; 133
     dw "      kyleb         osse!}!     " ;; 134
-    dw "          AMOEBAOFDOOM          " ;; 135
-    dw "          amoebaofdoom          " ;; 136
+    dw "   AMOEBAOFDOOM    STAG SHOT    " ;; 135
+    dw "   amoebaofdoom    stag shot    " ;; 136
 
     !green
     dw "    LOGIC DATA MAIN AUTHORS     " ;; 137
@@ -1090,10 +1175,10 @@ credits:
     !orange
     dw "     ADDITIONAL DEVELOPERS      " ;; 254
     !big
-    dw "     SELICRE       STAG SHOT    " ;; 255
-    dw "     selicre       stag shot    " ;; 256
-    dw "             CHANGE             " ;; 257
-    dw "             change             " ;; 258
+    dw "     SELICRE         CHANGE     " ;; 255
+    dw "     selicre         change     " ;; 256
+    dw "                                " ;; 257
+    dw "                                " ;; 258
     dw "   SAMLITTLEHORNS      KEWLAN   " ;; 259
     dw "   samlittlehorns      kewlan   " ;; 260
 

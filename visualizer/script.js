@@ -1,5 +1,9 @@
-function lookupOffset(room, node) {
-	key = room + ": " + node
+var spoiler = null;
+var roomMap = new Map();
+var nodeMap = new Map();
+
+function lookupOffset(room_id, node_id) {
+	key = room_id + ":" + node_id
 	return offsets[key];
 }
 let createDiv = (html) => {
@@ -32,6 +36,11 @@ document.getElementById("ship").onchange = ev => {
 }
 document.getElementById("start").onchange = ev => {
 	document.getElementById("helm").style.visibility = ev.target.checked ? "visible" : "hidden";
+}
+document.getElementById("sidebar-info").onmousemove = ev => {
+	let el = document.getElementById("room-info");
+	el.classList.add("hidden");
+	el.innerText = "";
 }
 
 let startitems = 0;
@@ -112,8 +121,232 @@ document.getElementById("settingsCog").onclick = ev => {
 	let f = document.getElementById("settingsForm")
 	f.style.display = f.style.display == "none" ? "block" : "none";
 }
+function setDebugDataVisibility() {
+	let checked = document.getElementById("debugDataCheckbox").checked;
+	let debugData = document.getElementById("debugData");
+	debugData.style.display = checked ? "block" : "none";
+}
+
+function changeDebugDataVertexId() {
+	if (spoiler === null) {
+		return;
+	}
+	let vertexId = parseInt(document.getElementById("debugVertexId").value);
+	let vertexKey = spoiler.game_data.vertices[vertexId];
+	if (vertexKey === undefined) {
+		document.getElementById("debugRoomId").value = "";
+		document.getElementById("debugNodeId").value = "";
+		document.getElementById("debugObstacleMask").value = "";
+		return;
+	}
+	document.getElementById("debugRoomId").value = vertexKey.room_id;
+	document.getElementById("debugNodeId").value = vertexKey.node_id;
+	document.getElementById("debugObstacleMask").value = vertexKey.obstacle_mask;
+}
+
+function changeDebugDataInput() {
+	if (spoiler === null) {
+		return;
+	}
+	let roomId = parseInt(document.getElementById("debugRoomId").value);
+	let nodeId = parseInt(document.getElementById("debugNodeId").value);
+	let obstacleMask = parseInt(document.getElementById("debugObstacleMask").value);
+	// We could build and use a hash map for this, but it's not really necessary.
+	document.getElementById("debugVertexId").value = "";
+	for (vertexId in spoiler.game_data.vertices) {
+		let key = spoiler.game_data.vertices[vertexId];
+		if (key.room_id == roomId && key.node_id == nodeId 
+			&& key.obstacle_mask == obstacleMask && key.actions.length == 0) 
+		{
+			document.getElementById("debugVertexId").value = vertexId;
+			break;
+		}
+	}
+}
+
+function getTrailIds(endTrailId, traversal, backward) {
+	let out = [];
+	let trailId = endTrailId;
+	while (trailId != -1) {
+		out.push(trailId);
+		trailId = traversal.prev_trail_ids[trailId];
+	}
+	out.reverse();
+
+	let finalLocalState = {};
+	if (endTrailId != -1) {
+		for (k of localStateKeyOrder) {
+			finalLocalState[k] = 0;
+		}
+	}
+	for (trailId of out) {
+		let localState = traversal.local_states[trailId];
+		Object.assign(finalLocalState, localState);
+	}
+
+	if (backward) {
+		out.reverse();
+	}
+	return [out, finalLocalState];
+}
+
+let localStateKeyOrder = [
+	"energy_used",
+	"reserves_used",
+	"missiles_used",
+	"supers_used",
+	"power_bombs_used",
+	"shinecharge_frames_remaining",
+	"cycle_frames",
+	"farm_baseline_energy_used",
+	"farm_baseline_reserves_used",
+	"farm_baseline_missiles_used",
+	"farm_baseline_supers_used",
+	"farm_baseline_power_bombs_used",
+];
+
+function getDebugRoute(traversal, step, vertexId, costMetric, backward) {
+	let traversalNumber;
+	let endTrailId = -1;
+	for (i in traversal.steps) {
+		let s = traversal.steps[i];
+		if (s.step_num != step) {
+			continue;
+		}
+		for (j in s.updated_vertex_ids) {
+			if (s.updated_vertex_ids[j] == vertexId) {
+				traversalNumber = i;
+				endTrailId = s.updated_start_trail_ids[j][costMetric];
+				break;
+			}
+		}
+	}
+	let [trailIdArray, finalLocalState] = getTrailIds(endTrailId, traversal, backward);
+
+	let statePre = document.createElement("pre");
+	if (Object.keys(finalLocalState).length > 0) {
+		statePre.innerText = JSON.stringify(finalLocalState, localStateKeyOrder, 2);
+	}
+
+	let routeDiv = document.createElement("div");
+	for (trailId of trailIdArray) {
+		let linkIdx = traversal.link_idxs[trailId];
+		let link = spoiler.game_data.links[linkIdx];
+		let fromVertexId = link.from_vertex_id;
+		let fromVertexKey = spoiler.game_data.vertices[fromVertexId];
+		let fromNodeId = fromVertexKey.node_id;
+		let toVertexId = link.to_vertex_id;
+		let toVertexKey = spoiler.game_data.vertices[toVertexId];
+		let roomId = toVertexKey.room_id;
+		let toNodeId = toVertexKey.node_id;
+		let stratId = link.strat_id;
+		let stratName = link.strat_name;
+		let room = roomMap[roomId];
+		let node = nodeMap[[roomId, toNodeId]];
+		let obstacleMask = toVertexKey.obstacle_mask;
+
+		let mainLineDiv = document.createElement("div");
+		let stratText = `[${toVertexId}] ${room.name}: ${node.name} (${obstacleMask}) {${linkIdx}} ${stratName}`;
+		if (stratId !== null) {
+			let mainLineA = document.createElement("a");
+			mainLineA.innerText = stratText;
+			mainLineA.href = `/logic/room/${roomId}/${fromNodeId}/${toNodeId}/${stratId}`;
+			mainLineDiv.appendChild(mainLineA);
+		} else {
+			mainLineDiv.innerText = stratText;
+		}
+		routeDiv.appendChild(mainLineDiv);
+		
+		if (toVertexKey.actions.length > 0) {
+			let vertexActionCode = document.createElement("code");
+			vertexActionCode.innerText = JSON.stringify(toVertexKey.actions);
+			routeDiv.appendChild(vertexActionCode);
+		}
+
+		let localState = traversal.local_states[trailId];
+		if (Object.keys(localState).length > 0) {
+			let localStateCode = document.createElement("code");
+			localStateCode.innerText = JSON.stringify(localState);
+			routeDiv.appendChild(localStateCode);	
+		}
+	}
+	return [traversalNumber, statePre, routeDiv];
+}
+
+function updateDebugData() {
+	let debugOutput = document.getElementById("debugOutput");
+	debugOutput.innerHTML = "";
+	let step = parseInt(document.getElementById("debugStepNumber").value);
+	let details = spoiler.details[step];
+	if (details === undefined) {
+		return;
+	}
+	let vertexId = parseInt(document.getElementById("debugVertexId").value);
+	if (vertexId === undefined || isNaN(vertexId)) {
+		return;
+	}
+	if (vertexId < 0 || vertexId >= spoiler.game_data.vertices.length) {
+		return;
+	}
+	let costMetric = parseInt(document.getElementById("debugCostMetric").value);
+	if (costMetric < 0 || costMetric > 1) {
+		return;
+	}
+
+	let vertexKey = spoiler.game_data.vertices[vertexId];
+	let roomId = vertexKey.room_id;
+	let nodeId = vertexKey.node_id;
+	let roomName = roomMap[roomId].name;
+	let nodeName = nodeMap[[roomId, nodeId]].name;
+	let obstacleMask = vertexKey.obstacle_mask;
+
+	let debugHeader = document.createElement("div");
+	let headerMainLine = document.createElement("p");
+	headerMainLine.innerText = `[${vertexId}] ${roomName}: ${nodeName} (${obstacleMask})`;
+	debugHeader.appendChild(headerMainLine);
+	if (vertexKey.actions.length > 0) {
+		let actionPre = document.createElement("pre");
+		actionPre.innerText = JSON.stringify(vertexKey.actions, null, 2);
+		debugHeader.appendChild(actionPre);
+	}
+	debugOutput.appendChild(debugHeader);
+
+	let [forwardTraversalNum, forwardState, forwardRoute] =
+		getDebugRoute(spoiler.forward_traversal, step, vertexId, costMetric, false);
+	let [reverseTraversalNum, reverseState, reverseRoute] =
+		getDebugRoute(spoiler.reverse_traversal, step, vertexId, costMetric, true);
+	
+	let forwardStateDiv = document.createElement("div");
+	let forwardStateHeader = createHtmlElement('<div class="category">OBTAIN STATE</div>');
+	forwardStateDiv.appendChild(forwardStateHeader);
+	forwardStateDiv.appendChild(forwardState);
+	debugOutput.appendChild(forwardStateDiv);
+
+	let reverseStateDiv = document.createElement("div");
+	let reverseStateHeader = createHtmlElement('<div class="category">RETURN STATE</div>');
+	reverseStateDiv.appendChild(reverseStateHeader);
+	reverseStateDiv.appendChild(reverseState);
+	debugOutput.appendChild(reverseStateDiv);
+
+	let forwardRouteDiv = document.createElement("div");
+	let forwardRouteHeader = createHtmlElement(`<div class="category">OBTAIN ROUTE (traversal number ${forwardTraversalNum})</div>`);
+	forwardRouteDiv.appendChild(forwardRouteHeader);
+	forwardRouteDiv.appendChild(forwardRoute);
+	debugOutput.appendChild(forwardRouteDiv);
+
+	let reverseDiv = document.createElement("div");
+	let reverseHeader = createHtmlElement(`<div class="category">RETURN ROUTE (traversal number ${reverseTraversalNum})</div>`);
+	reverseDiv.appendChild(reverseHeader);
+	reverseDiv.appendChild(reverseRoute);
+	debugOutput.appendChild(reverseDiv);
+
+	debugOutput.style.paddingBottom = "16px";
+}
+
+document.getElementById("debugDataForm").addEventListener("submit", updateDebugData);
 loadForm(document.getElementById("settingsForm"));
 loadForm(document.getElementById("helpForm"));
+setDebugDataVisibility();
 if (!document.getElementById("showonce").checked)
 	document.getElementById("msg-wrap").style.display = "flex";
 
@@ -125,6 +358,15 @@ ctx.fillRect(0,0,592,592);
 
 
 fetch(`../spoiler.json`).then(c => c.json()).then(c => {
+	spoiler = c;
+
+	for (room of spoiler.game_data.rooms) {
+		roomMap[room.room_id] = room;
+	}
+	for (node of spoiler.game_data.nodes) {
+		nodeMap[[node.room_id, node.node_id]] = node;
+	}
+
 	flagtypes["objectives"] = c.objectives;
 	flagtypes["objectives"].push("f_DefeatedMotherBrain");
 	// generate map
@@ -159,17 +401,110 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			document.getElementById(`step-${step_limit}`).classList.add("selected");
 		}
 	}
+	function getRoomIndex(room_id) {
+		for (i in c.all_rooms) {
+			if (c.all_rooms[i].room_id == room_id) {
+				return i;
+			}
+		}
+		return null;
+	}
+	function addSuppItem(item,step, count, added_item)
+	{
+		let supp_div = document.getElementById("sidebar-supp-item");
+		let ic = icon(item_plm[item.item]);
+		ic.className = "ui-icon-hoverable";
+		ic.id = item.item;
+		ic.onclick = ev => {
+			show_item_details(item.item, item.location, step, item);
+		}
+		supp_div.appendChild(ic);
+		ic = document.createElement("span");
+		ic.innerHTML = count;
+		ic.classList.add("item-count");
+		supp_div.appendChild(ic);
+		if (added_item)
+			return;
+
+		let dblitem = item;
+		supp_div.ondblclick = ev => {
+			show_item_details(dblitem.item, dblitem.location, step, dblitem);
+			ev.stopPropagation();
+		}
+	}
+	function suppItems(step) {
+		let supp_div = document.getElementById("sidebar-supp-item");
+		let si = document.getElementById("sidebar-info");
+		supp_div.style.display = "none";
+		supp_div.innerHTML = "";
+		
+		if (!document.getElementById("spoilers").checked && step_limit < Number(step)+1)
+			return;
+
+		supp_div.style.left = si.offsetWidth+16+"px";
+		supp_div.style.top = step * 24 +18+ "px";
+		let items = c.details[step].items;
+		let sortedItemIdxs = Array.from(items.keys()).sort((a, b) => item_rank[items[a].item] - item_rank[items[b].item]);
+		let seen = new Set();
+		let non_unique_counts = {
+			"ETank": 1,
+			"ReserveTank": 1,
+			"Missile": 5,
+			"PowerBomb": 5,
+			"Super": 5
+		};
+		let last = null;
+		let added_item = false;
+		let count = 0;
+		
+		let ss = c.details[step].start_state.items;
+		for (j of ss)
+			seen.add(j);
+		
+		for (item_idx of sortedItemIdxs)
+		{
+			let j = items[item_idx];
+			if (!non_unique_counts.hasOwnProperty(j.item))
+				continue;
+			if (last != null && last.item != j.item && count > 0)
+			{
+				addSuppItem(last,step, count, added_item);
+				added_item = true;
+				count = 0;
+			}
+			if (seen.has(j.item))
+				count += non_unique_counts[j.item];
+			else
+				seen.add(j.item);
+			last = j;
+		}
+		if (count != 0)
+		{
+			addSuppItem(last,step, count, added_item);
+			added_item = true;
+		}
+		if (added_item)
+			supp_div.style.display = "block";
+	}
 	let show_overview = () => {
+		document.getElementById("path-overlay").innerHTML = ""
 		let si = document.getElementById("sidebar-info");
 		si.innerHTML = "";
+		
 		let seen = new Set();
 		for (let i in c.summary) {
 			let step_div = document.createElement("div");
 			step_div.id = `step-${c.summary[i].step}`;
 			step_div.className = "step-panel";
 			step_div.onclick = () => {
+				document.getElementById("path-overlay").innerHTML = "";
 				gen_obscurity(c.summary[i].step);
+				suppItems(i);
 			}
+			step_div.onmousemove = () => {
+				suppItems(i);
+			}
+
 
 			let step_number = document.createElement("span");
 			step_number.className = "step-number";
@@ -191,13 +526,21 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 					el.id = j.item;
 					el.className = "ui-icon-hoverable";
 					el.onclick = ev => {
-						show_item_details(j.item, j.location, i, j);
+						if (el.style.backgroundPositionX== `-${item_plm["Hidden"] * 16}px`)
+						{
+							gen_obscurity(Number(i)+1);
+							suppItems(Number(i));
+						}
+						else
+							show_item_details(j.item, j.location, i, j);
+						ev.stopPropagation();
 					}
 					step_div.appendChild(el);
 
 					if (first) {
-						step_div.ondblclick = () => {
+						step_div.ondblclick = ev => {
 							show_item_details(j.item, j.location, i, j);
+							ev.stopPropagation();
 						}
 					}
 					first = false;
@@ -217,7 +560,10 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		step_div = document.createElement("div");
 		step_div.id = `step-null`;
 		step_div.className = "step-panel";
-		step_div.onclick = () => gen_obscurity(null);
+		step_div.onclick = () => {
+			document.getElementById("path-overlay").innerHTML = "";
+			gen_obscurity(null);
+		}
 
 		step_number = document.createElement("span");
 		step_number.className = "step-whole-map";
@@ -359,20 +705,24 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		ctx.putImageData(img, 0, 0);
 	}
 	
-	let show_item_details = (item_name, loc, i, j) => {
+	let show_item_details = (item_name, loc, i, j, mapitem = false) => {
 		if (j !== null) {
 			document.getElementById("path-overlay").innerHTML = ""
 			showRoute(j.return_route, "yellow");
 			showRoute(j.obtain_route);
+			document.getElementById("sidebar-supp-item").style.display = "none";
 		}
 		let si = document.getElementById("sidebar-info");
 		si.scrollTop = 0;
 		si.innerHTML = "";
 		if (j !== null) {
-			step_limit = c.details[i].step;
+			if (!mapitem)
+				step_limit = c.details[i].step;
+			else if (c.details[i].step > step_limit)
+				step_limit = c.details[i].step;
 			let title = document.createElement("div");
 			title.className = "sidebar-title";
-			title.innerHTML = `STEP ${step_limit}`;
+			title.innerHTML = `STEP ${c.details[i].step}`;
 			si.appendChild(title);
 		}
 
@@ -385,6 +735,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			si.appendChild(previous_header);
 
 			let ss = c.details[i].start_state;
+			flagIcons(si, ss.flags);
 			
 			let non_unique_item_list = document.createElement("div");
 			non_unique_item_list.className = "item-list";
@@ -415,13 +766,14 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			}
 			si.appendChild(unique_item_list);
 			
-			flagIcons(si, ss.flags);
 
 			let collectible_header = document.createElement("div");
 			collectible_header.className = "category";
 			collectible_header.innerHTML = "COLLECTIBLE ON THIS STEP";
 			si.appendChild(collectible_header);
 
+			if (i !== null)
+				flagIcons(si, c.summary[i].flags, j);
 
 			item_list = document.createElement("div");
 			item_list.className = "item-list";
@@ -442,8 +794,6 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			si.appendChild(item_list);
 		}
 
-		if (i !== null)
-			flagIcons(si, c.summary[i].flags, j);
 
 		let item_info = document.createElement("div");
 		let item_difficulty = "";
@@ -513,7 +863,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			}
 
 			if (k.strat_id !== null) {
-				nodeStr = `<a style="text-decoration:none" href="${strat_url}">${k.room}: ${k.node}</a><br>`;
+				nodeStr = `<a class="room-link" href="${strat_url}">${k.room}: ${k.node}</a><br>`;
 			} else {
 				nodeStr = `${k.room}: ${k.node}<br>`;
 			}
@@ -600,12 +950,12 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			p.appendChild(e);
 		}
 	}
-	function showFlag(details, flagName) {
+	function showFlag(details, flagName, mapflag=false) {
 		for (let stepNum in details) {
 			let stepData = details[stepNum];
 			for (let flagData of stepData.flags) {
 				if (flagData.flag == flagName) {
-					show_item_details(flagName, flagData.location, stepNum, flagData);
+					show_item_details(flagName, flagData.location, stepNum, flagData, mapflag);
 				}
 			}
 		}
@@ -658,8 +1008,6 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		if (c.summary.length ==0)
 			return;
 
-		gen_obscurity(1);
-
 		if (c.hub_obtain_route.length == 0)
 			return;
 		
@@ -706,7 +1054,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		flagIcons(si, ss.flags);
 		let item_info = document.createElement("div");
 		item_info.appendChild(createHtmlElement(`<div class="category">OBTAIN ROUTE</div>`));
-		routeData(item_info, c.hub_obtain_route);
+		routeData(item_info, c.hub_obtain_route, ss);
 				
 		item_info.appendChild(createHtmlElement(`<div class="category">RETURN ROUTE</div>`));
 		routeData(item_info, c.hub_return_route);
@@ -719,7 +1067,6 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		let sr = null, e = null, ri = c.start_location.room_id, ni = c.start_location.node_id, i=-1, x=0, y=0;
 		let n = c.start_location.name;
 
-
 		for (i in c.all_rooms) {
 			if (ri ==c.all_rooms[i].room_id )
 			{
@@ -730,7 +1077,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			}
 		}
 		if (n == "Ship") {
-			i = 1;
+			i = getRoomIndex(8); // Landing Site
 			x = c.all_rooms[i].coords[0]*24+24;
 			y = c.all_rooms[i].coords[1]*24+24;
 			x += 96;
@@ -740,17 +1087,17 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		} else if (n == "") {
 			// escape
 			n = "Mother Brain Room";
-			i = 248;
+			i = getRoomIndex(238);  // Mother Brain Room
 			x = c.all_rooms[i].coords[0]*24+24;
 			y = c.all_rooms[i].coords[1]*24+24;
 		} else if (n == "Homing Geemer Room") {
-			i = 26;
+			i = getRoomIndex(32);  // West Ocean
 			x = c.all_rooms[i].coords[0]*24+24;
 			y = c.all_rooms[i].coords[1]*24+24;
 			x += 120;
 			y += 48;
 		} else if (n == "East Pants Room") {
-			i = 138;
+			i = getRoomIndex(220);  // Pants Room
 			x = c.all_rooms[i].coords[0]*24+24;
 			y = c.all_rooms[i].coords[1]*24+24;
 			x += 24;
@@ -763,7 +1110,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		for (i in c.all_items) {
 			let loc = c.all_items[i].location;
 			if (loc.room_id == ri) {
-				let os = lookupOffset(loc.room, loc.node);
+				let os = lookupOffset(loc.room_id, loc.node_id);
 				let lx = loc.coords[0]*24 + 24;
 				let ly = loc.coords[1]*24 + 24;
 				if (os) {
@@ -812,7 +1159,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 	}
 		
 	shipicon: {
-		sr = c.all_rooms[1];
+		sr = c.all_rooms[getRoomIndex(8)];  // Landing Site
 		e = document.createElement("img");
 		e.src = "gunship.png";
 		e.id = "gunship"
@@ -824,10 +1171,30 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		e.style.top = y+"px";
 		e.style.visibility = document.getElementById("ship").checked ? "visible" : "hidden";
 		e.onclick = ev => {
+			let reach_step = -1;
+			for (v in c.details){
+				for (let vf of c.details[v].flags){
+					if (vf.flag == "f_DefeatedMotherBrain"){
+						reach_step = Number(vf.reachable_step);
+						break;
+					}
+				}
+			}
+			if (!document.getElementById("spoilers").checked && step_limit != null &&  reach_step > step_limit)
+			{
+				document.getElementById("shipspoiler").style.display = "block"
+				
+				setTimeout(fn => {document.getElementById("shipspoiler").style.display = "none";}, 1000)
+				return;
+			}
+
+			step_limit = null;
+			
 			document.getElementById("path-overlay").innerHTML = ""
 			show_overview();
+			update_selected();
 			showEscape();
-			gen_obscurity(null);
+			gen_obscurity();
 		}
 		e.onpointermove = ev => {
 			hideRoom();
@@ -835,7 +1202,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		document.getElementById("overlay").appendChild(e);
 		e = document.createElement("div");
 		e.className = "popup";
-		e.innerHTML = `<b>Ship</b><br><small>${sr.room}</small><br>`;
+		e.innerHTML = `<b>Ship</b><br><small>${sr.room}</small><br><div id="shipspoiler" style="display:none"><small>Escape not in logic on this step</small></div>`;
 		e.style.left = x + 48 +"px";
 		e.style.top = y + "px";
 		document.getElementById("overlay").appendChild(e);
@@ -851,9 +1218,16 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			if (f == "f_ZebesAwake")
 				continue;
 
+
+			var found = false;
 			for (j in c.all_rooms)	{
-				if (c.all_rooms[j].room == i)
+				if (c.all_rooms[j].room_id == i) {
+					found = true;
 					break;
+				}
+			}
+			if (!found) {
+				continue;
 			}
 			sr = c.all_rooms[j];
 			e.className = "flag";
@@ -899,20 +1273,14 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			}
 			e.onclick = ev => {
 				if (document.getElementById("spoilers").checked || document.getElementById("spoilers").checked || step_limit === null || step_limit > v)
-					showFlag(c.details, f);
-				else if (step_limit >=  reach_step) {
-					el.innerText = "Not in logic for current step.";
-					el.style.left = ev.target.style.left + 16 + "px";
-					el.style.top = ev.target.style.top + "px";
-					el.classList.remove("hidden");
-				}
+					showFlag(c.details, f, true);
 			}
 			e.onpointermove = ev => {
 				hideRoom();
 				if (!document.getElementById("spoilers").checked && step_limit !== null && step_limit >= reach_step && step_limit <= Number(v)) {
-					el.innerText = "Not in logic for current step.";
-					el.style.left = ev.target.style.left + 16 + "px";
-					el.style.top = ev.target.style.top + "px";
+					el.innerHTML = `<b>${rf[1]}</b><br><small>${sr.room}</small><br>Not in logic for current step.`;
+					el.style.left = Number(ev.target.style.left.substring(0,ev.target.style.left.length-2))+16+"px";
+					el.style.top = ev.target.style.top;
 					el.classList.remove("hidden");
 				}
 			}
@@ -946,7 +1314,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 	items: {
 		for (let v of c.all_items) {
 			if (v.item == "Nothing") { continue; }
-			let os = lookupOffset(v.location.room, v.location.node);
+			let os = lookupOffset(v.location.room_id, v.location.node_id);
 			if (os) {
 				v.location.coords[0] += os[0];
 				v.location.coords[1] += os[1];
@@ -985,15 +1353,15 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 			let step = Number(i);
 			e.onclick = ev => {
 				if (document.getElementById("spoilers").checked || step_limit === null || step_limit > i) {
-					show_item_details(v.item, v.location, i, j);
+					show_item_details(v.item, v.location, i, j, true);
 				}
 			};
 			e.onpointermove = ev => {
 				hideRoom();
 				if (!document.getElementById("spoilers").checked && step_limit !== null && step_limit <= step && step_limit >= reach_step) {
 					el.innerHTML = `<b>${v.item}</b><br><small>${v.location.room}</small><br>Not in logic on this step`;
-					el.style.left = ev.target.style.left + 16 + "px";
-					el.style.top = ev.target.style.top + "px";
+					el.style.left = Number(ev.target.style.left.substring(0,ev.target.style.left.length-2))+16+"px";
+					el.style.top = ev.target.style.top;
 					el.classList.remove("hidden");
 				}
 			}
@@ -1082,7 +1450,9 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		if (!dragged) {
 			// deselect
 			show_overview();
-			document.getElementById("path-overlay").innerHTML = ""
+			update_selected();
+			document.getElementById("path-overlay").innerHTML = "";
+			document.getElementById("debugOutput").innerHTML = "";
 		}
 	}
 	function dblclick() {
@@ -1150,6 +1520,7 @@ fetch(`../spoiler.json`).then(c => c.json()).then(c => {
 		up(ev);
 	}
 	m.onpointermove = ev => {
+		document.getElementById("sidebar-supp-item").style.display = "none";
 		ev.preventDefault();
 		if (evCache.length == 2) {
 			if (ev.button == 0)

@@ -1,6 +1,7 @@
 use std::cmp::{max, min};
 
 use hashbrown::HashMap;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     randomize::{DifficultyConfig, LockedDoor},
@@ -8,16 +9,16 @@ use crate::{
 };
 use maprando_game::{
     BeamType, Capacity, DoorType, EnemyDrop, EnemyVulnerabilities, GameData, Item, Link, LinkIdx,
-    LinksDataGroup, NodeId, Requirement, RoomId, VertexId, TECH_ID_CAN_BE_EXTREMELY_PATIENT,
-    TECH_ID_CAN_BE_PATIENT, TECH_ID_CAN_BE_VERY_PATIENT,
+    LinksDataGroup, NodeId, Requirement, RoomId, StepTrailId, TECH_ID_CAN_SUITLESS_LAVA_DIVE,
+    VertexId,
 };
 use maprando_logic::{
+    GlobalState, IMPOSSIBLE_LOCAL_STATE, Inventory, LocalState,
     boss_requirements::{
         apply_botwoon_requirement, apply_draygon_requirement, apply_mother_brain_2_requirement,
         apply_phantoon_requirement, apply_ridley_requirement,
     },
     helpers::{suit_damage_factor, validate_energy},
-    GlobalState, Inventory, LocalState,
 };
 
 fn apply_enemy_kill_requirement(
@@ -84,27 +85,8 @@ fn apply_enemy_kill_requirement(
     }
     local.missiles_used += missiles_used;
 
-    if hp <= 0 {
-        Some(local)
-    } else {
-        None
-    }
+    if hp <= 0 { Some(local) } else { None }
 }
-
-pub const IMPOSSIBLE_LOCAL_STATE: LocalState = LocalState {
-    energy_used: 0x3FFF,
-    reserves_used: 0x3FFF,
-    missiles_used: 0x3FFF,
-    supers_used: 0x3FFF,
-    power_bombs_used: 0x3FFF,
-    shinecharge_frames_remaining: 0x3FFF,
-    cycle_frames: 0x3FFF,
-    farm_baseline_energy_used: 0x3FFF,
-    farm_baseline_reserves_used: 0x3FFF,
-    farm_baseline_missiles_used: 0x3FFF,
-    farm_baseline_supers_used: 0x3FFF,
-    farm_baseline_power_bombs_used: 0x3FFF,
-};
 
 pub const NUM_COST_METRICS: usize = 2;
 
@@ -201,27 +183,24 @@ fn apply_gate_glitch_leniency(
         local.energy_used += (difficulty.gate_glitch_leniency as f32
             * difficulty.resource_multiplier
             * 60.0) as Capacity;
-        local = match validate_energy(
+        local = validate_energy(
             local,
             &global.inventory,
             difficulty.tech[game_data.manage_reserves_tech_idx],
-        ) {
-            Some(x) => x,
-            None => return None,
-        };
+        )?;
     }
     if green {
         local.supers_used += difficulty.gate_glitch_leniency;
-        return validate_supers(local, global);
+        validate_supers(local, global)
     } else {
         let missiles_available = global.inventory.max_missiles - local.missiles_used;
         if missiles_available >= difficulty.gate_glitch_leniency {
             local.missiles_used += difficulty.gate_glitch_leniency;
-            return validate_missiles(local, global);
+            validate_missiles(local, global)
         } else {
             local.missiles_used = global.inventory.max_missiles;
             local.supers_used += difficulty.gate_glitch_leniency - missiles_available;
-            return validate_supers(local, global);
+            validate_supers(local, global)
         }
     }
 }
@@ -257,23 +236,26 @@ fn apply_heat_frames(
     global: &GlobalState,
     game_data: &GameData,
     difficulty: &DifficultyConfig,
+    simple: bool,
 ) -> Option<LocalState> {
     let varia = global.inventory.items[Item::Varia as usize];
     let mut new_local = local;
     if varia {
         Some(new_local)
+    } else if !difficulty.tech[game_data.heat_run_tech_idx] {
+        None
     } else {
-        if !difficulty.tech[game_data.heat_run_tech_idx] {
-            None
+        if simple {
+            new_local.energy_used += (frames as f32 / 4.0).ceil() as Capacity;
         } else {
             new_local.energy_used +=
                 (frames as f32 * difficulty.resource_multiplier / 4.0).ceil() as Capacity;
-            validate_energy(
-                new_local,
-                &global.inventory,
-                difficulty.tech[game_data.manage_reserves_tech_idx],
-            )
         }
+        validate_energy(
+            new_local,
+            &global.inventory,
+            difficulty.tech[game_data.manage_reserves_tech_idx],
+        )
     }
 }
 
@@ -354,11 +336,11 @@ fn get_enemy_drop_values(
         p_missile += p_super * rel_missile;
         p_super = 0.0;
     }
-    if full_missiles {
+    if full_missiles && (p_small + p_large > 0.0) {
         p_small += p_missile * p_small / (p_small + p_large);
         p_large += p_missile * p_large / (p_small + p_large);
         p_missile = 0.0;
-    } else if full_energy {
+    } else if full_energy && p_missile > 0.0_ {
         p_missile += p_small + p_large;
         p_small = 0.0;
         p_large = 0.0;
@@ -367,11 +349,12 @@ fn get_enemy_drop_values(
     let expected_missiles = p_missile * 2.0;
     let expected_supers = p_super;
     let expected_pbs = p_pb * if buffed_drops { 2.0 } else { 1.0 };
+    let count = drop.count as f32;
     [
-        expected_energy,
-        expected_missiles,
-        expected_supers,
-        expected_pbs,
+        expected_energy * count,
+        expected_missiles * count,
+        expected_supers * count,
+        expected_pbs * count,
     ]
 }
 
@@ -389,40 +372,90 @@ fn apply_heat_frames_with_energy_drops(
     let mut new_local = local;
     if varia {
         Some(new_local)
+    } else if !difficulty.tech[game_data.heat_run_tech_idx] {
+        None
     } else {
-        if !difficulty.tech[game_data.heat_run_tech_idx] {
-            None
-        } else {
-            let mut total_drop_value = 0;
-            for drop in drops {
-                total_drop_value += get_enemy_drop_energy_value(
-                    drop,
-                    local,
-                    reverse,
-                    settings.quality_of_life_settings.buffed_drops,
-                )
-            }
-            let heat_energy =
-                (frames as f32 * difficulty.resource_multiplier / 4.0).ceil() as Capacity;
-            total_drop_value = Capacity::min(total_drop_value, heat_energy);
-            new_local.energy_used += heat_energy;
-            if let Some(x) = validate_energy(
-                new_local,
-                &global.inventory,
-                difficulty.tech[game_data.manage_reserves_tech_idx],
-            ) {
-                new_local = x;
-            } else {
-                return None;
-            }
-            if total_drop_value <= new_local.energy_used {
-                new_local.energy_used -= total_drop_value;
-            } else {
-                new_local.reserves_used -= total_drop_value - new_local.energy_used;
-                new_local.energy_used = 0;
-            }
-            Some(new_local)
+        let mut total_drop_value = 0;
+        for drop in drops {
+            total_drop_value += get_enemy_drop_energy_value(
+                drop,
+                local,
+                reverse,
+                settings.quality_of_life_settings.buffed_drops,
+            )
         }
+        let heat_energy = (frames as f32 * difficulty.resource_multiplier / 4.0).ceil() as Capacity;
+        total_drop_value = Capacity::min(total_drop_value, heat_energy);
+        new_local.energy_used += heat_energy;
+        if let Some(x) = validate_energy(
+            new_local,
+            &global.inventory,
+            difficulty.tech[game_data.manage_reserves_tech_idx],
+        ) {
+            new_local = x;
+        } else {
+            return None;
+        }
+        if total_drop_value <= new_local.energy_used {
+            new_local.energy_used -= total_drop_value;
+        } else {
+            new_local.reserves_used -= total_drop_value - new_local.energy_used;
+            new_local.energy_used = 0;
+        }
+        Some(new_local)
+    }
+}
+
+fn apply_lava_frames_with_energy_drops(
+    frames: Capacity,
+    drops: &[EnemyDrop],
+    local: LocalState,
+    global: &GlobalState,
+    game_data: &GameData,
+    settings: &RandomizerSettings,
+    difficulty: &DifficultyConfig,
+    reverse: bool,
+) -> Option<LocalState> {
+    let varia = global.inventory.items[Item::Varia as usize];
+    let gravity = global.inventory.items[Item::Gravity as usize];
+    let mut new_local = local;
+    if gravity && varia {
+        Some(new_local)
+    } else if !difficulty.tech[game_data.tech_isv.index_by_key[&TECH_ID_CAN_SUITLESS_LAVA_DIVE]] {
+        None
+    } else {
+        let mut total_drop_value = 0;
+        for drop in drops {
+            total_drop_value += get_enemy_drop_energy_value(
+                drop,
+                local,
+                reverse,
+                settings.quality_of_life_settings.buffed_drops,
+            )
+        }
+        let lava_energy = if gravity || varia {
+            (frames as f32 * difficulty.resource_multiplier / 4.0).ceil() as Capacity
+        } else {
+            (frames as f32 * difficulty.resource_multiplier / 2.0).ceil() as Capacity
+        };
+        total_drop_value = Capacity::min(total_drop_value, lava_energy);
+        new_local.energy_used += lava_energy;
+        if let Some(x) = validate_energy(
+            new_local,
+            &global.inventory,
+            difficulty.tech[game_data.manage_reserves_tech_idx],
+        ) {
+            new_local = x;
+        } else {
+            return None;
+        }
+        if total_drop_value <= new_local.energy_used {
+            new_local.energy_used -= total_drop_value;
+        } else {
+            new_local.reserves_used -= total_drop_value - new_local.energy_used;
+            new_local.energy_used = 0;
+        }
+        Some(new_local)
     }
 }
 
@@ -441,6 +474,7 @@ pub fn apply_link(
     settings: &RandomizerSettings,
     difficulty: &DifficultyConfig,
     game_data: &GameData,
+    door_map: &HashMap<(RoomId, NodeId), (RoomId, NodeId)>,
     locked_door_data: &LockedDoorData,
     objectives: &[Objective],
 ) -> Option<LocalState> {
@@ -448,10 +482,8 @@ pub fn apply_link(
         if !link.end_with_shinecharge && local.shinecharge_frames_remaining > 0 {
             return None;
         }
-    } else {
-        if link.start_with_shinecharge && local.shinecharge_frames_remaining == 0 {
-            return None;
-        }
+    } else if link.start_with_shinecharge && local.shinecharge_frames_remaining == 0 {
+        return None;
     }
     let new_local = apply_requirement(
         &link.requirement,
@@ -461,6 +493,7 @@ pub fn apply_link(
         settings,
         difficulty,
         game_data,
+        door_map,
         locked_door_data,
         objectives,
     );
@@ -469,10 +502,8 @@ pub fn apply_link(
             if !link.start_with_shinecharge {
                 new_local.shinecharge_frames_remaining = 0;
             }
-        } else {
-            if !link.end_with_shinecharge {
-                new_local.shinecharge_frames_remaining = 0;
-            }
+        } else if !link.end_with_shinecharge {
+            new_local.shinecharge_frames_remaining = 0;
         }
         Some(new_local)
     } else {
@@ -504,6 +535,7 @@ pub fn debug_requirement(
     settings: &RandomizerSettings,
     difficulty: &DifficultyConfig,
     game_data: &GameData,
+    door_map: &HashMap<(RoomId, NodeId), (RoomId, NodeId)>,
     locked_door_data: &LockedDoorData,
     objectives: &[Objective],
 ) {
@@ -518,6 +550,7 @@ pub fn debug_requirement(
             settings,
             difficulty,
             game_data,
+            door_map,
             locked_door_data,
             objectives
         )
@@ -533,6 +566,7 @@ pub fn debug_requirement(
                     settings,
                     difficulty,
                     game_data,
+                    door_map,
                     locked_door_data,
                     objectives,
                 );
@@ -548,6 +582,7 @@ pub fn debug_requirement(
                     settings,
                     difficulty,
                     game_data,
+                    door_map,
                     locked_door_data,
                     objectives,
                 );
@@ -571,12 +606,10 @@ fn apply_missiles_available_req(
             new_local.missiles_used = Capacity::max(new_local.missiles_used, count);
             Some(new_local)
         }
+    } else if global.inventory.max_missiles - local.missiles_used < count {
+        None
     } else {
-        if global.inventory.max_missiles - local.missiles_used < count {
-            None
-        } else {
-            Some(local)
-        }
+        Some(local)
     }
 }
 
@@ -594,12 +627,10 @@ fn apply_supers_available_req(
             new_local.supers_used = Capacity::max(new_local.supers_used, count);
             Some(new_local)
         }
+    } else if global.inventory.max_supers - local.supers_used < count {
+        None
     } else {
-        if global.inventory.max_supers - local.supers_used < count {
-            None
-        } else {
-            Some(local)
-        }
+        Some(local)
     }
 }
 
@@ -617,12 +648,10 @@ fn apply_power_bombs_available_req(
             new_local.power_bombs_used = Capacity::max(new_local.power_bombs_used, count);
             Some(new_local)
         }
+    } else if global.inventory.max_power_bombs - local.power_bombs_used < count {
+        None
     } else {
-        if global.inventory.max_power_bombs - local.power_bombs_used < count {
-            None
-        } else {
-            Some(local)
-        }
+        Some(local)
     }
 }
 
@@ -640,12 +669,10 @@ fn apply_regular_energy_available_req(
             new_local.energy_used = Capacity::max(new_local.energy_used, count);
             Some(new_local)
         }
+    } else if global.inventory.max_energy - local.energy_used < count {
+        None
     } else {
-        if global.inventory.max_energy - local.energy_used < count {
-            None
-        } else {
-            Some(local)
-        }
+        Some(local)
     }
 }
 
@@ -663,12 +690,10 @@ fn apply_reserve_energy_available_req(
             new_local.reserves_used = Capacity::max(new_local.reserves_used, count);
             Some(new_local)
         }
+    } else if global.inventory.max_reserves - local.reserves_used < count {
+        None
     } else {
-        if global.inventory.max_reserves - local.reserves_used < count {
-            None
-        } else {
-            Some(local)
-        }
+        Some(local)
     }
 }
 
@@ -682,26 +707,22 @@ fn apply_energy_available_req(
         let mut new_local = local;
         if global.inventory.max_energy + global.inventory.max_reserves < count {
             None
+        } else if global.inventory.max_energy < count {
+            new_local.energy_used = global.inventory.max_energy;
+            new_local.reserves_used =
+                Capacity::max(new_local.reserves_used, count - global.inventory.max_energy);
+            Some(new_local)
         } else {
-            if global.inventory.max_energy < count {
-                new_local.energy_used = global.inventory.max_energy;
-                new_local.reserves_used =
-                    Capacity::max(new_local.reserves_used, count - global.inventory.max_energy);
-                Some(new_local)
-            } else {
-                new_local.energy_used = Capacity::max(new_local.energy_used, count);
-                Some(new_local)
-            }
+            new_local.energy_used = Capacity::max(new_local.energy_used, count);
+            Some(new_local)
         }
+    } else if global.inventory.max_reserves - local.reserves_used + global.inventory.max_energy
+        - local.energy_used
+        < count
+    {
+        None
     } else {
-        if global.inventory.max_reserves - local.reserves_used + global.inventory.max_energy
-            - local.energy_used
-            < count
-        {
-            None
-        } else {
-            Some(local)
-        }
+        Some(local)
     }
 }
 
@@ -743,6 +764,7 @@ pub fn apply_farm_requirement(
     settings: &RandomizerSettings,
     difficulty: &DifficultyConfig,
     game_data: &GameData,
+    door_map: &HashMap<(RoomId, NodeId), (RoomId, NodeId)>,
     locked_door_data: &LockedDoorData,
     objectives: &[Objective],
 ) -> Option<LocalState> {
@@ -757,240 +779,231 @@ pub fn apply_farm_requirement(
     let end_local_result = apply_requirement(
         req,
         global,
-        local,
+        start_local,
         reverse,
         settings,
         difficulty,
         game_data,
+        door_map,
         locked_door_data,
         objectives,
     );
-    if let Some(end_local) = end_local_result {
-        assert!(end_local.cycle_frames >= 100);
-        // Start with the heat damage multiplier, but adjust it to be closer to 1.0
-        // since farming is generally easy/repetitive so you expect it to be
-        // doable more efficiently:
-        let cycle_multiplier = (difficulty.resource_multiplier + 2.0) / 3.0;
-        let cycle_frames = (end_local.cycle_frames - 1) as f32 * cycle_multiplier;
-        let cycle_energy = (end_local.energy_used + end_local.reserves_used
-            - local.energy_used
-            - local.reserves_used) as f32;
-        let cycle_missiles = (end_local.missiles_used - local.missiles_used) as f32;
-        let cycle_supers = (end_local.supers_used - local.supers_used) as f32;
-        let cycle_pbs = (end_local.power_bombs_used - local.power_bombs_used) as f32;
-        let mut patience_frames = 2700.0;
-        if difficulty.tech[game_data.tech_isv.index_by_key[&TECH_ID_CAN_BE_EXTREMELY_PATIENT]] {
-            patience_frames *= 8.0;
-        } else if difficulty.tech[game_data.tech_isv.index_by_key[&TECH_ID_CAN_BE_VERY_PATIENT]] {
-            patience_frames *= 4.0;
-        } else if difficulty.tech[game_data.tech_isv.index_by_key[&TECH_ID_CAN_BE_PATIENT]] {
-            patience_frames *= 2.0;
-        }
-        let mut num_cycles = (patience_frames / cycle_frames).round() as i32;
+    let end_local = end_local_result?;
+    if end_local.cycle_frames < 100 {
+        panic!("bad farm: expected cycle_frames >= 100: end_local={end_local:#?},\n req={req:#?}");
+    }
+    let cycle_frames = (end_local.cycle_frames - 1) as f32;
+    let cycle_energy = (end_local.energy_used + end_local.reserves_used
+        - local.energy_used
+        - local.reserves_used) as f32;
+    let cycle_missiles = (end_local.missiles_used - local.missiles_used) as f32;
+    let cycle_supers = (end_local.supers_used - local.supers_used) as f32;
+    let cycle_pbs = (end_local.power_bombs_used - local.power_bombs_used) as f32;
+    let patience_frames = difficulty.farm_time_limit * 60.0;
+    let mut num_cycles = (patience_frames / cycle_frames).floor() as i32;
 
-        let mut new_local = local;
-        if new_local.farm_baseline_energy_used < new_local.energy_used {
-            new_local.farm_baseline_energy_used = new_local.energy_used;
-        }
-        if new_local.farm_baseline_reserves_used < new_local.reserves_used {
-            new_local.farm_baseline_reserves_used = new_local.reserves_used;
-        }
-        if new_local.farm_baseline_missiles_used < new_local.missiles_used {
-            new_local.farm_baseline_missiles_used = new_local.missiles_used;
-        }
-        if new_local.farm_baseline_supers_used < new_local.supers_used {
-            new_local.farm_baseline_supers_used = new_local.supers_used;
-        }
-        if new_local.farm_baseline_power_bombs_used < new_local.power_bombs_used {
-            new_local.farm_baseline_power_bombs_used = new_local.power_bombs_used;
-        }
-        new_local.energy_used = new_local.farm_baseline_energy_used;
-        new_local.reserves_used = new_local.farm_baseline_reserves_used;
-        new_local.missiles_used = new_local.farm_baseline_missiles_used;
-        new_local.supers_used = new_local.farm_baseline_supers_used;
-        new_local.power_bombs_used = new_local.farm_baseline_power_bombs_used;
+    let mut new_local = local;
+    if new_local.farm_baseline_energy_used < new_local.energy_used {
+        new_local.farm_baseline_energy_used = new_local.energy_used;
+    }
+    if new_local.farm_baseline_reserves_used < new_local.reserves_used {
+        new_local.farm_baseline_reserves_used = new_local.reserves_used;
+    }
+    if new_local.farm_baseline_missiles_used < new_local.missiles_used {
+        new_local.farm_baseline_missiles_used = new_local.missiles_used;
+    }
+    if new_local.farm_baseline_supers_used < new_local.supers_used {
+        new_local.farm_baseline_supers_used = new_local.supers_used;
+    }
+    if new_local.farm_baseline_power_bombs_used < new_local.power_bombs_used {
+        new_local.farm_baseline_power_bombs_used = new_local.power_bombs_used;
+    }
+    new_local.energy_used = new_local.farm_baseline_energy_used;
+    new_local.reserves_used = new_local.farm_baseline_reserves_used;
+    new_local.missiles_used = new_local.farm_baseline_missiles_used;
+    new_local.supers_used = new_local.farm_baseline_supers_used;
+    new_local.power_bombs_used = new_local.farm_baseline_power_bombs_used;
 
-        if reverse {
-            // Handling reverse traversals is tricky because in the reverse traversal we don't know
-            // the current resource levels, so we don't know if they can be full (affecting the drop
-            // rates of other resource types). We address this by constructing variants of farm strats
-            // (as separate Links) with different requirements on which combinations will be filled to full.
-            // There is a limited ability for these different variants to propagate through the graph
-            // traversal, due to the limitations in the cost metrics that we are using. But it is better
-            // than nothing and could be refined later if needed.
-            //
-            // We also treat filling the given resources to full as having a separate "patience" allocation
-            // of cycle frames. So in a worst-case scenario the total time required for the farm could be up
-            // to double what would be allowed in forward traversal. But because we allocate only a modest
-            // 45 seconds for farming (assuming no patience tech), in the worst case this still stays under
-            // the limit of 1.5 minutes associated with `canBePatient`.
-            //
+    if reverse {
+        // Handling reverse traversals is tricky because in the reverse traversal we don't know
+        // the current resource levels, so we don't know if they can be full (affecting the drop
+        // rates of other resource types). We address this by constructing variants of farm strats
+        // (as separate Links) with different requirements on which combinations will be filled to full.
+        // There is a limited ability for these different variants to propagate through the graph
+        // traversal, due to the limitations in the cost metrics that we are using. But it is better
+        // than nothing and could be refined later if needed.
+        //
+        // We also treat filling the given resources to full as having a separate "patience" allocation
+        // of cycle frames. So in a worst-case scenario the total time required for the farm could be up
+        // to double what would be allowed in forward traversal. But because we allocate only a modest
+        // 45 seconds for farming (assuming no patience tech), in the worst case this still stays under
+        // the limit of 1.5 minutes associated with `canBePatient`.
+        //
+        let [drop_energy, drop_missiles, drop_supers, drop_pbs] = get_total_enemy_drop_values(
+            drops,
+            full_energy,
+            full_missiles,
+            full_supers,
+            full_power_bombs,
+            settings.quality_of_life_settings.buffed_drops,
+        );
+
+        let net_energy = ((drop_energy - cycle_energy) * num_cycles as f32) as Capacity;
+        let net_missiles = ((drop_missiles - cycle_missiles) * num_cycles as f32) as Capacity;
+        let net_supers = ((drop_supers - cycle_supers) * num_cycles as f32) as Capacity;
+        let net_pbs = ((drop_pbs - cycle_pbs) * num_cycles as f32) as Capacity;
+
+        if net_energy < 0 || net_missiles < 0 || net_supers < 0 || net_pbs < 0 {
+            return None;
+        }
+
+        // Now calculate refill rates assuming no resources are full. This is what we use to determine
+        // how close to full the given resources must start out:
+        let [raw_energy, raw_missiles, raw_supers, raw_pbs] = get_total_enemy_drop_values(
+            drops,
+            false,
+            false,
+            false,
+            false,
+            settings.quality_of_life_settings.buffed_drops,
+        );
+
+        let fill_energy = ((raw_energy - cycle_energy) * num_cycles as f32) as Capacity;
+        let fill_missiles = ((raw_missiles - cycle_missiles) * num_cycles as f32) as Capacity;
+        let fill_supers = ((raw_supers - cycle_supers) * num_cycles as f32) as Capacity;
+        let fill_pbs = ((raw_pbs - cycle_pbs) * num_cycles as f32) as Capacity;
+
+        if full_energy {
+            if fill_energy > global.inventory.max_reserves {
+                new_local.reserves_used = 0;
+                new_local.energy_used =
+                    global.inventory.max_energy - 1 - (fill_energy - global.inventory.max_reserves);
+                if new_local.energy_used < 0 {
+                    new_local.energy_used = 0;
+                }
+            } else {
+                new_local.energy_used = global.inventory.max_energy - 1;
+                new_local.reserves_used = global.inventory.max_reserves - fill_energy;
+            }
+        } else {
+            if new_local.reserves_used > 0 {
+                // There may be a way to refine this by having an option to fill regular energy (not reserves),
+                // but it probably wouldn't work without creating a new cost metric anyway. It probably only
+                // applies in scenarios involving Big Boy drain?
+                new_local.energy_used = global.inventory.max_energy - 1;
+            }
+            if net_energy > new_local.reserves_used {
+                new_local.energy_used -= net_energy - new_local.reserves_used;
+                new_local.reserves_used = 0;
+                if new_local.energy_used < 0 {
+                    new_local.energy_used = 0;
+                }
+            } else {
+                new_local.reserves_used -= net_energy;
+            }
+        }
+        if full_missiles {
+            new_local.missiles_used = global.inventory.max_missiles - fill_missiles;
+        } else {
+            new_local.missiles_used -= net_missiles;
+        }
+        if new_local.missiles_used < 0 {
+            new_local.missiles_used = 0;
+        }
+        if full_supers {
+            new_local.supers_used = global.inventory.max_supers - fill_supers;
+        } else {
+            new_local.supers_used -= net_supers;
+        }
+        if new_local.supers_used < 0 {
+            new_local.supers_used = 0;
+        }
+        if full_power_bombs {
+            new_local.power_bombs_used = global.inventory.max_power_bombs - fill_pbs;
+        } else {
+            new_local.power_bombs_used -= net_pbs;
+        }
+        if new_local.power_bombs_used < 0 {
+            new_local.power_bombs_used = 0;
+        }
+    } else {
+        let mut energy = new_local.energy_used as f32;
+        let mut reserves = new_local.reserves_used as f32;
+        let mut missiles = new_local.missiles_used as f32;
+        let mut supers = new_local.supers_used as f32;
+        let mut pbs = new_local.power_bombs_used as f32;
+
+        while num_cycles > 0 {
             let [drop_energy, drop_missiles, drop_supers, drop_pbs] = get_total_enemy_drop_values(
                 drops,
-                full_energy,
-                full_missiles,
-                full_supers,
-                full_power_bombs,
+                energy == 0.0 && reserves == 0.0,
+                missiles == 0.0,
+                supers == 0.0,
+                pbs == 0.0,
                 settings.quality_of_life_settings.buffed_drops,
             );
 
-            let net_energy = ((drop_energy - cycle_energy) * num_cycles as f32) as Capacity;
-            let net_missiles = ((drop_missiles - cycle_missiles) * num_cycles as f32) as Capacity;
-            let net_supers = ((drop_supers - cycle_supers) * num_cycles as f32) as Capacity;
-            let net_pbs = ((drop_pbs - cycle_pbs) * num_cycles as f32) as Capacity;
+            let net_energy = drop_energy - cycle_energy;
+            let net_missiles = drop_missiles - cycle_missiles;
+            let net_supers = drop_supers - cycle_supers;
+            let net_pbs = drop_pbs - cycle_pbs;
 
-            if net_energy < 0 || net_missiles < 0 || net_supers < 0 || net_pbs < 0 {
+            if net_energy < 0.0 || net_missiles < 0.0 || net_supers < 0.0 || net_pbs < 0.0 {
                 return None;
             }
 
-            // Now calculate refill rates assuming no resources are full. This is what we use to determine
-            // how close to full the given resources must start out:
-            let [raw_energy, raw_missiles, raw_supers, raw_pbs] = get_total_enemy_drop_values(
-                drops,
-                false,
-                false,
-                false,
-                false,
-                settings.quality_of_life_settings.buffed_drops,
-            );
-
-            let fill_energy = ((raw_energy - cycle_energy) * num_cycles as f32) as Capacity;
-            let fill_missiles = ((raw_missiles - cycle_missiles) * num_cycles as f32) as Capacity;
-            let fill_supers = ((raw_supers - cycle_supers) * num_cycles as f32) as Capacity;
-            let fill_pbs = ((raw_pbs - cycle_pbs) * num_cycles as f32) as Capacity;
-
-            if full_energy {
-                if fill_energy > global.inventory.max_reserves {
-                    new_local.reserves_used = 0;
-                    new_local.energy_used = global.inventory.max_energy
-                        - 1
-                        - (fill_energy - global.inventory.max_reserves);
-                    if new_local.energy_used < 0 {
-                        new_local.energy_used = 0;
-                    }
-                } else {
-                    new_local.reserves_used = global.inventory.max_reserves - fill_energy;
-                }
-            } else {
-                if new_local.reserves_used > 0 {
-                    // There may be a way to refine this by having an option to fill regular energy (not reserves),
-                    // but it probably wouldn't work without creating a new cost metric anyway. It probably only
-                    // applies in scenarios involving Big Boy drain?
-                    new_local.energy_used = global.inventory.max_energy - 1;
-                }
-                if net_energy > new_local.reserves_used {
-                    new_local.energy_used -= net_energy - new_local.reserves_used;
-                    new_local.reserves_used = 0;
-                    if new_local.energy_used < 0 {
-                        new_local.energy_used = 0;
-                    }
-                } else {
-                    new_local.reserves_used -= net_energy;
-                }
+            energy -= net_energy;
+            if energy < 0.0 {
+                reserves += energy;
+                energy = 0.0;
             }
-            if full_missiles {
-                new_local.missiles_used = global.inventory.max_missiles - fill_missiles;
-            } else {
-                new_local.missiles_used -= net_missiles;
+            if reserves < 0.0 {
+                reserves = 0.0;
             }
-            if new_local.missiles_used < 0 {
-                new_local.missiles_used = 0;
+            missiles -= net_missiles;
+            if missiles < 0.0 {
+                missiles = 0.0;
             }
-            if full_supers {
-                new_local.supers_used = global.inventory.max_supers - fill_supers;
-            } else {
-                new_local.supers_used -= net_supers;
+            supers -= net_supers;
+            if supers < 0.0 {
+                supers = 0.0;
             }
-            if new_local.supers_used < 0 {
-                new_local.supers_used = 0;
+            pbs -= net_pbs;
+            if pbs < 0.0 {
+                pbs = 0.0;
             }
-            if full_power_bombs {
-                new_local.power_bombs_used = global.inventory.max_power_bombs - fill_pbs;
-            } else {
-                new_local.power_bombs_used -= net_pbs;
-            }
-            if new_local.power_bombs_used < 0 {
-                new_local.power_bombs_used = 0;
-            }
-            return Some(new_local);
-        } else {
-            let mut energy = new_local.energy_used as f32;
-            let mut reserves = new_local.reserves_used as f32;
-            let mut missiles = new_local.missiles_used as f32;
-            let mut supers = new_local.supers_used as f32;
-            let mut pbs = new_local.power_bombs_used as f32;
 
-            while num_cycles > 0 {
-                let [drop_energy, drop_missiles, drop_supers, drop_pbs] =
-                    get_total_enemy_drop_values(
-                        drops,
-                        energy == 0.0 && reserves == 0.0,
-                        missiles == 0.0,
-                        supers == 0.0,
-                        pbs == 0.0,
-                        settings.quality_of_life_settings.buffed_drops,
-                    );
+            new_local.energy_used = energy.round() as Capacity;
+            new_local.reserves_used = reserves.round() as Capacity;
+            new_local.missiles_used = missiles.round() as Capacity;
+            new_local.supers_used = supers.round() as Capacity;
+            new_local.power_bombs_used = pbs.round() as Capacity;
 
-                let net_energy = drop_energy - cycle_energy;
-                let net_missiles = drop_missiles - cycle_missiles;
-                let net_supers = drop_supers - cycle_supers;
-                let net_pbs = drop_pbs - cycle_pbs;
-
-                if net_energy < 0.0 || net_missiles < 0.0 || net_supers < 0.0 || net_pbs < 0.0 {
-                    return None;
-                }
-
-                energy -= net_energy;
-                if energy < 0.0 {
-                    reserves += energy;
-                    energy = 0.0;
-                }
-                if reserves < 0.0 {
-                    reserves = 0.0;
-                }
-                missiles -= net_missiles;
-                if missiles < 0.0 {
-                    missiles = 0.0;
-                }
-                supers -= net_supers;
-                if supers < 0.0 {
-                    supers = 0.0;
-                }
-                pbs -= net_pbs;
-                if pbs < 0.0 {
-                    pbs = 0.0;
-                }
-
-                new_local.energy_used = energy.ceil() as Capacity;
-                new_local.reserves_used = reserves.ceil() as Capacity;
-                new_local.missiles_used = missiles.ceil() as Capacity;
-                new_local.supers_used = supers.ceil() as Capacity;
-                new_local.power_bombs_used = pbs.ceil() as Capacity;
-
-                // TODO: process multiple cycles at once, for more efficient computation.
-                num_cycles -= 1;
-            }
+            // TODO: process multiple cycles at once, for more efficient computation.
+            num_cycles -= 1;
         }
-
-        if new_local.energy_used == 0 {
-            new_local.farm_baseline_energy_used = 0;
-        }
-        if new_local.reserves_used == 0 {
-            new_local.farm_baseline_reserves_used = 0;
-        }
-        if new_local.missiles_used == 0 {
-            new_local.farm_baseline_missiles_used = 0;
-        }
-        if new_local.supers_used == 0 {
-            new_local.farm_baseline_supers_used = 0;
-        }
-        if new_local.power_bombs_used == 0 {
-            new_local.farm_baseline_power_bombs_used = 0;
-        }
-        Some(new_local)
-    } else {
-        None
     }
+
+    new_local.energy_used = Capacity::min(new_local.energy_used, local.energy_used);
+    new_local.reserves_used = Capacity::min(new_local.reserves_used, local.reserves_used);
+    new_local.missiles_used = Capacity::min(new_local.missiles_used, local.missiles_used);
+    new_local.supers_used = Capacity::min(new_local.supers_used, local.supers_used);
+    new_local.power_bombs_used = Capacity::min(new_local.power_bombs_used, local.power_bombs_used);
+
+    if new_local.energy_used == 0 && new_local.reserves_used == 0 {
+        new_local.farm_baseline_energy_used = 0;
+        new_local.farm_baseline_reserves_used = 0;
+    }
+    if new_local.missiles_used == 0 {
+        new_local.farm_baseline_missiles_used = 0;
+    }
+    if new_local.supers_used == 0 {
+        new_local.farm_baseline_supers_used = 0;
+    }
+    if new_local.power_bombs_used == 0 {
+        new_local.farm_baseline_power_bombs_used = 0;
+    }
+    Some(new_local)
 }
 
 pub fn apply_requirement(
@@ -1001,6 +1014,7 @@ pub fn apply_requirement(
     settings: &RandomizerSettings,
     difficulty: &DifficultyConfig,
     game_data: &GameData,
+    door_map: &HashMap<(RoomId, NodeId), (RoomId, NodeId)>,
     locked_door_data: &LockedDoorData,
     objectives: &[Objective],
 ) -> Option<LocalState> {
@@ -1081,45 +1095,54 @@ pub fn apply_requirement(
             }
         }
         Requirement::HeatFrames(frames) => {
-            apply_heat_frames(*frames, local, global, game_data, difficulty)
+            apply_heat_frames(*frames, local, global, game_data, difficulty, false)
         }
-        Requirement::HeatFramesWithEnergyDrops(frames, enemy_drops) => {
+        Requirement::SimpleHeatFrames(frames) => {
+            apply_heat_frames(*frames, local, global, game_data, difficulty, true)
+        }
+        Requirement::HeatFramesWithEnergyDrops(frames, enemy_drops, enemy_drops_buffed) => {
+            let drops = if settings.quality_of_life_settings.buffed_drops {
+                enemy_drops_buffed
+            } else {
+                enemy_drops
+            };
             apply_heat_frames_with_energy_drops(
-                *frames,
-                enemy_drops,
-                local,
-                global,
-                game_data,
-                settings,
-                difficulty,
-                reverse,
+                *frames, drops, local, global, game_data, settings, difficulty, reverse,
+            )
+        }
+        Requirement::LavaFramesWithEnergyDrops(frames, enemy_drops, enemy_drops_buffed) => {
+            let drops = if settings.quality_of_life_settings.buffed_drops {
+                enemy_drops_buffed
+            } else {
+                enemy_drops
+            };
+            apply_lava_frames_with_energy_drops(
+                *frames, drops, local, global, game_data, settings, difficulty, reverse,
             )
         }
         Requirement::MainHallElevatorFrames => {
             if settings.quality_of_life_settings.fast_elevators {
-                apply_heat_frames(188, local, global, game_data, difficulty)
+                apply_heat_frames(188, local, global, game_data, difficulty, true)
+            } else if !global.inventory.items[Item::Varia as usize]
+                && global.inventory.max_energy < 149
+            {
+                None
             } else {
-                if !global.inventory.items[Item::Varia as usize]
-                    && global.inventory.max_energy < 149
-                {
-                    None
-                } else {
-                    apply_heat_frames(436, local, global, game_data, difficulty)
-                }
+                apply_heat_frames(436, local, global, game_data, difficulty, true)
             }
         }
         Requirement::LowerNorfairElevatorDownFrames => {
             if settings.quality_of_life_settings.fast_elevators {
-                apply_heat_frames(30, local, global, game_data, difficulty)
+                apply_heat_frames(30, local, global, game_data, difficulty, true)
             } else {
-                apply_heat_frames(60, local, global, game_data, difficulty)
+                apply_heat_frames(60, local, global, game_data, difficulty, true)
             }
         }
         Requirement::LowerNorfairElevatorUpFrames => {
             if settings.quality_of_life_settings.fast_elevators {
-                apply_heat_frames(48, local, global, game_data, difficulty)
+                apply_heat_frames(48, local, global, game_data, difficulty, true)
             } else {
-                apply_heat_frames(108, local, global, game_data, difficulty)
+                apply_heat_frames(108, local, global, game_data, difficulty, true)
             }
         }
         Requirement::LavaFrames(frames) => {
@@ -1177,6 +1200,12 @@ pub fn apply_requirement(
             validate_energy(new_local, &global.inventory, can_manage_reserves)
         }
         Requirement::CycleFrames(frames) => {
+            let mut new_local: LocalState = local;
+            new_local.cycle_frames +=
+                (*frames as f32 * difficulty.resource_multiplier).ceil() as Capacity;
+            Some(new_local)
+        }
+        Requirement::SimpleCycleFrames(frames) => {
             let mut new_local: LocalState = local;
             new_local.cycle_frames += frames;
             Some(new_local)
@@ -1350,27 +1379,36 @@ pub fn apply_requirement(
         }
         Requirement::Farm {
             requirement,
-            drops,
+            enemy_drops,
+            enemy_drops_buffed,
             full_energy,
             full_missiles,
             full_power_bombs,
             full_supers,
-        } => apply_farm_requirement(
-            requirement,
-            drops,
-            global,
-            local,
-            reverse,
-            *full_energy,
-            *full_missiles,
-            *full_supers,
-            *full_power_bombs,
-            settings,
-            difficulty,
-            game_data,
-            locked_door_data,
-            objectives,
-        ),
+        } => {
+            let drops = if settings.quality_of_life_settings.buffed_drops {
+                enemy_drops_buffed
+            } else {
+                enemy_drops
+            };
+            apply_farm_requirement(
+                requirement,
+                drops,
+                global,
+                local,
+                reverse,
+                *full_energy,
+                *full_missiles,
+                *full_supers,
+                *full_power_bombs,
+                settings,
+                difficulty,
+                game_data,
+                door_map,
+                locked_door_data,
+                objectives,
+            )
+        }
         Requirement::EnergyRefill(limit) => {
             let limit_reserves = max(0, *limit - global.inventory.max_energy);
             if reverse {
@@ -1641,13 +1679,23 @@ pub fn apply_requirement(
             difficulty.tech[*can_be_very_patient_tech_id],
         ),
         Requirement::RidleyFight {
-            can_be_very_patient_tech_idx: can_be_very_patient_tech_id,
+            can_be_patient_tech_idx,
+            can_be_very_patient_tech_idx,
+            can_be_extremely_patient_tech_idx,
+            power_bombs,
+            g_mode,
+            stuck,
         } => apply_ridley_requirement(
             &global.inventory,
             local,
             difficulty.ridley_proficiency,
             can_manage_reserves,
-            difficulty.tech[*can_be_very_patient_tech_id],
+            difficulty.tech[*can_be_patient_tech_idx],
+            difficulty.tech[*can_be_very_patient_tech_idx],
+            difficulty.tech[*can_be_extremely_patient_tech_idx],
+            *power_bombs,
+            *g_mode,
+            *stuck,
         ),
         Requirement::BotwoonFight { second_phase } => apply_botwoon_requirement(
             &global.inventory,
@@ -1850,6 +1898,7 @@ pub fn apply_requirement(
                         settings,
                         difficulty,
                         game_data,
+                        door_map,
                         locked_door_data,
                         objectives,
                     ),
@@ -1861,6 +1910,7 @@ pub fn apply_requirement(
                         settings,
                         difficulty,
                         game_data,
+                        door_map,
                         locked_door_data,
                         objectives,
                     ),
@@ -1872,6 +1922,7 @@ pub fn apply_requirement(
                         settings,
                         difficulty,
                         game_data,
+                        door_map,
                         locked_door_data,
                         objectives,
                     ),
@@ -1886,6 +1937,7 @@ pub fn apply_requirement(
                                     settings,
                                     difficulty,
                                     game_data,
+                                    door_map,
                                     locked_door_data,
                                     objectives,
                                 )
@@ -1899,23 +1951,55 @@ pub fn apply_requirement(
                     DoorType::Gray => {
                         panic!("Unexpected gray door while processing Requirement::UnlockDoor")
                     }
+                    DoorType::Wall => None,
                 }
             } else {
                 Some(local)
             }
         }
-        Requirement::ResetRoom {
-            room_id: _,
-            node_id: _,
-        } => {
+        &Requirement::ResetRoom { room_id, node_id } => {
             // TODO: add more requirements here
             let mut new_local = local;
+
             if new_local.cycle_frames > 0 {
                 // We assume the it takes 400 frames to go through the door transition, shoot open the door, and return.
                 // The actual time can vary based on room load time and whether fast doors are enabled.
                 new_local.cycle_frames += 400;
             }
-            Some(local)
+
+            let Some(&(mut other_room_id, mut other_node_id)) = door_map.get(&(room_id, node_id))
+            else {
+                // When simulating logic for the logic pages, the `door_map` may be empty,
+                // but we still treat the requirement as satisfiable.
+                return Some(new_local);
+            };
+
+            if other_room_id == 321 {
+                // Passing through the Toilet adds to the time taken to reset the room.
+                if new_local.cycle_frames > 0 {
+                    new_local.cycle_frames += 600;
+                }
+                let opposite_node_id = match other_node_id {
+                    1 => 2,
+                    2 => 1,
+                    _ => panic!("unexpected Toilet node ID: {}", other_node_id),
+                };
+                (other_room_id, other_node_id) = door_map[&(321, opposite_node_id)];
+            }
+            let reset_req = &game_data.node_reset_room_requirement[&(other_room_id, other_node_id)];
+            new_local = apply_requirement(
+                reset_req,
+                global,
+                new_local,
+                reverse,
+                settings,
+                difficulty,
+                game_data,
+                door_map,
+                locked_door_data,
+                objectives,
+            )?;
+            Some(new_local)
         }
         Requirement::EscapeMorphLocation => {
             if settings.map_layout == "Vanilla" {
@@ -1927,7 +2011,7 @@ pub fn apply_requirement(
         Requirement::And(reqs) => {
             let mut new_local = local;
             if reverse {
-                for req in reqs.into_iter().rev() {
+                for req in reqs.iter().rev() {
                     new_local = apply_requirement(
                         req,
                         global,
@@ -1936,6 +2020,7 @@ pub fn apply_requirement(
                         settings,
                         difficulty,
                         game_data,
+                        door_map,
                         locked_door_data,
                         objectives,
                     )?;
@@ -1950,6 +2035,7 @@ pub fn apply_requirement(
                         settings,
                         difficulty,
                         game_data,
+                        door_map,
                         locked_door_data,
                         objectives,
                     )?;
@@ -1969,6 +2055,7 @@ pub fn apply_requirement(
                     settings,
                     difficulty,
                     game_data,
+                    door_map,
                     locked_door_data,
                     objectives,
                 ) {
@@ -1983,10 +2070,6 @@ pub fn apply_requirement(
             best_local
         }
     }
-}
-
-pub fn is_reachable_state(local: LocalState) -> bool {
-    local.energy_used != IMPOSSIBLE_LOCAL_STATE.energy_used
 }
 
 pub fn is_bireachable_state(
@@ -2024,8 +2107,8 @@ pub fn is_bireachable_state(
 pub fn get_bireachable_idxs(
     global: &GlobalState,
     vertex_id: usize,
-    forward: &TraverseResult,
-    reverse: &TraverseResult,
+    forward: &Traverser,
+    reverse: &Traverser,
 ) -> Option<(usize, usize)> {
     for forward_cost_idx in 0..NUM_COST_METRICS {
         for reverse_cost_idx in 0..NUM_COST_METRICS {
@@ -2042,178 +2125,272 @@ pub fn get_bireachable_idxs(
 
 // If the given vertex is reachable, returns a cost metric index (between 0 and NUM_COST_METRICS),
 // indicating a forward route. Otherwise returns None.
-pub fn get_one_way_reachable_idx(vertex_id: usize, forward: &TraverseResult) -> Option<usize> {
+pub fn get_one_way_reachable_idx(vertex_id: usize, forward: &Traverser) -> Option<usize> {
     for forward_cost_idx in 0..NUM_COST_METRICS {
         let forward_state = forward.local_states[vertex_id][forward_cost_idx];
-        if is_reachable_state(forward_state) {
+        if !forward_state.is_impossible() {
             return Some(forward_cost_idx);
         }
     }
     None
 }
 
-pub type StepTrailId = i32;
-
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct StepTrail {
     pub prev_trail_id: StepTrailId,
     pub link_idx: LinkIdx,
+    pub local_state: LocalState,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct TraversalUpdate {
+    pub vertex_id: VertexId,
+    pub old_start_trail_id: [StepTrailId; NUM_COST_METRICS],
+    pub old_local_state: [LocalState; NUM_COST_METRICS],
+    pub old_cost: [f32; NUM_COST_METRICS],
 }
 
 #[derive(Clone)]
-pub struct TraverseResult {
-    pub local_states: Vec<[LocalState; NUM_COST_METRICS]>,
-    pub cost: Vec<[f32; NUM_COST_METRICS]>,
-    pub step_trails: Vec<StepTrail>,
-    pub start_trail_ids: Vec<[StepTrailId; NUM_COST_METRICS]>,
+pub struct TraversalStep {
+    pub updates: Vec<TraversalUpdate>,
+    pub start_step_trail_idx: usize,
+    pub step_num: usize,
+    pub global_state: GlobalState,
 }
 
-pub fn traverse(
-    base_links_data: &LinksDataGroup,
-    seed_links_data: &LinksDataGroup,
-    init_opt: Option<TraverseResult>,
-    global: &GlobalState,
-    init_local: LocalState,
-    num_vertices: usize,
-    start_vertex_id: usize,
-    reverse: bool,
-    settings: &RandomizerSettings,
-    difficulty: &DifficultyConfig,
-    game_data: &GameData,
-    locked_door_data: &LockedDoorData,
-    objectives: &[Objective],
-) -> TraverseResult {
-    let mut modified_vertices: HashMap<usize, [bool; NUM_COST_METRICS]> = HashMap::new();
-    let mut result: TraverseResult;
+#[derive(Clone)]
+pub struct Traverser {
+    pub reverse: bool,
+    pub step_trails: Vec<StepTrail>,
+    pub start_trail_ids: Vec<[StepTrailId; NUM_COST_METRICS]>,
+    pub local_states: Vec<[LocalState; NUM_COST_METRICS]>,
+    pub cost: Vec<[f32; NUM_COST_METRICS]>,
+    pub step: TraversalStep,
+    pub past_steps: Vec<TraversalStep>,
+}
 
-    if let Some(init) = init_opt {
-        for (v, cost) in init.cost.iter().enumerate() {
-            let valid = cost.map(|x| f32::is_finite(x));
+impl Traverser {
+    pub fn new(num_vertices: usize, reverse: bool, global_state: &GlobalState) -> Self {
+        Self {
+            reverse,
+            step_trails: Vec::with_capacity(num_vertices * 10),
+            start_trail_ids: vec![[-1; NUM_COST_METRICS]; num_vertices],
+            local_states: vec![[IMPOSSIBLE_LOCAL_STATE; NUM_COST_METRICS]; num_vertices],
+            cost: vec![[f32::INFINITY; NUM_COST_METRICS]; num_vertices],
+            step: TraversalStep {
+                updates: vec![],
+                start_step_trail_idx: 0,
+                step_num: 0,
+                global_state: global_state.clone(),
+            },
+            past_steps: vec![],
+        }
+    }
+
+    fn add_trail(
+        &mut self,
+        vertex_id: VertexId,
+        start_trail_id: [StepTrailId; NUM_COST_METRICS],
+        local_state: [LocalState; NUM_COST_METRICS],
+        cost: [f32; NUM_COST_METRICS],
+    ) {
+        let u = TraversalUpdate {
+            vertex_id,
+            old_start_trail_id: self.start_trail_ids[vertex_id],
+            old_local_state: self.local_states[vertex_id],
+            old_cost: self.cost[vertex_id],
+        };
+        self.start_trail_ids[vertex_id] = start_trail_id;
+        self.local_states[vertex_id] = local_state;
+        self.cost[vertex_id] = cost;
+
+        self.step.updates.push(u);
+    }
+
+    pub fn add_origin(
+        &mut self,
+        init_local: LocalState,
+        start_vertex_id: usize,
+        global: &GlobalState,
+    ) {
+        let start_trail_ids = [-1; NUM_COST_METRICS];
+        let local_state = [init_local; NUM_COST_METRICS];
+        let cost = compute_cost(init_local, &global.inventory, self.reverse);
+        self.add_trail(start_vertex_id, start_trail_ids, local_state, cost);
+    }
+
+    pub fn finish_step(&mut self, step_num: usize) {
+        let mut step = TraversalStep {
+            updates: vec![],
+            start_step_trail_idx: self.step_trails.len(),
+            step_num: 0,
+            global_state: self.step.global_state.clone(),
+        };
+        std::mem::swap(&mut self.step, &mut step);
+        step.step_num = step_num;
+        self.past_steps.push(step);
+    }
+
+    pub fn pop_step(&mut self) {
+        let step = self.past_steps.pop().unwrap();
+        for u in step.updates.iter().rev() {
+            self.start_trail_ids[u.vertex_id] = u.old_start_trail_id;
+            self.local_states[u.vertex_id] = u.old_local_state;
+            self.cost[u.vertex_id] = u.old_cost;
+        }
+        self.step_trails.truncate(step.start_step_trail_idx);
+        self.step.start_step_trail_idx = self.step_trails.len();
+    }
+
+    pub fn traverse(
+        &mut self,
+        base_links_data: &LinksDataGroup,
+        seed_links_data: &LinksDataGroup,
+        global: &GlobalState,
+        settings: &RandomizerSettings,
+        difficulty: &DifficultyConfig,
+        game_data: &GameData,
+        door_map: &HashMap<(RoomId, NodeId), (RoomId, NodeId)>,
+        locked_door_data: &LockedDoorData,
+        objectives: &[Objective],
+        step_num: usize,
+    ) {
+        self.step.global_state = global.clone();
+        let mut modified_vertices: HashMap<usize, [bool; NUM_COST_METRICS]> = HashMap::new();
+
+        for (v, cost) in self.cost.iter().enumerate() {
+            let valid = cost.map(f32::is_finite);
             if valid.iter().any(|&x| x) {
                 modified_vertices.insert(v, valid);
             }
         }
-        result = init;
-    } else {
-        result = TraverseResult {
-            local_states: vec![[IMPOSSIBLE_LOCAL_STATE; NUM_COST_METRICS]; num_vertices],
-            cost: vec![[f32::INFINITY; NUM_COST_METRICS]; num_vertices],
-            step_trails: Vec::with_capacity(num_vertices * 10),
-            start_trail_ids: vec![[-1; NUM_COST_METRICS]; num_vertices],
+
+        let base_links_by_src: &Vec<Vec<(StepTrailId, Link)>> = if self.reverse {
+            &base_links_data.links_by_dst
+        } else {
+            &base_links_data.links_by_src
         };
-        let first_metric = {
-            let mut x = [false; NUM_COST_METRICS];
-            x[0] = true;
-            x
+        let seed_links_by_src: &Vec<Vec<(StepTrailId, Link)>> = if self.reverse {
+            &seed_links_data.links_by_dst
+        } else {
+            &seed_links_data.links_by_src
         };
-        result.local_states[start_vertex_id] = [init_local; NUM_COST_METRICS];
-        result.start_trail_ids[start_vertex_id] = [-1; NUM_COST_METRICS];
-        result.cost[start_vertex_id] = compute_cost(init_local, &global.inventory, reverse);
-        modified_vertices.insert(start_vertex_id, first_metric);
-    }
 
-    let base_links_by_src: &Vec<Vec<(LinkIdx, Link)>> = if reverse {
-        &base_links_data.links_by_dst
-    } else {
-        &base_links_data.links_by_src
-    };
-    let seed_links_by_src: &Vec<Vec<(LinkIdx, Link)>> = if reverse {
-        &seed_links_data.links_by_dst
-    } else {
-        &seed_links_data.links_by_src
-    };
+        while !modified_vertices.is_empty() {
+            let mut new_modified_vertices: HashMap<usize, [bool; NUM_COST_METRICS]> =
+                HashMap::new();
+            let modified_vertices_vec = {
+                // Process the vertices in sorted order, to make the traversal deterministic.
+                let mut m: Vec<(usize, [bool; NUM_COST_METRICS])> =
+                    modified_vertices.into_iter().collect();
+                m.sort();
+                m
+            };
+            for &(src_id, modified_costs) in &modified_vertices_vec {
+                let src_local_state_arr = self.local_states[src_id];
+                let src_trail_id_arr = self.start_trail_ids[src_id];
+                for src_cost_idx in 0..NUM_COST_METRICS {
+                    if !modified_costs[src_cost_idx] {
+                        continue;
+                    }
+                    let src_local_state = src_local_state_arr[src_cost_idx];
+                    if src_cost_idx > 0 && src_local_state == src_local_state_arr[src_cost_idx - 1]
+                    {
+                        continue;
+                    }
+                    let src_trail_id = src_trail_id_arr[src_cost_idx];
+                    let all_src_links = base_links_by_src[src_id]
+                        .iter()
+                        .chain(seed_links_by_src[src_id].iter());
+                    for &(link_idx, ref link) in all_src_links {
+                        let dst_id = link.to_vertex_id;
+                        let dst_old_cost_arr = self.cost[dst_id];
+                        if let Some(dst_new_local_state) = apply_link(
+                            link,
+                            global,
+                            src_local_state,
+                            self.reverse,
+                            settings,
+                            difficulty,
+                            game_data,
+                            door_map,
+                            locked_door_data,
+                            objectives,
+                        ) {
+                            let dst_new_cost_arr =
+                                compute_cost(dst_new_local_state, &global.inventory, self.reverse);
 
-    while modified_vertices.len() > 0 {
-        let mut new_modified_vertices: HashMap<usize, [bool; NUM_COST_METRICS]> = HashMap::new();
-        for (&src_id, &modified_costs) in &modified_vertices {
-            let src_local_state_arr = result.local_states[src_id];
-            let src_trail_id_arr = result.start_trail_ids[src_id];
-            for src_cost_idx in 0..NUM_COST_METRICS {
-                if !modified_costs[src_cost_idx] {
-                    continue;
-                }
-                let src_trail_id = src_trail_id_arr[src_cost_idx];
-                let src_local_state = src_local_state_arr[src_cost_idx];
-                let all_src_links = base_links_by_src[src_id]
-                    .iter()
-                    .chain(seed_links_by_src[src_id].iter());
-                for &(link_idx, ref link) in all_src_links {
-                    let dst_id = link.to_vertex_id;
-                    let dst_old_cost_arr = result.cost[dst_id];
-                    if let Some(dst_new_local_state) = apply_link(
-                        &link,
-                        global,
-                        src_local_state,
-                        reverse,
-                        settings,
-                        difficulty,
-                        game_data,
-                        locked_door_data,
-                        objectives,
-                    ) {
-                        let dst_new_cost_arr =
-                            compute_cost(dst_new_local_state, &global.inventory, reverse);
-
-                        let new_step_trail = StepTrail {
-                            prev_trail_id: src_trail_id,
-                            link_idx,
-                        };
-                        let new_trail_id = result.step_trails.len() as StepTrailId;
-                        let mut any_improvement: bool = false;
-                        let mut improved_arr: [bool; NUM_COST_METRICS] = new_modified_vertices
-                            .get(&dst_id)
-                            .map(|x| *x)
-                            .unwrap_or([false; NUM_COST_METRICS]);
-                        for dst_cost_idx in 0..NUM_COST_METRICS {
-                            if dst_new_cost_arr[dst_cost_idx] < dst_old_cost_arr[dst_cost_idx] {
-                                result.local_states[dst_id][dst_cost_idx] = dst_new_local_state;
-                                result.start_trail_ids[dst_id][dst_cost_idx] = new_trail_id;
-                                result.cost[dst_id][dst_cost_idx] = dst_new_cost_arr[dst_cost_idx];
-                                if !any_improvement {
-                                    improved_arr[dst_cost_idx] = true;
-                                }
-                                any_improvement = true;
-                            }
-                        }
-                        if any_improvement {
-                            let check_value = |name: &'static str, v: Capacity| {
-                                if v < 0 {
-                                    panic!("Resource {} is negative, with value {}: old_state={:?}, new_state={:?}, link={:?}", 
-                                        name, v, src_local_state, dst_new_local_state, link);
-                                }
+                            let new_step_trail = StepTrail {
+                                prev_trail_id: src_trail_id,
+                                local_state: dst_new_local_state,
+                                link_idx,
                             };
-                            check_value("energy", dst_new_local_state.energy_used);
-                            check_value("reserves", dst_new_local_state.reserves_used);
-                            check_value("missiles", dst_new_local_state.missiles_used);
-                            check_value("supers", dst_new_local_state.supers_used);
-                            check_value("power_bombs", dst_new_local_state.power_bombs_used);
-                            check_value(
-                                "shinecharge_frames",
-                                dst_new_local_state.shinecharge_frames_remaining,
-                            );
-                            new_modified_vertices.insert(dst_id, improved_arr);
-                            result.step_trails.push(new_step_trail);
+                            let new_trail_id = self.step_trails.len() as StepTrailId;
+                            let mut any_improvement: bool = false;
+                            let mut improved_arr: [bool; NUM_COST_METRICS] = new_modified_vertices
+                                .get(&dst_id)
+                                .copied()
+                                .unwrap_or([false; NUM_COST_METRICS]);
+
+                            let mut new_local_state = self.local_states[dst_id];
+                            let mut new_start_trail_ids = self.start_trail_ids[dst_id];
+                            let mut new_cost = self.cost[dst_id];
+
+                            for dst_cost_idx in 0..NUM_COST_METRICS {
+                                if dst_new_cost_arr[dst_cost_idx] < dst_old_cost_arr[dst_cost_idx] {
+                                    new_local_state[dst_cost_idx] = dst_new_local_state;
+                                    new_start_trail_ids[dst_cost_idx] = new_trail_id;
+                                    new_cost[dst_cost_idx] = dst_new_cost_arr[dst_cost_idx];
+                                    improved_arr[dst_cost_idx] = true;
+                                    any_improvement = true;
+                                }
+                            }
+                            if any_improvement {
+                                let check_value = |name: &'static str, v: Capacity| {
+                                    if v < 0 {
+                                        panic!(
+                                            "Resource {name} is negative, with value {v}: old_state={src_local_state:?}, new_state={dst_new_local_state:?}, link={link:?}"
+                                        );
+                                    }
+                                };
+                                check_value("energy", dst_new_local_state.energy_used);
+                                check_value("reserves", dst_new_local_state.reserves_used);
+                                check_value("missiles", dst_new_local_state.missiles_used);
+                                check_value("supers", dst_new_local_state.supers_used);
+                                check_value("power_bombs", dst_new_local_state.power_bombs_used);
+                                check_value(
+                                    "shinecharge_frames",
+                                    dst_new_local_state.shinecharge_frames_remaining,
+                                );
+                                self.add_trail(
+                                    dst_id,
+                                    new_start_trail_ids,
+                                    new_local_state,
+                                    new_cost,
+                                );
+                                self.step_trails.push(new_step_trail);
+                                new_modified_vertices.insert(dst_id, improved_arr);
+                            }
                         }
                     }
                 }
             }
+            modified_vertices = new_modified_vertices;
         }
-        modified_vertices = new_modified_vertices;
+        self.finish_step(step_num);
     }
-
-    result
 }
 
-pub fn get_spoiler_route(
-    traverse_result: &TraverseResult,
+pub fn get_spoiler_trail_ids(
+    traverser: &Traverser,
     vertex_id: usize,
     cost_idx: usize,
-) -> Vec<LinkIdx> {
-    let mut trail_id = traverse_result.start_trail_ids[vertex_id][cost_idx];
-    let mut steps: Vec<LinkIdx> = Vec::new();
+) -> Vec<StepTrailId> {
+    let mut trail_id = traverser.start_trail_ids[vertex_id][cost_idx];
+    let mut steps: Vec<StepTrailId> = Vec::new();
     while trail_id != -1 {
-        let step_trail = &traverse_result.step_trails[trail_id as usize];
-        steps.push(step_trail.link_idx);
+        let step_trail = &traverser.step_trails[trail_id as usize];
+        steps.push(trail_id);
         trail_id = step_trail.prev_trail_id;
     }
     steps.reverse();

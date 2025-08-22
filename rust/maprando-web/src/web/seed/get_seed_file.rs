@@ -1,5 +1,5 @@
-use crate::{web::AppData, VISUALIZER_PATH};
-use actix_web::{get, web, HttpResponse, Responder};
+use crate::{VISUALIZER_PATH, web::AppData};
+use actix_web::{HttpResponse, Responder, get, web};
 use anyhow::{Context, Result};
 use askama::Template;
 use log::error;
@@ -16,7 +16,7 @@ async fn get_seed_file(
 ) -> impl Responder {
     let seed_name = &info.0;
     let filename = &info.1;
-    println!("get_seed_file {}", filename);
+    println!("get_seed_file {filename}");
 
     let data_result: Result<Vec<u8>> = if filename.starts_with("visualizer/")
         && app_data.static_visualizer
@@ -43,7 +43,7 @@ async fn get_seed_file(
         }
         // TODO: Use more refined error handling instead of always returning 404:
         Err(err) => {
-            error!("{}", err.to_string());
+            error!("{err}");
             HttpResponse::NotFound().body(FileNotFoundTemplate {}.render().unwrap())
         }
     }

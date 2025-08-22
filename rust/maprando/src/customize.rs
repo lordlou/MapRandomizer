@@ -4,12 +4,12 @@ pub mod room_palettes;
 pub mod samus_sprite;
 pub mod vanilla_music;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use std::cmp::min;
 use std::path::Path;
 
 use crate::patch::glowpatch_writer::write_glowpatch;
-use crate::patch::{apply_ips_patch, snes2pc, write_credits_big_char, Rom};
+use crate::patch::{Rom, apply_ips_patch, snes2pc, write_credits_big_char};
 use maprando_game::{GameData, Map};
 use mosaic::MosaicTheme;
 use retiling::apply_retiling;
@@ -138,10 +138,18 @@ pub enum FlashingSetting {
     Reduced,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ItemDotChange {
+    Fade,
+    Disappear,
+}
+
 #[derive(Debug)]
 pub struct CustomizeSettings {
     pub samus_sprite: Option<String>,
     pub etank_color: Option<(u8, u8, u8)>,
+    pub item_dot_change: ItemDotChange,
+    pub transition_letters: bool,
     pub reserve_hud_style: bool,
     pub vanilla_screw_attack_animation: bool,
     pub palette_theme: PaletteTheme,
@@ -151,7 +159,30 @@ pub struct CustomizeSettings {
     pub disable_beeping: bool,
     pub shaking: ShakingSetting,
     pub flashing: FlashingSetting,
+    pub room_names: bool,
     pub controller_config: ControllerConfig,
+}
+
+impl Default for CustomizeSettings {
+    fn default() -> Self {
+        Self {
+            samus_sprite: Some("samus_vanilla".to_string()),
+            etank_color: None,
+            item_dot_change: ItemDotChange::Fade,
+            transition_letters: true,
+            reserve_hud_style: true,
+            vanilla_screw_attack_animation: true,
+            room_names: true,
+            palette_theme: PaletteTheme::Vanilla,
+            tile_theme: TileTheme::AreaThemed,
+            door_theme: DoorTheme::Vanilla,
+            music: MusicSettings::AreaThemed,
+            disable_beeping: false,
+            shaking: ShakingSetting::Vanilla,
+            flashing: FlashingSetting::Vanilla,
+            controller_config: ControllerConfig::default(),
+        }
+    }
 }
 
 fn remove_mother_brain_flashing(rom: &mut Rom) -> Result<()> {
@@ -174,7 +205,7 @@ fn apply_custom_samus_sprite(
             .samus_sprite
             .clone()
             .unwrap_or("samus_vanilla".to_string());
-        let patch_path_str = format!("../patches/samus_sprites/{}.ips", sprite_name);
+        let patch_path_str = format!("../patches/samus_sprites/{sprite_name}.ips");
         apply_ips_patch(rom, Path::new(&patch_path_str))?;
 
         if settings.vanilla_screw_attack_animation {
@@ -197,16 +228,16 @@ fn apply_custom_samus_sprite(
                         .unwrap_or(info.display_name.clone());
                     for c in credits_name.chars() {
                         let c = c.to_ascii_uppercase();
-                        if (c >= 'A' && c <= 'Z') || c == ' ' {
+                        if c.is_ascii_uppercase() || c == ' ' {
                             chars.push(c);
                         }
                     }
                     chars.extend(" SPRITE".chars());
                     let mut addr =
-                        snes2pc(0xceb240 + (234 - 128) * 0x40) + 0x20 - (chars.len() + 1) / 2 * 2;
+                        snes2pc(0xceb240 + (234 - 128) * 0x40) + 0x20 - chars.len().div_ceil(2) * 2;
                     for c in chars {
                         let color_palette = 0x0400;
-                        if c >= 'A' && c <= 'Z' {
+                        if c.is_ascii_uppercase() {
                             rom.write_u16(addr, (c as isize - 'A' as isize) | color_palette)?;
                         }
                         addr += 2;
@@ -217,12 +248,12 @@ fn apply_custom_samus_sprite(
                     let author = info.authors.join(", ");
                     for c in author.chars() {
                         let c = c.to_ascii_uppercase();
-                        if (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' {
+                        if c.is_ascii_uppercase() || c.is_ascii_digit() || c == ' ' {
                             chars.push(c);
                         }
                     }
                     let mut addr =
-                        snes2pc(0xceb240 + (235 - 128) * 0x40) + 0x20 - (chars.len() + 1) / 2 * 2;
+                        snes2pc(0xceb240 + (235 - 128) * 0x40) + 0x20 - chars.len().div_ceil(2) * 2;
                     for c in chars {
                         write_credits_big_char(rom, c, addr)?;
                         addr += 2;
@@ -269,7 +300,7 @@ fn get_button_mask(mut controller_button: ControllerButton, default: ControllerB
         ControllerButton::R => 0x0010,
         ControllerButton::Select => 0x2000,
         ControllerButton::Start => 0x1000,
-        _ => panic!("Unexpected controller button: {:?}", controller_button),
+        _ => panic!("Unexpected controller button: {controller_button:?}"),
     }
 }
 
@@ -322,7 +353,7 @@ fn apply_controller_config(rom: &mut Rom, controller_config: &ControllerConfig) 
 pub fn customize_rom(
     rom: &mut Rom,
     orig_rom: &Rom,
-    map: &Option<Map>,
+    map: &Map,
     settings: &CustomizeSettings,
     game_data: &GameData,
     samus_sprite_categories: &[SamusSpriteCategory],
@@ -367,6 +398,11 @@ pub fn customize_rom(
     }
     if settings.reserve_hud_style {
         apply_ips_patch(rom, Path::new("../patches/ips/reserve_hud.ips"))?;
+    }
+    if settings.room_names {
+        rom.write_u16(snes2pc(0x82FFFA), 1)?;
+    } else {
+        rom.write_u16(snes2pc(0x82FFFA), 0)?;
     }
     match settings.music {
         MusicSettings::AreaThemed => {}

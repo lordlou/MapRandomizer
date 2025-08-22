@@ -1,15 +1,16 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use log::info;
 use maprando::customize::samus_sprite::{SamusSpriteCategory, SamusSpriteInfo};
-use maprando::customize::{customize_rom, ControllerConfig, CustomizeSettings, MusicSettings};
-use maprando::patch::make_rom;
+use maprando::customize::{ControllerConfig, CustomizeSettings, MusicSettings};
 use maprando::patch::Rom;
+use maprando::patch::make_rom;
 use maprando::preset::PresetData;
 use maprando::randomize::{
-    get_difficulty_tiers, get_objectives, randomize_doors, Randomization, Randomizer, SpoilerLog,
+    Randomization, Randomizer, get_difficulty_tiers, get_objectives, randomize_doors,
 };
 use maprando::settings::{RandomizerSettings, StartLocationMode};
+use maprando::spoiler_log::SpoilerLog;
 use maprando::spoiler_map;
 use maprando_game::{GameData, Map};
 use rand::{RngCore, SeedableRng};
@@ -67,22 +68,22 @@ fn get_settings(args: &Args, preset_data: &PresetData) -> Result<RandomizerSetti
     let mut settings = preset_data.default_preset.clone();
 
     if let Some(preset) = &args.preset {
-        let path = format!("data/presets/full-settings/{}.json", preset);
+        let path = format!("data/presets/full-settings/{preset}.json");
         let s = std::fs::read_to_string(path)?;
         settings = serde_json::from_str(&s)?;
     }
     if let Some(skill_preset) = &args.skill_preset {
-        let path = format!("data/presets/skill-assumptions/{}.json", skill_preset);
+        let path = format!("data/presets/skill-assumptions/{skill_preset}.json");
         let s = std::fs::read_to_string(path)?;
         settings.skill_assumption_settings = serde_json::from_str(&s)?;
     }
     if let Some(item_preset) = &args.item_preset {
-        let path = format!("data/presets/item-progression/{}.json", item_preset);
+        let path = format!("data/presets/item-progression/{item_preset}.json");
         let s = std::fs::read_to_string(path)?;
         settings.item_progression_settings = serde_json::from_str(&s)?;
     }
     if let Some(qol_preset) = &args.qol_preset {
-        let path = format!("data/presets/item-quality-of-life/{}.json", qol_preset);
+        let path = format!("data/presets/item-quality-of-life/{qol_preset}.json");
         let s = std::fs::read_to_string(path)?;
         settings.quality_of_life_settings = serde_json::from_str(&s)?;
     }
@@ -99,15 +100,14 @@ fn get_randomization(
     let implicit_tech = &preset_data.tech_by_difficulty["Implicit"];
     let implicit_notables = &preset_data.notables_by_difficulty["Implicit"];
     let difficulty_tiers = get_difficulty_tiers(
-        &settings,
+        settings,
         &preset_data.difficulty_tiers,
         game_data,
         implicit_tech,
         implicit_notables,
     );
-    let single_map: Option<Map>;
     let mut filenames: Vec<String> = Vec::new();
-    if args.map.is_dir() {
+    let single_map: Option<Map> = if args.map.is_dir() {
         for path in std::fs::read_dir(&args.map)
             .with_context(|| format!("Unable to read maps in directory {}", args.map.display()))?
         {
@@ -119,15 +119,15 @@ fn get_randomization(
             filenames.len(),
             args.map.display()
         );
-        single_map = None;
+        None
     } else {
         let map_string = std::fs::read_to_string(&args.map)
             .with_context(|| format!("Unable to read map file at {}", args.map.display()))?;
-        single_map = Some(
+        Some(
             serde_json::from_str(&map_string)
                 .with_context(|| format!("Unable to parse map file at {}", args.map.display()))?,
-        );
-    }
+        )
+    };
     let root_seed = match args.random_seed {
         Some(s) => s,
         None => (rand::rngs::StdRng::from_entropy().next_u64() & 0xFFFFFFFF) as usize,
@@ -139,10 +139,7 @@ fn get_randomization(
     let max_attempts = if args.item_placement_seed.is_some() {
         1
     } else {
-        match args.max_attempts {
-            Some(ma) => ma,
-            None => 10000, // Same as maprando-web.
-        }
+        args.max_attempts.unwrap_or(10000) // Same as maprando-web.
     };
     let max_attempts_per_map = if settings.start_location_settings.mode == StartLocationMode::Random
         && game_data.start_locations.len() > 1
@@ -172,7 +169,7 @@ fn get_randomization(
             Some(s) => s,
             None => (rng.next_u64() & 0xFFFFFFFF) as usize,
         };
-        let objectives = get_objectives(&settings, &mut rng);
+        let objectives = get_objectives(settings, Some(&map), game_data, &mut rng);
         let locked_door_data = randomize_doors(game_data, &map, settings, &objectives, door_seed);
         let randomizer = Randomizer::new(
             &map,
@@ -180,7 +177,7 @@ fn get_randomization(
             objectives,
             settings,
             &difficulty_tiers,
-            &game_data,
+            game_data,
             &game_data.base_links_data,
             &mut rng,
         );
@@ -190,16 +187,15 @@ fn get_randomization(
                 Some(s) => s,
                 None => (rng.next_u64() & 0xFFFFFFFF) as usize,
             };
-            info!("Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_seed}, item placement seed={item_seed}");
+            info!(
+                "Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_seed}, item placement seed={item_seed}"
+            );
             match randomizer.randomize(attempt_num, item_seed, 1) {
                 Ok(randomization) => {
                     return Ok(randomization);
                 }
                 Err(e) => {
-                    info!(
-                        "Attempt {attempt_num}/{max_attempts}: Randomization failed: {}",
-                        e
-                    );
+                    info!("Attempt {attempt_num}/{max_attempts}: Randomization failed: {e}");
                 }
             }
         }
@@ -213,34 +209,12 @@ fn main() -> Result<()> {
         .init();
 
     let args = Args::parse();
-    let sm_json_data_path = Path::new("../sm-json-data");
-    let room_geometry_path = Path::new("../room_geometry.json");
-    let escape_timings_path = Path::new("data/escape_timings.json");
-    let start_locations_path = Path::new("data/start_locations.json");
-    let hub_locations_path = Path::new("data/hub_locations.json");
-    let reduced_flashing_path = Path::new("data/reduced_flashing.json");
-    let strat_videos_path = Path::new("data/strat_videos.json");
-    let title_screen_path = Path::new("../TitleScreen/Images");
-    let map_tiles_path = Path::new("data/map_tiles.json");
-    let mut game_data = GameData::load(
-        sm_json_data_path,
-        room_geometry_path,
-        escape_timings_path,
-        start_locations_path,
-        hub_locations_path,
-        title_screen_path,
-        reduced_flashing_path,
-        strat_videos_path,
-        map_tiles_path,
-    )?;
+    let mut game_data = GameData::load()?;
 
     if let Some(start_location_name) = &args.start_location {
-        game_data.start_locations = game_data
+        game_data
             .start_locations
-            .iter()
-            .cloned()
-            .filter(|x| &x.name == start_location_name)
-            .collect();
+            .retain(|x| &x.name == start_location_name);
     }
 
     let tech_path = Path::new("data/tech_data.json");
@@ -257,13 +231,16 @@ fn main() -> Result<()> {
     let orig_rom = Rom::load(&args.input_rom)?;
     let mut input_rom = orig_rom.clone();
     input_rom.data.resize(0x400000, 0);
-    let mut output_rom = make_rom(&input_rom, &settings, &randomization, &game_data)?;
+
     let customize_settings = CustomizeSettings {
         samus_sprite: Some("samus_vanilla".to_string()),
         // samus_sprite: None,
         etank_color: None,
+        item_dot_change: maprando::customize::ItemDotChange::Fade,
+        transition_letters: true,
         reserve_hud_style: true,
         vanilla_screw_attack_animation: true,
+        room_names: true,
         palette_theme: maprando::customize::PaletteTheme::AreaThemed,
         tile_theme: maprando::customize::TileTheme::Vanilla,
         door_theme: maprando::customize::DoorTheme::Vanilla,
@@ -274,11 +251,12 @@ fn main() -> Result<()> {
         flashing: maprando::customize::FlashingSetting::Vanilla,
         controller_config: ControllerConfig::default(),
     };
-    customize_rom(
-        &mut output_rom,
-        &orig_rom,
-        &Some(randomization.map.clone()),
+
+    let output_rom = make_rom(
+        &input_rom,
+        &settings,
         &customize_settings,
+        &randomization,
         &game_data,
         &[SamusSpriteCategory {
             category_name: "category".to_string(),
@@ -289,7 +267,7 @@ fn main() -> Result<()> {
                 authors: vec!["Nintendo".to_string()],
             }],
         }],
-        &vec![],
+        &[],
     )?;
 
     // Save the outputs:
@@ -307,7 +285,7 @@ fn main() -> Result<()> {
         std::fs::write(output_spoiler_log_path, spoiler_str)?;
     }
 
-    let spoiler_maps = spoiler_map::get_spoiler_map(&randomization, &game_data, &settings)?;
+    let spoiler_maps = spoiler_map::get_spoiler_map(&randomization, &game_data, &settings, true)?;
 
     if let Some(output_spoiler_map_explored_path) = &args.output_spoiler_map_explored {
         println!(

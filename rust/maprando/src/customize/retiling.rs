@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use super::mosaic::MosaicTheme;
-use crate::patch::{apply_ips_patch, bps::BPSPatch, get_room_state_ptrs, snes2pc, Rom};
+use crate::patch::{Rom, apply_ips_patch, bps::BPSPatch, get_room_state_ptrs, snes2pc};
 use anyhow::{Context, Result};
 use hashbrown::HashMap;
 use maprando_game::{DoorPtr, GameData, Map, RoomPtr, RoomStateIdx};
@@ -13,7 +13,7 @@ const BPS_PATCH_PATH: &str = "../patches/mosaic";
 
 fn apply_bps_patch(rom: &mut Rom, orig_rom: &Rom, filename: &str) -> Result<()> {
     let path = Path::new(BPS_PATCH_PATH).join(filename);
-    let patch_bytes = std::fs::read(path).with_context(|| format!("Loading {}", filename))?;
+    let patch_bytes = std::fs::read(path).with_context(|| format!("Loading {filename}"))?;
     let patch = BPSPatch::new(patch_bytes)?;
     patch.apply(&orig_rom.data, &mut rom.data);
     Ok(())
@@ -27,15 +27,15 @@ fn apply_toilet(rom: &mut Rom, orig_rom: &Rom, theme_name: &str) -> Result<()> {
     let room_ptr = rom.read_u16(toilet_intersecting_room_ptr_addr)? + 0x70000;
     let patch_filename = if room_ptr == 0x7FFFF {
         // Unspecified room means this is vanilla map, so leave the Toilet alone.
-        format!("{}-VanillaMapTransit.bps", theme_name)
+        format!("{theme_name}-VanillaMapTransit.bps")
     } else {
         let x = rom.read_u8(toilet_rel_x_addr)? as i8 as isize;
         let y = rom.read_u8(toilet_rel_y_addr)? as i8 as isize;
-        format!("{}-{:X}-Transit-{}-{}.bps", theme_name, room_ptr, x, y)
+        format!("{theme_name}-{room_ptr:X}-Transit-{x}-{y}.bps")
     };
-    println!("toilet patch: {}", patch_filename);
+    println!("toilet patch: {patch_filename}");
     apply_bps_patch(rom, orig_rom, &patch_filename)
-        .context(format!("Applying Toilet patch: {}", patch_filename))?;
+        .context(format!("Applying Toilet patch: {patch_filename}"))?;
 
     Ok(())
 }
@@ -43,7 +43,7 @@ fn apply_toilet(rom: &mut Rom, orig_rom: &Rom, theme_name: &str) -> Result<()> {
 pub fn apply_retiling(
     rom: &mut Rom,
     orig_rom: &Rom,
-    map: &Option<Map>,
+    map: &Map,
     game_data: &GameData,
     theme: &TileTheme,
     mosaic_themes: &[MosaicTheme],
@@ -59,13 +59,13 @@ pub fn apply_retiling(
         "in_place_level_data",
     ];
     for name in &patch_names {
-        let patch_path_str = format!("../patches/ips/{}.ips", name);
+        let patch_path_str = format!("../patches/ips/{name}.ips");
         apply_ips_patch(rom, Path::new(&patch_path_str))?;
     }
 
     let mut fx_door_ptr_map: HashMap<(RoomPtr, RoomStateIdx, DoorPtr), DoorPtr> = HashMap::new();
     for &room_ptr in game_data.raw_room_id_by_ptr.keys() {
-        let state_ptrs = get_room_state_ptrs(&rom, room_ptr)?;
+        let state_ptrs = get_room_state_ptrs(rom, room_ptr)?;
         for (state_idx, (_event_ptr, state_ptr)) in state_ptrs.iter().enumerate() {
             let orig_fx_ptr = orig_rom.read_u16(state_ptr + 6)? as usize;
             let fx_ptr = rom.read_u16(state_ptr + 6)? as usize;
@@ -93,40 +93,33 @@ pub fn apply_retiling(
             TileTheme::Vanilla => "Base".to_string(),
             TileTheme::Constant(s) => s.clone(),
             TileTheme::AreaThemed => {
-                if let Some(map) = map {
-                    let area = map.area[room_idx];
-                    let sub_area = map.subarea[room_idx];
-                    let sub_sub_area = if map.subsubarea.len() > 0 {
-                        map.subsubarea[room_idx]
-                    } else {
-                        // For backward compatibility, use subsubarea 0 for old maps that didn't have a subsubarea.
-                        0
-                    };
-                    match (area, sub_area, sub_sub_area) {
-                        (0, 0, _) => "OuterCrateria",
-                        (0, 1, 0) => "InnerCrateria",
-                        (0, 1, 1) => "BlueBrinstar",
-                        (1, 0, 0) => "GreenBrinstar",
-                        (1, 0, 1) => "PinkBrinstar",
-                        (1, 1, _) => "RedBrinstar",
-                        (2, 0, _) => "UpperNorfair",
-                        (2, 1, _) => "LowerNorfair",
-                        (3, _, _) => "WreckedShip",
-                        (4, 0, _) => "WestMaridia",
-                        (4, 1, _) => "YellowMaridia",
-                        (5, 0, _) => "MetroidHabitat",
-                        (5, 1, _) => "MechaTourian",
-                        _ => panic!(
-                            "unexpected area/subarea/subsubarea combination: ({}, {}, {})",
-                            area, sub_area, sub_sub_area
-                        ),
-                    }
-                    .to_string()
+                let area = map.area[room_idx];
+                let sub_area = map.subarea[room_idx];
+                let sub_sub_area = if !map.subsubarea.is_empty() {
+                    map.subsubarea[room_idx]
                 } else {
-                    // Fall back to Base theme in case map is unavailable
-                    // (since it wasn't saved off in earlier randomizer versions)
-                    "Base".to_string()
+                    // For backward compatibility, use subsubarea 0 for old maps that didn't have a subsubarea.
+                    0
+                };
+                match (area, sub_area, sub_sub_area) {
+                    (0, 0, _) => "OuterCrateria",
+                    (0, 1, 0) => "InnerCrateria",
+                    (0, 1, 1) => "BlueBrinstar",
+                    (1, 0, 0) => "GreenBrinstar",
+                    (1, 0, 1) => "PinkBrinstar",
+                    (1, 1, _) => "RedBrinstar",
+                    (2, 0, _) => "UpperNorfair",
+                    (2, 1, _) => "LowerNorfair",
+                    (3, _, _) => "WreckedShip",
+                    (4, 0, _) => "WestMaridia",
+                    (4, 1, _) => "YellowMaridia",
+                    (5, 0, _) => "MetroidHabitat",
+                    (5, 1, _) => "MechaTourian",
+                    _ => panic!(
+                        "unexpected area/subarea/subsubarea combination: ({area}, {sub_area}, {sub_sub_area})"
+                    ),
                 }
+                .to_string()
             }
             TileTheme::Scrambled => {
                 let seed = random_seed ^ (room_ptr as u32);
@@ -138,6 +131,10 @@ pub fn apply_retiling(
             }
         };
         theme_name_map.insert(room_ptr, theme_name);
+    }
+
+    if *theme == TileTheme::AreaThemed {
+        apply_ips_patch(rom, Path::new("../patches/ips/mosaic_fx_fix.ips"))?;
     }
 
     if *theme != TileTheme::Vanilla {
@@ -155,25 +152,28 @@ pub fn apply_retiling(
     let toilet_intersecting_room_ptr_addr = snes2pc(0xB5FE70);
     let toilet_intersection_room_ptr =
         (rom.read_u16(toilet_intersecting_room_ptr_addr)? + 0x70000) as usize;
-    if toilet_intersection_room_ptr == 0x7FFFF {
-        // Unspecified room means this is vanilla map, so the Toilet intersects Aqueduct and Botwoon Hallway.
-        theme_name_map.insert(0x7D5A7, theme_name_map[&toilet_room_ptr].clone()); // Aqueduct
-        theme_name_map.insert(0x7D617, theme_name_map[&toilet_room_ptr].clone());
-    // Botwoon Hallway
-    } else {
-        theme_name_map.insert(
-            toilet_intersection_room_ptr,
-            theme_name_map[&toilet_room_ptr].clone(),
-        );
+
+    if map.room_mask[game_data.toilet_room_idx] {
+        if toilet_intersection_room_ptr == 0x7FFFF {
+            // Unspecified room means this is vanilla map, so the Toilet intersects Aqueduct and Botwoon Hallway.
+            theme_name_map.insert(0x7D5A7, theme_name_map[&toilet_room_ptr].clone()); // Aqueduct
+            theme_name_map.insert(0x7D617, theme_name_map[&toilet_room_ptr].clone());
+        // Botwoon Hallway
+        } else {
+            theme_name_map.insert(
+                toilet_intersection_room_ptr,
+                theme_name_map[&toilet_room_ptr].clone(),
+            );
+        }
     }
     theme_name_map.insert(0x7D69A, theme_name_map[&0x7D646].clone()); // East Pants Room
     theme_name_map.insert(0x7968F, theme_name_map[&0x793FE].clone()); // Homing Geemer Room
 
     for &room_ptr in game_data.raw_room_id_by_ptr.keys() {
         let theme_name = &theme_name_map[&room_ptr];
-        let state_ptrs = get_room_state_ptrs(&rom, room_ptr)?;
+        let state_ptrs = get_room_state_ptrs(rom, room_ptr)?;
         for (state_idx, (_event_ptr, state_ptr)) in state_ptrs.iter().enumerate() {
-            let patch_filename = format!("{}-{:X}-{}.bps", theme_name, room_ptr, state_idx);
+            let patch_filename = format!("{theme_name}-{room_ptr:X}-{state_idx}.bps");
             apply_bps_patch(rom, orig_rom, &patch_filename)?;
 
             let fx_ptr = rom.read_u16(state_ptr + 6)? as usize;
@@ -189,7 +189,9 @@ pub fn apply_retiling(
         }
     }
 
-    apply_toilet(rom, orig_rom, &theme_name_map[&toilet_room_ptr])?;
+    if map.room_mask[game_data.toilet_room_idx] {
+        apply_toilet(rom, orig_rom, &theme_name_map[&toilet_room_ptr])?;
+    }
 
     Ok(())
 }

@@ -11,7 +11,10 @@ pub mod title;
 use std::path::Path;
 
 use crate::{
-    customize::vanilla_music::override_music,
+    customize::{
+        CustomizeSettings, customize_rom, mosaic::MosaicTheme, samus_sprite::SamusSpriteCategory,
+        vanilla_music::override_music,
+    },
     patch::map_tiles::diagonal_flip_tile,
     randomize::{LockedDoor, Randomization},
     settings::{
@@ -19,7 +22,7 @@ use crate::{
         ObjectiveScreen, RandomizerSettings, SaveAnimals, StartLocationMode, WallJump,
     },
 };
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{Context, Result, bail, ensure};
 use hashbrown::{HashMap, HashSet};
 use ips;
 use log::info;
@@ -84,7 +87,7 @@ impl Rom {
     }
 
     pub fn read_u8(&self, addr: usize) -> Result<isize> {
-        ensure!(addr + 1 <= self.data.len(), "read_u8 address out of bounds");
+        ensure!(addr < self.data.len(), "read_u8 address out of bounds");
         Ok(self.data[addr] as isize)
     }
 
@@ -115,11 +118,8 @@ impl Rom {
     }
 
     pub fn write_u8(&mut self, addr: usize, x: isize) -> Result<()> {
-        ensure!(
-            addr + 1 <= self.data.len(),
-            "write_u8 address out of bounds"
-        );
-        ensure!(x >= 0 && x <= 0xFF, "write_u8 data does not fit");
+        ensure!(addr < self.data.len(), "write_u8 address out of bounds");
+        ensure!((0..=0xFF).contains(&x), "write_u8 data does not fit");
         self.data[addr] = x as u8;
         if self.track_touched {
             self.touched.insert(addr);
@@ -132,7 +132,7 @@ impl Rom {
             addr + 2 <= self.data.len(),
             "write_u16 address out of bounds"
         );
-        ensure!(x >= 0 && x <= 0xFFFF, "write_u16 data does not fit");
+        ensure!((0..=0xFFFF).contains(&x), "write_u16 data does not fit");
         self.write_u8(addr, x & 0xFF)?;
         self.write_u8(addr + 1, x >> 8)?;
         if self.track_touched {
@@ -147,7 +147,7 @@ impl Rom {
             addr + 3 <= self.data.len(),
             "write_u24 address out of bounds"
         );
-        ensure!(x >= 0 && x <= 0xFFFFFF, "write_u24 data does not fit");
+        ensure!((0..=0xFFFFFF).contains(&x), "write_u24 data does not fit");
         self.write_u8(addr, x & 0xFF)?;
         self.write_u8(addr + 1, (x >> 8) & 0xFF)?;
         self.write_u8(addr + 2, x >> 16)?;
@@ -164,8 +164,8 @@ impl Rom {
             addr + x.len() <= self.data.len(),
             "write_n address out of bounds"
         );
-        for i in 0..x.len() {
-            self.write_u8(addr + i, x[i] as isize)?;
+        for (i, &b) in x.iter().enumerate() {
+            self.write_u8(addr + i, b as isize)?;
         }
         if self.track_touched {
             for i in 0..x.len() {
@@ -176,6 +176,7 @@ impl Rom {
     }
 
     // Returns a list of [start, end) ranges.
+    #[allow(clippy::mut_range_bound)]
     pub fn get_modified_ranges(&self) -> Vec<(usize, usize)> {
         let mut addresses: Vec<usize> = self.touched.iter().copied().collect();
         addresses.sort();
@@ -213,12 +214,14 @@ pub struct ExtraRoomData {
     // - word: tilemap offset to modify (relative to $703000)
     // - word: tilemap value to write
     pub dynamic_tiles: u16,
+    pub room_name: u16, // pointer to room name text in bank E3
 }
 
 pub struct Patcher<'a> {
     pub orig_rom: &'a mut Rom,
     pub rom: &'a mut Rom,
     pub settings: &'a RandomizerSettings,
+    pub customize_settings: &'a CustomizeSettings,
     pub randomization: &'a Randomization,
     pub game_data: &'a GameData,
     pub map: &'a Map,
@@ -358,9 +361,9 @@ fn write_credits_big_digit(rom: &mut Rom, digit: usize, addr: usize) -> Result<(
 }
 
 pub fn write_credits_big_char(rom: &mut Rom, c: char, addr: usize) -> Result<()> {
-    if c >= '0' && c <= '9' {
+    if c.is_ascii_digit() {
         write_credits_big_digit(rom, c as usize - '0' as usize, addr)?;
-    } else if c >= 'A' && c <= 'Z' {
+    } else if c.is_ascii_uppercase() {
         write_credits_big_letter(rom, c, addr)?;
     }
     Ok(())
@@ -391,7 +394,7 @@ pub fn get_room_state_ptrs(rom: &Rom, room_ptr: usize) -> Result<Vec<(usize, usi
 }
 
 pub fn apply_ips_patch(rom: &mut Rom, patch_path: &Path) -> Result<()> {
-    let patch_data = std::fs::read(&patch_path)
+    let patch_data = std::fs::read(patch_path)
         .with_context(|| format!("Unable to read patch {}", patch_path.display()))?;
     let patch = ips::Patch::parse(&patch_data)
         .with_context(|| format!("Unable to parse patch {}", patch_path.display()))?;
@@ -427,7 +430,7 @@ fn apply_orig_ips_patches(rom: &mut Rom, settings: &RandomizerSettings) -> Resul
     Ok(())
 }
 
-impl<'a> Patcher<'a> {
+impl Patcher<'_> {
     fn apply_ips_patches(&mut self) -> Result<()> {
         self.rom.data.resize(0x400000, 0);
         let patches_dir = Path::new("../patches/ips/");
@@ -461,6 +464,8 @@ impl<'a> Patcher<'a> {
             "horizontal_door_fix",
             "samus_tiles_optim_animated_tiles_fix",
             "sand_clamp",
+            "transition_reveal",
+            "wall_doors",
         ];
 
         if self.settings.other_settings.ultra_low_qol {
@@ -482,6 +487,8 @@ impl<'a> Patcher<'a> {
                 "load_plms_early",
                 "spin_lock",
                 "fix_transition_bad_tiles",
+                "fix_horiz_doors",
+                "fix_dust_torizo",
             ]);
         }
 
@@ -577,7 +584,14 @@ impl<'a> Patcher<'a> {
         }
 
         match self.settings.quality_of_life_settings.fanfares {
-            Fanfares::Vanilla => {}
+            Fanfares::Vanilla => {
+                if !self.settings.other_settings.ultra_low_qol {
+                    // This is needed only if fast saves are enabled
+                    // (which is currently always except with ultra-low QoL)
+                    // It's important that it be applied after `fast_saves`` since it overrides the same hook point.
+                    patches.push("vanilla_fanfare_stop_sounds");
+                }
+            }
             Fanfares::Trimmed => {
                 // reduce fanfare dialogue box duration (240 frames)
                 self.rom.write_u16(snes2pc(0x858491), 0xF0)?;
@@ -611,9 +625,17 @@ impl<'a> Patcher<'a> {
             patches.push("special_door_reveal");
         }
 
+        if self.settings.quality_of_life_settings.persist_flash_suit {
+            patches.push("load_flash_suit");
+        }
+
+        if self.settings.quality_of_life_settings.persist_blue_suit {
+            patches.push("load_blue_suit");
+        }
+
         for patch_name in patches {
             let patch_path = patches_dir.join(patch_name.to_string() + ".ips");
-            apply_ips_patch(&mut self.rom, &patch_path)?;
+            apply_ips_patch(self.rom, &patch_path)?;
         }
 
         // Write settings flags, e.g. for use by auto-tracking tools:
@@ -699,13 +721,32 @@ impl<'a> Patcher<'a> {
         asm: &mut Vec<u8>,
         explore: bool,
     ) -> Result<()> {
-        let (offset, bitmask) = xy_to_explored_bit_ptr(x, y);
+        let (area_offset, bitmask) = xy_to_explored_bit_ptr(x, y);
+        let offset = area_offset + (tile_area as isize) * 0x100;
+        let map_reveal_func = 0x8FEDC0;
 
-        // Mark as revealed (which will persist after deaths/reloads):
-        let addr = 0x2000 + (tile_area as isize) * 0x100 + offset;
-        asm.extend([0xAF, (addr & 0xFF) as u8, (addr >> 8) as u8, 0x70]); // LDA $70:{addr}
-        asm.extend([0x09, bitmask, 0x00]); // ORA #{bitmask}
-        asm.extend([0x8F, (addr & 0xFF) as u8, (addr >> 8) as u8, 0x70]); // STA $70:{addr}
+        // LDX #{offset}
+        asm.extend([0xA2, (offset & 0xFF) as u8, (offset >> 8) as u8]);
+        // LDA #{bitmask}
+        asm.extend([0xA9, bitmask, 0x00]);
+        // JSR reveal_tile
+        asm.extend([
+            0x20,
+            (map_reveal_func & 0xFF) as u8,
+            (map_reveal_func >> 8) as u8,
+        ]);
+
+        // // // Mark as partially revealed (which will persist after deaths/reloads):
+        // // let addr = 0x2700 + (tile_area as isize) * 0x100 + offset;
+        // // asm.extend([0xAF, (addr & 0xFF) as u8, (addr >> 8) as u8, 0x70]); // LDA $70:{addr}
+        // // asm.extend([0x09, bitmask, 0x00]); // ORA #{bitmask}
+        // // asm.extend([0x8F, (addr & 0xFF) as u8, (addr >> 8) as u8, 0x70]); // STA $70:{addr}
+
+        // // Mark as revealed (which will persist after deaths/reloads):
+        // let addr = 0x2000 + (tile_area as isize) * 0x100 + offset;
+        // asm.extend([0xAF, (addr & 0xFF) as u8, (addr >> 8) as u8, 0x70]); // LDA $70:{addr}
+        // asm.extend([0x09, bitmask, 0x00]); // ORA #{bitmask}
+        // asm.extend([0x8F, (addr & 0xFF) as u8, (addr >> 8) as u8, 0x70]); // STA $70:{addr}
 
         // Mark as explored (for elevators. Not needed for area transition arrows/letters except in ultra-low QoL mode):
         if explore {
@@ -713,7 +754,7 @@ impl<'a> Patcher<'a> {
                 // We want to write an explored bit to the current area's map, so we have to write it to
                 // the temporary copy at 0x07F7 (otherwise it wouldn't take effect and would just be overwritten
                 // on the next map reload).
-                let addr = 0x07F7 + offset;
+                let addr = 0x07F7 + area_offset;
                 asm.extend([0xAD, (addr & 0xFF) as u8, (addr >> 8) as u8]); // LDA {addr}
                 asm.extend([0x09, bitmask, 0x00]); // ORA #{bitmask}
                 asm.extend([0x8D, (addr & 0xFF) as u8, (addr >> 8) as u8]); // STA {addr}
@@ -721,7 +762,7 @@ impl<'a> Patcher<'a> {
                 // We want to write an explored bit to a different area's map, so we have to write it to
                 // the main explored bits at 0x7ECD52 (which will get copied over to 0x07F7 on the map reload
                 // when entering the different area).
-                let addr = 0xCD52 + tile_area as isize * 0x100 + offset;
+                let addr = 0xCD52 + offset;
                 asm.extend([0xAF, (addr & 0xFF) as u8, (addr >> 8) as u8, 0x7E]); // LDA $7E:{addr}
                 asm.extend([0x09, bitmask, 0x00]); // ORA #{bitmask}
                 asm.extend([0x8F, (addr & 0xFF) as u8, (addr >> 8) as u8, 0x7E]);
@@ -747,7 +788,9 @@ impl<'a> Patcher<'a> {
         let room_x = self.rom.read_u8(room.rom_address + 2)?;
         let room_y = self.rom.read_u8(room.rom_address + 3)?;
         let area = self.map.area[room_idx];
-        let other_door_ptr_pair = self.other_door_ptr_pair_map[door_ptr_pair];
+        let Some(&other_door_ptr_pair) = self.other_door_ptr_pair_map.get(door_ptr_pair) else {
+            return Ok(());
+        };
         let (other_room_idx, _other_door_idx) =
             self.game_data.room_and_door_idxs_by_door_ptr_pair[&other_door_ptr_pair];
         let other_area = self.map.area[other_room_idx];
@@ -782,7 +825,7 @@ impl<'a> Patcher<'a> {
         let other_area = self.map.area[other_room_idx];
         let x = room_x + local_x;
         let y = room_y + local_y;
-        let (offset, bitmask) = xy_to_explored_bit_ptr(x as isize, y as isize);
+        let (offset, bitmask) = xy_to_explored_bit_ptr(x, y);
         self.map_reveal_bitmasks[area]
             .push(((offset + area as isize * 0x100) as u16, bitmask as u16));
         if self
@@ -891,7 +934,9 @@ impl<'a> Patcher<'a> {
             ((None, Some(0x1A8B8)), 0x345, 0x3BB),        // Below Botwoon Energy Tank (right)
         ];
         for (door_pair, min_position, max_position) in sand_entrances {
-            let other_door_pair = self.other_door_ptr_pair_map[&door_pair];
+            let Some(&other_door_pair) = self.other_door_ptr_pair_map.get(&door_pair) else {
+                continue;
+            };
 
             let asm = vec![
                 0xA2,
@@ -947,6 +992,11 @@ impl<'a> Patcher<'a> {
             // Reserve 3 bytes for the JMP instruction to the original ASM (if applicable, or RTS otherwise):
             door_asm_free_space += asm.len() + 3;
         }
+        info!(
+            "door_asm_free_space used: {:x}/{:x}",
+            door_asm_free_space - 0xEE10,
+            0xF600 - 0xEE10
+        );
         assert!(door_asm_free_space <= 0xF600);
         Ok(extra_door_asm_map)
     }
@@ -1007,6 +1057,53 @@ impl<'a> Patcher<'a> {
         Ok(())
     }
 
+    fn write_room_name_font(&mut self) -> Result<()> {
+        // Variable-width font for showing the current room name in the pause menu
+        let font_addr = 0xE3C000;
+        let font = &self.game_data.room_name_font;
+        let gfx_bytes: Vec<u8> = font.gfx.iter().copied().flatten().collect();
+        assert!(gfx_bytes.len() <= 0x300);
+        self.rom.write_n(snes2pc(font_addr), &gfx_bytes)?;
+
+        let font_width_addr = 0xE3C300;
+        assert!(font.widths.len() <= 0x60);
+        self.rom.write_n(snes2pc(font_width_addr), &font.widths)?;
+
+        Ok(())
+    }
+
+    fn write_room_name_data(&mut self) -> Result<()> {
+        // Write room names, for showing current room name in the pause menu:
+        let mut addr = 0xE3C360;
+        let font = &self.game_data.room_name_font;
+        for room_ptr in &self.game_data.room_ptrs {
+            let room_id = self.game_data.raw_room_id_by_ptr[room_ptr];
+            let room_json = &self.game_data.room_json_map[&room_id];
+            let room_name = room_json["name"].as_str().unwrap().to_ascii_uppercase();
+            let mut name_data: Vec<u8> = vec![];
+            let mut total_width = 0;
+            for c in room_name.chars() {
+                let char_idx = *font
+                    .char_isv
+                    .index_by_key
+                    .get(&c)
+                    .unwrap_or_else(|| panic!("Unrecognized room name char: {c}"));
+                total_width += font.widths[char_idx];
+                name_data.push(char_idx as u8 + 1);
+            }
+            name_data.push(0); // end-of-string marker
+
+            let pixel_offset = 128 - total_width / 2;
+            self.rom.write_u8(snes2pc(addr), pixel_offset as isize)?;
+            self.rom.write_n(snes2pc(addr + 1), &name_data)?;
+            let data = self.extra_room_data.get_mut(room_ptr).unwrap();
+            data.room_name = (snes2pc(addr) & 0xFFFF) as u16;
+            addr += name_data.len() + 1;
+        }
+        assert!(addr <= 0xE3D800);
+        Ok(())
+    }
+
     fn fix_save_stations(&mut self) -> Result<()> {
         let save_station_ptrs = vec![
             0x44C5, 0x44D3, 0x44E1, 0x45CF, 0x45DD, 0x45EB, 0x45F9, 0x4607, 0x46D9, 0x46E7, 0x46F5,
@@ -1018,22 +1115,26 @@ impl<'a> Patcher<'a> {
         for &((src_exit_ptr, src_entrance_ptr), (dst_exit_ptr, dst_entrance_ptr), _bidirectional) in
             &self.randomization.map.doors
         {
-            if src_exit_ptr.is_some() && src_entrance_ptr.is_some() {
-                orig_door_map.insert(src_exit_ptr.unwrap(), src_entrance_ptr.unwrap());
+            if let (Some(exit_ptr), Some(entrance_ptr)) = (src_exit_ptr, src_entrance_ptr) {
+                orig_door_map.insert(exit_ptr, entrance_ptr);
             }
-            if dst_exit_ptr.is_some() && dst_entrance_ptr.is_some() {
-                orig_door_map.insert(dst_exit_ptr.unwrap(), dst_entrance_ptr.unwrap());
+            if let (Some(exit_ptr), Some(entrance_ptr)) = (dst_exit_ptr, dst_entrance_ptr) {
+                orig_door_map.insert(exit_ptr, entrance_ptr);
             }
-            if src_exit_ptr.is_some() && dst_exit_ptr.is_some() {
-                new_door_map.insert(src_exit_ptr.unwrap(), dst_exit_ptr.unwrap());
-                new_door_map.insert(dst_exit_ptr.unwrap(), src_exit_ptr.unwrap());
+            if let (Some(src_ptr), Some(dst_ptr)) = (src_exit_ptr, dst_exit_ptr) {
+                new_door_map.insert(src_ptr, dst_ptr);
+                new_door_map.insert(dst_ptr, src_ptr);
             }
         }
 
         for ptr in save_station_ptrs {
             let orig_entrance_door_ptr = (self.rom.read_u16(ptr + 2)? + 0x10000) as NodePtr;
-            let exit_door_ptr = orig_door_map[&orig_entrance_door_ptr];
-            let entrance_door_ptr = new_door_map[&exit_door_ptr];
+            let Some(&exit_door_ptr) = orig_door_map.get(&orig_entrance_door_ptr) else {
+                continue;
+            };
+            let Some(&entrance_door_ptr) = new_door_map.get(&exit_door_ptr) else {
+                continue;
+            };
             self.rom
                 .write_u16(ptr + 2, (entrance_door_ptr & 0xFFFF) as isize)?;
         }
@@ -1068,10 +1169,11 @@ impl<'a> Patcher<'a> {
 
     fn apply_map_tile_patches(&mut self) -> Result<()> {
         let mut map_patcher = map_tiles::MapPatcher::new(
-            &mut self.rom,
+            self.rom,
             self.game_data,
             self.map,
             self.settings,
+            self.customize_settings,
             self.randomization,
             &self.locked_door_state_indices,
         );
@@ -1079,9 +1181,14 @@ impl<'a> Patcher<'a> {
 
         let mut next_addr = 0xE48000;
         for &room_ptr in &self.game_data.room_ptrs {
+            let room_idx = self.game_data.room_idx_by_ptr[&room_ptr];
+            if !self.map.room_mask[room_idx] {
+                continue;
+            }
+
             self.extra_room_data.get_mut(&room_ptr).unwrap().map_tiles =
                 (next_addr & 0xFFFF) as u16;
-            if map_patcher.room_map_gfx[&room_ptr].len() > 80 {
+            if map_patcher.room_map_gfx[&room_ptr].len() > 96 {
                 bail!("Too many map tiles in room {:x}", room_ptr);
             }
             for &x in &map_patcher.room_map_gfx[&room_ptr] {
@@ -1131,7 +1238,7 @@ impl<'a> Patcher<'a> {
     }
 
     fn remove_non_blue_doors(&mut self) -> Result<()> {
-        let plm_types_to_remove = vec![
+        let plm_types_to_remove = [
             0xC88A, 0xC85A, 0xC872, // right pink/yellow/green door
             0xC890, 0xC860, 0xC878, // left pink/yellow/green door
             0xC896, 0xC866, 0xC87E, // down pink/yellow/green door
@@ -1139,7 +1246,7 @@ impl<'a> Patcher<'a> {
             0xDB48, 0xDB4C, 0xDB52, 0xDB56, 0xDB5A, 0xDB60, // eye doors
             0xC8CA, // wall in Escape Room 1
         ];
-        let gray_door_plm_types: HashMap<isize, isize> = vec![
+        let gray_door_plm_types: HashMap<isize, isize> = [
             (0xC848, 0xBAF4), // left gray door
             (0xC842, 0xFA00), // right gray door
             (0xC854, 0xFA06), // up gray door
@@ -1147,7 +1254,7 @@ impl<'a> Patcher<'a> {
         ]
         .into_iter()
         .collect();
-        let keep_gray_door_room_names: Vec<String> = vec![
+        let keep_gray_door_room_names: Vec<String> = [
             "Bomb Torizo Room",
             "Kraid Room",
             "Phantoon's Room",
@@ -1165,7 +1272,7 @@ impl<'a> Patcher<'a> {
         .map(|x| x.to_string())
         .collect();
         for room in &self.game_data.room_geometry {
-            let event_state_ptrs = get_room_state_ptrs(&self.rom, room.rom_address)?;
+            let event_state_ptrs = get_room_state_ptrs(self.rom, room.rom_address)?;
             for &(event_ptr, state_ptr) in &event_state_ptrs {
                 let plm_set_ptr = self.rom.read_u16(state_ptr + 20)? as usize;
                 let mut ptr = plm_set_ptr + 0x70000;
@@ -1192,6 +1299,48 @@ impl<'a> Patcher<'a> {
                     }
                     ptr += 6;
                 }
+            }
+        }
+
+        // If a wall is placed where we would normally keep gray door, then remove the gray door:
+        let gray_door_plm_map: HashMap<DoorPtrPair, PcAddr> = vec![
+            // Gray doors - Pirate rooms:
+            ((0x18B7A, 0x18B62), 0x783E8), // Pit Room left
+            ((0x18B86, 0x18B92), 0x783E2), // Pit Room right
+            ((0x19192, 0x1917A), 0x789FA), // Baby Kraid left
+            ((0x1919E, 0x191AA), 0x789F4), // Baby Kraid right
+            ((0x1A558, 0x1A54C), 0x7C553), // Plasma Room
+            ((0x19A32, 0x19966), 0x7F700), // Metal Pirates left (randomizer-specific addition)
+            ((0x19A3E, 0x19A1A), 0x7F706), // Metal Pirates right (randomizer-specific location)
+            // ((0x19A3E, 0x19A1A), vec![0x790C8]), // Metal Pirates right (vanilla PLM address, no longer used)
+            // Gray doors - Bosses:
+            ((0x191CE, 0x191B6), 0x78A34), // Kraid left
+            ((0x191DA, 0x19252), 0x78A2E), // Kraid right
+            ((0x1A2C4, 0x1A2AC), 0x7C2B3), // Phantoon
+            ((0x1A978, 0x1A924), 0x7C7C1), // Draygon left
+            ((0x1A96C, 0x1A840), 0x7C7BB), // Draygon right
+            ((0x198B2, 0x19A62), 0x78E9E), // Ridley left
+            ((0x198BE, 0x198CA), 0x78E98), // Ridley right
+            // Gray doors - Minibosses:
+            ((0x18BAA, 0x18BC2), 0x783FE), // Bomb Torizo
+            ((0x18E56, 0x18E3E), 0x78642), // Spore Spawn bottom
+            ((0x193EA, 0x193D2), 0x78B9E), // Crocomire top
+            ((0x1A90C, 0x1A774), 0x7C79F), // Botwoon left
+            ((0x19882, 0x19A86), 0x78E7A), // Golden Torizo right
+        ]
+        .into_iter()
+        .map(|((exit_ptr, entrance_ptr), plm_addr)| {
+            ((Some(exit_ptr), Some(entrance_ptr)), plm_addr)
+        })
+        .collect();
+
+        for door in &self.randomization.locked_doors {
+            if door.door_type == DoorType::Wall
+                && let Some(&ptr) = gray_door_plm_map.get(&door.src_ptr_pair)
+            {
+                // Remove the gray door where the wall is being placed.
+                self.rom.write_u16(ptr, 0xB63F)?; // left continuation arrow (should have no effect, giving a blue door)
+                self.rom.write_u16(ptr + 2, 0)?; // position = (0, 0)
             }
         }
         Ok(())
@@ -1253,7 +1402,7 @@ impl<'a> Patcher<'a> {
             }
             let area = self.map.area[room_idx];
             let subarea = self.map.subarea[room_idx];
-            let event_state_ptrs = get_room_state_ptrs(&self.rom, room.rom_address)?;
+            let event_state_ptrs = get_room_state_ptrs(self.rom, room.rom_address)?;
             for &(_event_ptr, state_ptr) in &event_state_ptrs {
                 let song = self.rom.read_u16(state_ptr + 4)? as u16;
                 if songs_to_keep.contains(&song) && room.name != "Golden Torizo Energy Recharge" {
@@ -1377,7 +1526,12 @@ impl<'a> Patcher<'a> {
                 self.rom.write_u16(snes2pc(0xA9AF07), 0xB115)?; // skip MB moving forward, drooling, exploding
                 self.rom.write_u16(snes2pc(0xA9B19F), 1)?; // accelerate fade to gray (which wouldn't have an effect here except for a delay)
 
-                if self.settings.quality_of_life_settings.escape_movement_items {
+                if self.settings.quality_of_life_settings.escape_movement_items
+                    || self
+                        .settings
+                        .item_progression_settings
+                        .stop_item_placement_early
+                {
                     // 0xA9FB70: new hyper beam collect routine in escape_items.asm.
                     self.rom.write_u24(snes2pc(0xA9AF01), 0xA9FB70)?;
                 }
@@ -1394,7 +1548,7 @@ impl<'a> Patcher<'a> {
         self.rom.write_n(0x78746, &plm_data)?;
 
         // Disable demo (by overwriting the branch on the timer reaching zero):
-        self.rom.write_n(snes2pc(0x8B9F2C), &vec![0x80, 0x0A])?; // BRA $0A
+        self.rom.write_n(snes2pc(0x8B9F2C), &[0x80, 0x0A])?; // BRA $0A
 
         // In Kraid's room, no longer restrict Samus X position to left screen:
         self.rom.write_u8(snes2pc(0xA7C9EE), 0x60)?; // RTS
@@ -1407,7 +1561,7 @@ impl<'a> Patcher<'a> {
         self.rom.write_u8(snes2pc(0x8FC95B), 0x60)?; // RTS (return early from setup ASM to skip setting up shaking)
 
         // Remove fake gray door that gets drawn in Phantoon's Room:
-        self.rom.write_n(snes2pc(0xA7D4E5), &vec![0xEA; 8])?;
+        self.rom.write_n(snes2pc(0xA7D4E5), &[0xEA; 8])?;
 
         if self.settings.quality_of_life_settings.all_items_spawn {
             // Copy the item in Pit Room to the Zebes-asleep state.
@@ -1441,13 +1595,13 @@ impl<'a> Patcher<'a> {
             // is no purpose to this, as they are already red. But it important to skip here in the rando, because when entering
             // from the left door with Crocomire still alive, these scrolls are set to blue by the door ASM, and if they
             // were overridden with red it would break the graphics.
-            self.rom.write_n(snes2pc(0xA48A92), &vec![0xEA; 4])?; // NOP:NOP:NOP:NOP
+            self.rom.write_n(snes2pc(0xA48A92), &[0xEA; 4])?; // NOP:NOP:NOP:NOP
 
             // Release Spore Spawn camera so it won't be glitched when entering from the right:
-            self.rom.write_n(snes2pc(0xA5EADA), &vec![0xEA; 3])?; // NOP:NOP:NOP
+            self.rom.write_n(snes2pc(0xA5EADA), &[0xEA; 3])?; // NOP:NOP:NOP
 
             // Likewise release Kraid camera so it won't be as glitched when entering from the right:
-            self.rom.write_n(snes2pc(0xA7A9F4), &vec![0xEA; 4])?; // NOP:NOP:NOP:NOP
+            self.rom.write_n(snes2pc(0xA7A9F4), &[0xEA; 4])?; // NOP:NOP:NOP:NOP
 
             // Adjust the door cap location for the Green Brinstar Main Shaft door to itself left-to-right:
             // In vanilla it spawns a screen to the left of where it "should". We keep it wrong, to retain
@@ -1507,7 +1661,7 @@ impl<'a> Patcher<'a> {
             .escape_enemies_cleared
         {
             // Change escape behavior to clear enemies. Address here must match escape.asm:
-            self.rom.write_u16(snes2pc(0xA1f004), 0xFFFF)?;
+            self.rom.write_u16(snes2pc(0xA1F004), 0xFFFF)?;
         }
 
         if !self.settings.quality_of_life_settings.escape_refill {
@@ -1563,7 +1717,7 @@ impl<'a> Patcher<'a> {
                 }
             }
 
-            let mut title_patcher = title::TitlePatcher::new(&mut self.rom);
+            let mut title_patcher = title::TitlePatcher::new(self.rom);
             let bg_result = title_patcher.patch_title_background(&img);
             if bg_result.is_err() {
                 info!(
@@ -1628,42 +1782,13 @@ impl<'a> Patcher<'a> {
         Ok(())
     }
 
-    fn fix_crateria_scrolling_sky(&mut self) -> Result<()> {
-        // This function probably isn't needed anymore since we're using Mosaic's
-        // reimplementation of scrolling sky.
-        let data = vec![
-            (0x8FB76C, (0x1892E, 0x18946)), // Landing Site
-            (0x8FB777, (0x18916, 0x1896A)), // Landing Site
-            (0x8FB782, (0x1893A, 0x189B2)), // Landing Site
-            (0x8FB78D, (0x18922, 0x18AC6)), // Landing Site
-            (0x8FB7B0, (0x189E2, 0x18A12)), // West Ocean
-            (0x8FB7BB, (0x189CA, 0x18AEA)), // West Ocean (Bottom-left door, to Moat)
-            (0x8FB7C6, (0x189FA, 0x1A18C)), // West Ocean
-            (0x8FB7D1, (0x189D6, 0x1A1B0)), // West Ocean
-            (0x8FB7DC, (0x189EE, 0x1A1E0)), // West Ocean
-            (0x8FB7E7, (0x18A06, 0x1A300)), // West Ocean
-            (0x8FB7F4, (0x18A72, 0x18A7E)), // East Ocean
-            (0x8FB7FF, (0x18A66, 0x1A264)), // East Ocean
-        ];
-        for (addr, (exit_ptr, entrance_ptr)) in data {
-            let door_pair = (Some(exit_ptr), Some(entrance_ptr));
-            let other_door_pair = self.other_door_ptr_pair_map[&door_pair];
-            self.rom.write_u16(
-                snes2pc(addr),
-                (other_door_pair.0.unwrap() & 0xFFFF) as isize,
-            )?;
-        }
-
-        Ok(())
-    }
-
     fn apply_seed_identifiers(&mut self) -> Result<()> {
         let cartridge_name = "SUPERMETROID MAPRANDO";
         self.rom.write_n(0x7FC0, cartridge_name.as_bytes())?;
 
         // Write seed name as a null-terminated URL-safe ASCII string.
         // This can be used to look up seeds on the website as https://maprando.com/seed/{seed name}/
-        assert!(self.randomization.seed_name.as_bytes().len() < 16);
+        assert!(self.randomization.seed_name.len() < 16);
         self.rom.write_n(snes2pc(0xdffef0), &[0; 16])?;
         self.rom
             .write_n(snes2pc(0xdffef0), self.randomization.seed_name.as_bytes())?;
@@ -1699,7 +1824,7 @@ impl<'a> Patcher<'a> {
         // Write item text
         for (i, c) in item.chars().enumerate() {
             let c = c.to_ascii_uppercase();
-            if c >= 'A' && c <= 'Z' {
+            if c.is_ascii_uppercase() {
                 let word = 0x0400 | (c as isize - 'A' as isize);
                 self.rom.write_u16(base_addr + (i + 5) * 2, word)?;
             }
@@ -1708,7 +1833,7 @@ impl<'a> Patcher<'a> {
         // Write area text
         for (i, c) in area.chars().enumerate() {
             let c = c.to_ascii_uppercase();
-            if c >= 'A' && c <= 'Z' {
+            if c.is_ascii_uppercase() {
                 let word = 0x0C00 | (c as isize - 'A' as isize);
                 self.rom.write_u16(base_addr + (i + 5) * 2 + 0x40, word)?;
             }
@@ -1733,7 +1858,7 @@ impl<'a> Patcher<'a> {
         let base_addr = snes2pc(0xceb240 + (row - 128) * 0x40);
         for (i, c) in preset.chars().enumerate() {
             let c = c.to_ascii_uppercase();
-            if c >= 'A' && c <= 'Z' {
+            if c.is_ascii_uppercase() {
                 write_credits_big_letter(self.rom, c, base_addr + 0x3E - preset.len() * 2 + i * 2)?;
             }
         }
@@ -2087,7 +2212,10 @@ impl<'a> Patcher<'a> {
     }
 
     fn apply_door_hazard_marker(&mut self, door_ptr_pair: DoorPtrPair) -> Result<()> {
-        let mut other_door_ptr_pair = self.other_door_ptr_pair_map[&door_ptr_pair];
+        let Some(&(mut other_door_ptr_pair)) = self.other_door_ptr_pair_map.get(&door_ptr_pair)
+        else {
+            return Ok(());
+        };
 
         if other_door_ptr_pair == (Some(0x1AA8C), Some(0x1AAE0)) {
             // Don't draw hazard marker on left side of Mother Brain Room:
@@ -2175,7 +2303,7 @@ impl<'a> Patcher<'a> {
         let mut write_asm = |room_ptr: usize, x: usize, y: usize| {
             self.extra_setup_asm
                 .entry(room_ptr)
-                .or_insert(vec![])
+                .or_default()
                 .extend(vec![
                     0x22,
                     0xD7,
@@ -2237,7 +2365,7 @@ impl<'a> Patcher<'a> {
             self.game_data.room_and_door_idxs_by_door_ptr_pair[&locked_door.src_ptr_pair];
         let room = &self.game_data.room_geometry[room_idx];
         let door = &room.doors[door_idx];
-        let (x, y) = match door.direction.as_str() {
+        let (mut x, mut y) = match door.direction.as_str() {
             "right" => (door.x * 16 + 14 - door.offset.unwrap_or(0), door.y * 16 + 6),
             "left" => (door.x * 16 + 1 + door.offset.unwrap_or(0), door.y * 16 + 6),
             "up" => (door.x * 16 + 6, door.y * 16 + 1 + door.offset.unwrap_or(0)),
@@ -2261,14 +2389,40 @@ impl<'a> Patcher<'a> {
             (DoorType::Beam(_), "left") => 0xFCC6,
             (DoorType::Beam(_), "down") => 0xFCCC,
             (DoorType::Beam(_), "up") => 0xFCD2,
-            (a, b) => panic!("Unexpected door type: {:?} {}", a, b),
+            (DoorType::Wall, "right") => 0xF5C0,
+            (DoorType::Wall, "left") => {
+                x -= 1;
+                0xF5C0
+            }
+            (DoorType::Wall, "down") => match door.offset {
+                Some(0) => 0xF5C4,
+                Some(1) => 0xF5C8,
+                Some(2) => 0xF5CC,
+                _ => panic!("unexpected door offset: {:?}", door.offset),
+            },
+            (DoorType::Wall, "up") => match door.offset {
+                Some(0) => {
+                    y -= 1;
+                    0xF5C4
+                }
+                Some(1) => {
+                    y -= 2;
+                    0xF5C8
+                }
+                Some(2) => {
+                    y -= 3;
+                    0xF5CC
+                }
+                _ => panic!("unexpected door offset: {:?}", door.offset),
+            },
+            (a, b) => panic!("Unexpected door type: {a:?} {b}"),
         };
         // TODO: Instead of using extra setup ASM to spawn the doors, it might be better to just rewrite
         // the room PLM list, to add the new door PLMs.
         let mut write_asm = |room_ptr: usize, x: usize, y: usize| {
             self.extra_setup_asm
                 .entry(room_ptr)
-                .or_insert(vec![])
+                .or_default()
                 .extend(vec![
                     0x22,
                     0x80,
@@ -2323,7 +2477,7 @@ impl<'a> Patcher<'a> {
             let rel_y = room_pos.1 as isize - toilet_pos.1 as isize;
             let new_x = x as isize + rel_x * 16;
             let new_y = y as isize + rel_y * 16;
-            if new_x >= 0 && new_x < 16 && new_y >= 0 && new_y < 160 {
+            if (0..16).contains(&new_x) && (0..160).contains(&new_y) {
                 write_asm(0x7D408, new_x as usize, new_y as usize);
             }
         }
@@ -2377,7 +2531,7 @@ impl<'a> Patcher<'a> {
         let mb_setup_asm = 0xB88100;
         self.extra_setup_asm
             .entry(0x7DD58)
-            .or_insert(vec![])
+            .or_default()
             .extend(vec![
                 // JSR mb_setup_asm
                 0x20,
@@ -2400,51 +2554,52 @@ impl<'a> Patcher<'a> {
                 .extra_setup_asm = (pc2snes(next_addr) & 0xFFFF) as u16;
             next_addr += asm.len();
         }
-        println!("extra setup ASM end: {:x}", next_addr);
+        println!("extra setup ASM end: {next_addr:x}");
         assert!(next_addr <= snes2pc(0xB8E000));
 
         Ok(())
     }
 
     fn write_walljump_item_graphics(&mut self) -> Result<()> {
-        let f = 0xF;
+        let b = 0x8;
+        let w = 0xc;
         let frame_1: [[u8; 16]; 16] = [
-            [0, 0, 0, f, f, f, f, f, f, f, 0, 0, 0, 0, 0, 0],
-            [0, 0, 0, f, 4, 4, 5, 6, 6, f, f, f, f, 0, 0, 0],
-            [0, 0, 0, f, 4, 5, 6, 6, f, f, 6, 4, f, 0, 0, 0],
-            [0, 0, 0, f, 5, 6, 6, f, f, 6, 4, 5, f, 0, 0, 0],
-            [0, 0, 0, f, 5, 6, f, f, 6, 4, 5, f, f, 0, 0, 0],
-            [0, 0, 0, f, 6, 6, f, 6, 4, 5, 6, f, 0, 0, 0, 0],
-            [0, 0, f, f, f, f, 6, f, 6, 5, f, 0, 0, 0, 0, 0],
-            [0, 0, f, 5, 6, 6, f, 6, f, 6, f, 0, 0, 0, 0, 0],
-            [0, 0, f, 4, 5, 6, f, 5, 6, f, f, 0, 0, 0, 0, 0],
-            [0, 0, f, f, 6, 5, f, 6, f, f, 0, 0, 0, 0, 0, 0],
-            [0, f, 6, f, f, 5, f, f, f, 6, f, 0, 0, 0, 0, 0],
-            [f, f, 6, 6, f, f, f, 6, 4, 5, f, f, 0, 0, 0, 0],
-            [f, 6, 6, 4, 6, f, 6, 6, 6, 6, 6, 6, f, f, 0, 0],
-            [f, 6, 4, 4, 6, f, 5, 5, 5, 4, 4, 4, 5, 5, f, f],
-            [f, 6, 5, 5, 6, f, f, f, 6, 6, 6, 6, 6, 6, 6, f],
-            [f, f, f, f, f, 0, 0, 0, f, f, f, f, f, f, f, f],
+            [0, 0, 0, b, b, b, b, b, b, b, 0, 0, 0, 0, 0, 0],
+            [0, 0, 0, b, 4, 4, 5, 6, 6, b, b, b, b, 0, 0, 0],
+            [0, 0, 0, b, 4, 5, 6, 6, b, b, 6, 4, b, 0, 0, 0],
+            [0, 0, 0, b, 5, 6, 6, b, b, 6, 4, 5, b, 0, 0, 0],
+            [0, 0, 0, b, 5, 6, b, b, 6, 4, 5, b, b, 0, 0, 0],
+            [0, 0, 0, b, 6, 6, b, 6, 4, 5, 6, b, 0, 0, 0, 0],
+            [0, 0, b, b, b, b, 6, b, 6, 5, b, 0, 0, 0, 0, 0],
+            [0, 0, b, 5, 6, 6, b, 6, b, 6, b, 0, 0, 0, 0, 0],
+            [0, 0, b, 4, 5, 6, b, 5, 6, b, b, 0, 0, 0, 0, 0],
+            [0, 0, b, b, 6, 5, b, 6, b, b, 0, 0, 0, 0, 0, 0],
+            [0, b, 6, b, b, 5, b, b, b, 6, b, 0, 0, 0, 0, 0],
+            [b, b, 6, 6, b, b, b, 6, 4, 5, b, b, 0, 0, 0, 0],
+            [b, 6, 6, 4, 6, b, 6, 6, 6, 6, 6, 6, b, b, 0, 0],
+            [b, 6, 4, 4, 6, b, 5, 5, 5, 4, 4, 4, 5, 5, b, b],
+            [b, 6, 5, 5, 6, b, b, b, 6, 6, 6, 6, 6, 6, 6, b],
+            [b, b, b, b, b, 0, 0, 0, b, b, b, b, b, b, b, b],
         ];
         let frame_2 = frame_1.map(|row| {
             row.map(|x| match x {
-                4 => 0xb,
+                4 => w,
                 5 => 4,
                 6 => 5,
                 7 => 6,
-                0xf => 7,
-                y => y,
+                x if x == b => 7,
+                x => x,
             })
         });
         let frames: [[[u8; 16]; 16]; 2] = [frame_1, frame_2];
         let mut addr = snes2pc(0x899100);
-        for f in 0..2 {
+        for f in &frames {
             for tile_y in 0..2 {
                 for tile_x in 0..2 {
                     let mut tile: [[u8; 8]; 8] = [[0; 8]; 8];
                     for y in 0..8 {
                         for x in 0..8 {
-                            tile[y][x] = frames[f][tile_y * 8 + y][tile_x * 8 + x];
+                            tile[y][x] = f[tile_y * 8 + y][tile_x * 8 + x];
                         }
                     }
                     write_tile_4bpp(self.rom, addr, tile)?;
@@ -2479,7 +2634,7 @@ impl<'a> Patcher<'a> {
         }
         self.extra_setup_asm
             .entry(room_ptr)
-            .or_insert(vec![])
+            .or_default()
             .extend(asm.clone());
         Ok(())
     }
@@ -2537,7 +2692,7 @@ impl<'a> Patcher<'a> {
                 if plm_type == 0x0000 {
                     break;
                 }
-                if plm_type >= 0xEED7 && plm_type <= 0xF100 {
+                if (0xEED7..=0xF100).contains(&plm_type) {
                     // item PLM
                     let mut plm_x = self.rom.read_u8(intersection_plm_ptr + 2)?;
                     let mut plm_y = self.rom.read_u8(intersection_plm_ptr + 3)?;
@@ -2545,7 +2700,7 @@ impl<'a> Patcher<'a> {
 
                     plm_x -= rel_x * 16;
                     plm_y -= rel_y * 16;
-                    if plm_x >= 0 && plm_x < 16 && plm_y >= 0 && plm_y < 160 {
+                    if (0..16).contains(&plm_x) && (0..160).contains(&plm_y) {
                         toilet_plm_data.extend([
                             (plm_type & 0xFF) as u8,
                             (plm_type >> 8) as u8,
@@ -2578,7 +2733,7 @@ impl<'a> Patcher<'a> {
         // idle animation and door opening.
         use beam_doors_tiles::*;
         let beam_door_gfx_idx = 0x2D2; // 0x2D2 through 0x2D9
-        let beam_palettes = vec![
+        let beam_palettes = [
             1, // Charge
             3, // Ice
             2, // Wave
@@ -2591,18 +2746,18 @@ impl<'a> Patcher<'a> {
         // Tilemap (16x16 tiles) indexed by orientation (0=horizontal, 1=vertical), then beam (0..5):
         // each address points to data for four 16x16 tiles, half of which is standard door frame and half of which is beam stuff
         // These are ROM addresses in bank EA, giving the source for data which will get copied to 0x7EA720 thru 0x7EA740
-        for beam_idx in 0..5 {
+        for (beam_idx, &beam_pal_num) in beam_palettes.iter().enumerate() {
             let door_pal = 1 << 10;
             let flip_x = 0x4000;
             let flip_y = 0x8000;
-            let beam_pal = beam_palettes[beam_idx] << 10;
+            let beam_pal = beam_pal_num << 10;
 
             // horizontal (left-side) door:
             let tilemap_ptr = free_space_addr + beam_idx * 2 * gfx_size;
 
             // 16x16 tile 0 (top)
             self.rom
-                .write_u16(tilemap_ptr + 0x00, 0x2340 | door_pal | flip_x)?; // door frame tile 0
+                .write_u16(tilemap_ptr, 0x2340 | door_pal | flip_x)?; // door frame tile 0
             self.rom
                 .write_u16(tilemap_ptr + 0x02, 0x2000 | beam_door_gfx_idx | door_pal)?; // beam door tile 0
             self.rom
@@ -2645,7 +2800,7 @@ impl<'a> Patcher<'a> {
 
             // 16x16 tile 0 (left)
             self.rom
-                .write_u16(tilemap_ptr + 0x00, 0x2347 | door_pal | flip_x | flip_y)?; // door frame tile 0 (horizontal flip)
+                .write_u16(tilemap_ptr, 0x2347 | door_pal | flip_x | flip_y)?; // door frame tile 0 (horizontal flip)
             self.rom
                 .write_u16(tilemap_ptr + 0x02, 0x2346 | door_pal | flip_x | flip_y)?; // door frame tile 1 (horizontal flip)
             self.rom
@@ -2685,49 +2840,49 @@ impl<'a> Patcher<'a> {
         }
 
         // Opening/closing beam door animation (8x8 tiles): 6 tiles per frame, 4 frame animation:
-        for beam_idx in 0..5 {
+        for (beam_idx, animated_tile) in opening_beam_tiles.iter().enumerate() {
             // horizontal orientation:
             let gfx_ptr = free_space_addr + beam_idx * 2 * gfx_size + 0x18;
             for frame in 0..4 {
-                for tile_idx in 0..6 {
+                for (tile_idx, tile) in animated_tile.iter().enumerate() {
                     let addr = gfx_ptr + frame * 0xC0 + tile_idx * 0x20;
-                    let tile = opening_beam_tiles[beam_idx][tile_idx][frame];
-                    write_tile_4bpp(self.rom, addr, tile)?;
+                    let tile_frame = tile[frame];
+                    write_tile_4bpp(self.rom, addr, tile_frame)?;
                 }
             }
 
             // vertical orientation:
             let gfx_ptr = free_space_addr + (beam_idx * 2 + 1) * gfx_size + 0x18;
             for frame in 0..4 {
-                for tile_idx in 0..6 {
+                for (tile_idx, tile) in animated_tile.iter().enumerate() {
                     // horizontal orientation:
                     let addr = gfx_ptr + frame * 0xC0 + tile_idx * 0x20;
-                    let tile = diagonal_flip_tile(opening_beam_tiles[beam_idx][tile_idx][frame]);
-                    write_tile_4bpp(self.rom, addr, tile)?;
+                    let tile_frame = diagonal_flip_tile(tile[frame]);
+                    write_tile_4bpp(self.rom, addr, tile_frame)?;
                 }
             }
         }
 
         // Idle beam door animation (8x8 tiles): 4 tiles per frame, 4 frame loop
         // One frame is shared with the opening/closing animation, so is not written again.
-        for beam_idx in 0..5 {
+        for (beam_idx, beam_tile) in idle_beam_tiles.iter().enumerate() {
             // horizontal orientation:
             let gfx_ptr = free_space_addr + beam_idx * 2 * gfx_size + 0x318;
             for frame in 0..3 {
-                for tile_idx in 0..4 {
+                for (tile_idx, tile) in beam_tile.iter().enumerate() {
                     let addr = gfx_ptr + frame * 0x80 + tile_idx * 0x20;
-                    let tile = idle_beam_tiles[beam_idx][tile_idx][frame];
-                    write_tile_4bpp(self.rom, addr, tile)?;
+                    let tile_frame = tile[frame];
+                    write_tile_4bpp(self.rom, addr, tile_frame)?;
                 }
             }
 
             // vertical orientation:
             let gfx_ptr = free_space_addr + (beam_idx * 2 + 1) * gfx_size + 0x318;
             for frame in 0..3 {
-                for tile_idx in 0..4 {
+                for (tile_idx, tile) in beam_tile.iter().enumerate() {
                     let addr = gfx_ptr + frame * 0x80 + tile_idx * 0x20;
-                    let tile = diagonal_flip_tile(idle_beam_tiles[beam_idx][tile_idx][frame]);
-                    write_tile_4bpp(self.rom, addr, tile)?;
+                    let tile_frame = diagonal_flip_tile(tile[frame]);
+                    write_tile_4bpp(self.rom, addr, tile_frame)?;
                 }
             }
         }
@@ -2748,7 +2903,7 @@ impl<'a> Patcher<'a> {
         let end_addr = snes2pc(0xB89000);
         for (&room_ptr, data) in &self.extra_room_data {
             let addr = next_addr;
-            next_addr += 9;
+            next_addr += 11;
             // Write "extra room data", which is basically an extension of the room header:
             self.rom.write_u8(addr, data.map_area as isize)?;
             self.rom
@@ -2756,9 +2911,10 @@ impl<'a> Patcher<'a> {
             self.rom.write_u16(addr + 3, data.map_tiles as isize)?;
             self.rom.write_u16(addr + 5, data.map_tilemap as isize)?;
             self.rom.write_u16(addr + 7, data.dynamic_tiles as isize)?;
+            self.rom.write_u16(addr + 9, data.room_name as isize)?;
             // Point to the room header extension using the "unused pointer"/"special X-ray" field.
             // Within a room, every room state points to the same extension.
-            for (_, state_ptr) in get_room_state_ptrs(&self.rom, room_ptr)? {
+            for (_, state_ptr) in get_room_state_ptrs(self.rom, room_ptr)? {
                 self.rom
                     .write_u16(state_ptr + 16, (pc2snes(addr) & 0xFFFF) as isize)?;
             }
@@ -2797,10 +2953,7 @@ impl<'a> Patcher<'a> {
             if minibosses.len() == 1 {
                 minibosses = vec![];
             } else {
-                chozos = chozos
-                    .into_iter()
-                    .filter(|x| x != &Objective::GoldenTorizo)
-                    .collect();
+                chozos.retain(|x| x != &Objective::GoldenTorizo);
             }
         }
 
@@ -2865,7 +3018,7 @@ impl<'a> Patcher<'a> {
             for (i, c) in s.chars().enumerate() {
                 tile_data[*row][col + i] = *char_mapping
                     .get(&c)
-                    .context(format!("Unexpected character '{}'", c))
+                    .context(format!("Unexpected character '{c}'"))
                     .unwrap();
             }
             *row += 1;
@@ -2879,7 +3032,7 @@ impl<'a> Patcher<'a> {
             if *row > *row_max {
                 *row_max = *row;
             }
-            if *row >= 12 {
+            if *col == 1 && *row >= 8 {
                 *row = 1;
                 *col += 15;
             }
@@ -2889,7 +3042,7 @@ impl<'a> Patcher<'a> {
         // relative to the top-left of the 30x18 space:
         let mut obj_coords: HashMap<(usize, usize), Objective> = HashMap::new();
 
-        if bosses.len() > 0 {
+        if !bosses.is_empty() {
             draw_row("BOSSES:", &mut tile_data, &mut row, &mut row_max, col);
             for obj in bosses {
                 obj_coords.insert((row, col), obj);
@@ -2898,13 +3051,13 @@ impl<'a> Patcher<'a> {
                     Phantoon => draw_row("- PHANTOON", &mut tile_data, &mut row, &mut row_max, col),
                     Draygon => draw_row("- DRAYGON", &mut tile_data, &mut row, &mut row_max, col),
                     Ridley => draw_row("- RIDLEY", &mut tile_data, &mut row, &mut row_max, col),
-                    _ => panic!("unexpected objective: {:?}", obj),
+                    _ => panic!("unexpected objective: {obj:?}"),
                 }
             }
             advance_pos(&mut row, &mut row_max, &mut col);
         }
 
-        if minibosses.len() > 0 {
+        if !minibosses.is_empty() {
             draw_row("MINIBOSSES:", &mut tile_data, &mut row, &mut row_max, col);
             for obj in minibosses {
                 obj_coords.insert((row, col), obj);
@@ -2919,13 +3072,13 @@ impl<'a> Patcher<'a> {
                     GoldenTorizo => {
                         draw_row("- GOLD TORIZO", &mut tile_data, &mut row, &mut row_max, col)
                     }
-                    _ => panic!("unexpected objective: {:?}", obj),
+                    _ => panic!("unexpected objective: {obj:?}"),
                 }
             }
             advance_pos(&mut row, &mut row_max, &mut col);
         }
 
-        if chozos.len() > 0 {
+        if !chozos.is_empty() {
             draw_row("CHOZOS:", &mut tile_data, &mut row, &mut row_max, col);
             for obj in chozos {
                 obj_coords.insert((row, col), obj);
@@ -2942,13 +3095,13 @@ impl<'a> Patcher<'a> {
                     GoldenTorizo => {
                         draw_row("- GOLD TORIZO", &mut tile_data, &mut row, &mut row_max, col)
                     }
-                    _ => panic!("unexpected objective: {:?}", obj),
+                    _ => panic!("unexpected objective: {obj:?}"),
                 }
             }
             advance_pos(&mut row, &mut row_max, &mut col);
         }
 
-        if pirates.len() > 0 {
+        if !pirates.is_empty() {
             draw_row("PIRATES:", &mut tile_data, &mut row, &mut row_max, col);
             for obj in pirates {
                 obj_coords.insert((row, col), obj);
@@ -2961,18 +3114,17 @@ impl<'a> Patcher<'a> {
                     MetalPiratesRoom => {
                         draw_row("- METAL", &mut tile_data, &mut row, &mut row_max, col)
                     }
-                    _ => panic!("unexpected objective: {:?}", obj),
+                    _ => panic!("unexpected objective: {obj:?}"),
                 }
             }
             advance_pos(&mut row, &mut row_max, &mut col);
         }
 
-        if metroids.len() > 0 {
+        if !metroids.is_empty() {
             row = row_max;
             col = 1;
             draw_row("METROIDS:", &mut tile_data, &mut row, &mut row_max, col);
-            let mut i = 0;
-            for obj in metroids {
+            for (i, obj) in metroids.into_iter().enumerate() {
                 obj_coords.insert((row, col + i * 3), obj);
                 tile_data[row][col + i * 3] = char_mapping[&'-'];
                 let num = match obj {
@@ -2980,10 +3132,9 @@ impl<'a> Patcher<'a> {
                     MetroidRoom2 => '2',
                     MetroidRoom3 => '3',
                     MetroidRoom4 => '4',
-                    _ => panic!("unexpected objective: {:?}", obj),
+                    _ => panic!("unexpected objective: {obj:?}"),
                 };
                 tile_data[row][col + i * 3 + 1] = char_mapping[&num];
-                i += 1;
             }
             row += 1;
             advance_pos(&mut row, &mut row_max, &mut col);
@@ -3012,8 +3163,8 @@ impl<'a> Patcher<'a> {
         }
 
         let mut addr = snes2pc(0xB6F200);
-        for row in 0..18 {
-            for &c in &tile_data[row] {
+        for tile_data_row in &tile_data {
+            for &c in tile_data_row {
                 self.rom.write_u16(addr, c as isize)?;
                 addr += 2;
             }
@@ -3040,8 +3191,7 @@ impl<'a> Patcher<'a> {
         let mut obj_coords_vec: Vec<(usize, usize)> = obj_coords.keys().copied().collect();
         assert!(obj_coords_vec.len() == self.randomization.objectives.len());
         obj_coords_vec.sort();
-        let mut obj_i = 0;
-        for coords in &obj_coords_vec {
+        for (obj_i, coords) in obj_coords_vec.iter().enumerate() {
             let obj = obj_coords[coords];
             let (addr, mask) = match obj {
                 Kraid => (0xD829, 1),
@@ -3066,7 +3216,6 @@ impl<'a> Patcher<'a> {
             };
             self.rom.write_u16(snes2pc(0x8FEBC0) + obj_i * 2, addr)?;
             self.rom.write_u16(snes2pc(0x8FEBE8) + obj_i * 2, mask)?;
-            obj_i += 1;
         }
 
         Ok(())
@@ -3075,21 +3224,24 @@ impl<'a> Patcher<'a> {
 
 fn get_other_door_ptr_pair_map(map: &Map) -> HashMap<DoorPtrPair, DoorPtrPair> {
     let mut other_door_ptr_pair_map: HashMap<DoorPtrPair, DoorPtrPair> = HashMap::new();
-    for (src_door_ptr_pair, dst_door_ptr_pair, _bidirectional) in &map.doors {
-        other_door_ptr_pair_map.insert(src_door_ptr_pair.clone(), dst_door_ptr_pair.clone());
-        other_door_ptr_pair_map.insert(dst_door_ptr_pair.clone(), src_door_ptr_pair.clone());
+    for &(src_door_ptr_pair, dst_door_ptr_pair, _bidirectional) in &map.doors {
+        other_door_ptr_pair_map.insert(src_door_ptr_pair, dst_door_ptr_pair);
+        other_door_ptr_pair_map.insert(dst_door_ptr_pair, src_door_ptr_pair);
     }
     other_door_ptr_pair_map
 }
 
 pub fn make_rom(
     base_rom: &Rom,
-    settings: &RandomizerSettings,
+    randomizer_settings: &RandomizerSettings,
+    customize_settings: &CustomizeSettings,
     randomization: &Randomization,
     game_data: &GameData,
+    samus_sprite_categories: &[SamusSpriteCategory],
+    mosaic_themes: &[MosaicTheme],
 ) -> Result<Rom> {
     let mut orig_rom = base_rom.clone();
-    apply_orig_ips_patches(&mut orig_rom, settings)?;
+    apply_orig_ips_patches(&mut orig_rom, randomizer_settings)?;
 
     // Remove solid wall that spawns in Tourian Escape Room 1 while coming through right door.
     // Note that this wall spawns in two ways: 1) as a normal PLM which spawns when entering through either door
@@ -3106,7 +3258,8 @@ pub fn make_rom(
     let mut patcher = Patcher {
         orig_rom: &mut orig_rom,
         rom: &mut rom,
-        settings,
+        settings: randomizer_settings,
+        customize_settings,
         randomization,
         game_data,
         map: &randomization.map,
@@ -3130,18 +3283,19 @@ pub fn make_rom(
     patcher.apply_map_tile_patches()?;
     patcher.write_door_data()?;
     patcher.write_map_reveal_tiles()?;
+    patcher.write_room_name_font()?;
+    patcher.write_room_name_data()?;
     patcher.remove_non_blue_doors()?;
-    override_music(&mut patcher.rom)?;
-    if settings.map_layout != "Vanilla"
-        || settings.other_settings.area_assignment == AreaAssignment::Random
+    override_music(patcher.rom)?;
+    if randomizer_settings.map_layout != "Vanilla"
+        || randomizer_settings.other_settings.area_assignment == AreaAssignment::Random
     {
         patcher.use_area_based_music()?;
     }
     patcher.setup_door_specific_fx()?;
-    if !settings.other_settings.ultra_low_qol {
+    if !randomizer_settings.other_settings.ultra_low_qol {
         patcher.setup_reload_cre()?;
     }
-    patcher.fix_crateria_scrolling_sky()?;
     patcher.apply_title_screen_patches()?;
     patcher.customize_escape_timer()?;
     patcher.apply_miscellaneous_patches()?;
@@ -3150,15 +3304,30 @@ pub fn make_rom(
     patcher.write_objective_data()?;
     patcher.apply_seed_identifiers()?;
     patcher.apply_credits()?;
-    if !settings.other_settings.ultra_low_qol {
+    if !randomizer_settings.other_settings.ultra_low_qol {
         patcher.apply_hazard_markers()?;
     }
-    if settings.quality_of_life_settings.room_outline_revealed {
+    if randomizer_settings
+        .quality_of_life_settings
+        .room_outline_revealed
+    {
         patcher.apply_all_room_outlines()?;
     }
     patcher.apply_toilet_data()?;
     patcher.apply_mother_brain_setup_asm()?;
     patcher.apply_extra_setup_asm()?;
     patcher.write_extra_room_data()?;
+
+    info!("CustomizeSettings: {customize_settings:?}");
+    customize_rom(
+        patcher.rom,
+        base_rom,
+        &randomization.map,
+        customize_settings,
+        game_data,
+        samus_sprite_categories,
+        mosaic_themes,
+    )?;
+
     Ok(rom)
 }
