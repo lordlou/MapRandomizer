@@ -1,5 +1,5 @@
 use crate::web::{AppData, VersionInfo};
-use actix_web::{get, web, HttpResponse, Responder};
+use actix_web::{HttpResponse, Responder, get, web};
 use askama::Template;
 use hashbrown::HashMap;
 
@@ -15,7 +15,7 @@ impl AboutTemplate {
     fn sprite_artists(&self) -> String {
         self.sprite_artists
             .iter()
-            .map(|x| format!("<i>{}</i>", x))
+            .map(|x| format!("<i>{x}</i>"))
             .collect::<Vec<String>>()
             .join(", ")
     }

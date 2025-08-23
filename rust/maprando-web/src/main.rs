@@ -1,17 +1,21 @@
+// TODO: consider removing this later. It's not a bad lint but I don't want to deal with it now.
+#![allow(clippy::too_many_arguments)]
+
 mod logic_helper;
 mod web;
 
 use crate::{
     logic_helper::LogicData,
-    web::{AppData, VersionInfo, VERSION},
+    web::{AppData, VERSION, VersionInfo},
 };
 use actix_easy_multipart::MultipartFormConfig;
 use actix_files::NamedFile;
 use actix_web::{
-    middleware::{Compress, Logger},
     App, HttpServer,
+    middleware::{Compress, Logger},
 };
 use clap::Parser;
+use hashbrown::HashMap;
 use log::info;
 use maprando::{
     customize::{mosaic::MosaicTheme, samus_sprite::SamusSpriteCategory},
@@ -23,7 +27,7 @@ use maprando_game::GameData;
 use std::{path::Path, time::Instant};
 use web::{about, generate, home, logic, randomize, releases, seed, upgrade};
 
-const VISUALIZER_PATH: &'static str = "../visualizer/";
+const VISUALIZER_PATH: &str = "../visualizer/";
 
 #[derive(Parser)]
 struct Args {
@@ -59,23 +63,15 @@ fn load_visualizer_files() -> Vec<(String, Vec<u8>)> {
 fn build_app_data() -> AppData {
     let start_time = Instant::now();
     let args = Args::parse();
-    let sm_json_data_path = Path::new("../sm-json-data");
-    let room_geometry_path = Path::new("../room_geometry.json");
-    let escape_timings_path = Path::new("data/escape_timings.json");
-    let start_locations_path = Path::new("data/start_locations.json");
-    let hub_locations_path = Path::new("data/hub_locations.json");
     let etank_colors_path = Path::new("data/etank_colors.json");
-    let reduced_flashing_path = Path::new("data/reduced_flashing.json");
-    let strat_videos_path = Path::new("data/strat_videos.json");
     let vanilla_map_path = Path::new("../maps/vanilla");
-    let standard_maps_path = Path::new("../maps/v117c-standard");
-    let wild_maps_path = Path::new("../maps/v117c-wild");
+    let small_maps_path = Path::new("../maps/v119-small-avro");
+    let standard_maps_path = Path::new("../maps/v119-standard-avro");
+    let wild_maps_path = Path::new("../maps/v119-wild-avro");
     let samus_sprites_path = Path::new("../MapRandoSprites/samus_sprites/manifest.json");
-    let title_screen_path = Path::new("../TitleScreen/Images");
     let tech_path = Path::new("data/tech_data.json");
     let notable_path = Path::new("data/notable_data.json");
     let presets_path = Path::new("data/presets");
-    let map_tiles_path = Path::new("data/map_tiles.json");
     let mosaic_themes = vec![
         ("OuterCrateria", "Outer Crateria"),
         ("InnerCrateria", "Inner Crateria"),
@@ -98,22 +94,11 @@ fn build_app_data() -> AppData {
     })
     .collect();
 
-    let game_data = GameData::load(
-        sm_json_data_path,
-        room_geometry_path,
-        escape_timings_path,
-        start_locations_path,
-        hub_locations_path,
-        title_screen_path,
-        reduced_flashing_path,
-        strat_videos_path,
-        map_tiles_path,
-    )
-    .unwrap();
+    let game_data = GameData::load().unwrap();
 
     info!("Loading logic preset data");
     let etank_colors: Vec<Vec<String>> =
-        serde_json::from_str(&std::fs::read_to_string(&etank_colors_path).unwrap()).unwrap();
+        serde_json::from_str(&std::fs::read_to_string(etank_colors_path).unwrap()).unwrap();
     let version_info = VersionInfo {
         version: VERSION,
         dev: args.dev,
@@ -125,30 +110,46 @@ fn build_app_data() -> AppData {
     };
 
     let preset_data = PresetData::load(tech_path, notable_path, presets_path, &game_data).unwrap();
+    let map_repositories: HashMap<String, MapRepository> = vec![
+        (
+            "Vanilla".to_string(),
+            MapRepository::new("Vanilla", vanilla_map_path).unwrap(),
+        ),
+        (
+            "Small".to_string(),
+            MapRepository::new("Small", small_maps_path).unwrap(),
+        ),
+        (
+            "Standard".to_string(),
+            MapRepository::new("Standard", standard_maps_path).unwrap(),
+        ),
+        (
+            "Wild".to_string(),
+            MapRepository::new("Wild", wild_maps_path).unwrap(),
+        ),
+    ]
+    .into_iter()
+    .collect();
+    let vanilla_map = map_repositories["Vanilla"]
+        .get_map_batch(0, &game_data)
+        .unwrap()[0]
+        .clone();
 
-    let logic_data = LogicData::new(&game_data, &preset_data, &version_info, &video_storage_url);
+    let logic_data = LogicData::new(
+        &game_data,
+        &preset_data,
+        &version_info,
+        &video_storage_url,
+        &vanilla_map,
+    )
+    .unwrap();
     let samus_sprite_categories: Vec<SamusSpriteCategory> =
-        serde_json::from_str(&std::fs::read_to_string(&samus_sprites_path).unwrap()).unwrap();
+        serde_json::from_str(&std::fs::read_to_string(samus_sprites_path).unwrap()).unwrap();
 
     let app_data = AppData {
         game_data,
         preset_data,
-        map_repositories: vec![
-            (
-                "Vanilla".to_string(),
-                MapRepository::new("Vanilla", vanilla_map_path).unwrap(),
-            ),
-            (
-                "Standard".to_string(),
-                MapRepository::new("Standard", standard_maps_path).unwrap(),
-            ),
-            (
-                "Wild".to_string(),
-                MapRepository::new("Wild", wild_maps_path).unwrap(),
-            ),
-        ]
-        .into_iter()
-        .collect(),
+        map_repositories,
         seed_repository: SeedRepository::new(&args.seed_repository_url).unwrap(),
         visualizer_files: load_visualizer_files(),
         video_storage_url,
@@ -178,7 +179,6 @@ async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp_millis()
         .init();
-
     let app_data = actix_web::web::Data::new(build_app_data());
 
     let port = app_data.port;

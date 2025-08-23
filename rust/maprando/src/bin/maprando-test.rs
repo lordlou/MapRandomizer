@@ -1,22 +1,22 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use log::{error, info};
 use maprando::customize::samus_sprite::SamusSpriteCategory;
-use maprando::customize::{customize_rom, ControllerConfig, CustomizeSettings, MusicSettings};
+use maprando::customize::{ControllerConfig, CustomizeSettings, MusicSettings};
 use maprando::map_repository::MapRepository;
-use maprando::patch::make_rom;
 use maprando::patch::Rom;
+use maprando::patch::make_rom;
 use maprando::preset::PresetData;
 use maprando::randomize::{
-    get_difficulty_tiers, get_objectives, order_map_areas, randomize_doors, randomize_map_areas,
-    Randomization, Randomizer, SpoilerLog,
+    Randomization, Randomizer, SpoilerLog, get_difficulty_tiers, get_objectives, order_map_areas,
+    randomize_doors, randomize_map_areas,
 };
 use maprando::settings::{
     AreaAssignment, ItemProgressionSettings, QualityOfLifeSettings, RandomizerSettings,
     SkillAssumptionSettings, StartLocationMode,
 };
 use maprando::spoiler_map;
-use maprando_game::GameData;
+use maprando_game::{GameData, Map};
 use rand::{RngCore, SeedableRng};
 use std::path::{Path, PathBuf};
 
@@ -45,9 +45,6 @@ struct Args {
 
     #[arg(long)]
     qol_preset: Option<String>,
-
-    #[arg(long)]
-    customize: bool,
 }
 
 // Reduced version of web::AppData for test tool
@@ -65,7 +62,6 @@ struct TestAppData {
     etank_colors: Vec<(u8, u8, u8)>,
     samus_sprite_categories: Vec<SamusSpriteCategory>,
     samus_sprites: Vec<String>,
-    customize: bool,
 }
 
 fn get_randomization(
@@ -105,10 +101,7 @@ fn get_randomization(
         None => String::from("Custom"),
     };
 
-    info!(
-        "Generating seed using Skills {0}, Progression {1}, QoL {2}",
-        skill_label, item_label, qol_label
-    );
+    info!("Generating seed using Skills {skill_label}, Progression {item_label}, QoL {qol_label}");
 
     let difficulty_tiers = get_difficulty_tiers(
         &settings,
@@ -134,10 +127,7 @@ fn get_randomization(
     let max_map_attempts = max_attempts / max_attempts_per_map;
     let mut attempt_num = 0;
 
-    let output_file_prefix = format!(
-        "{0}-{1}-{2}-{3}",
-        skill_label, item_label, qol_label, random_seed
-    );
+    let output_file_prefix = format!("{skill_label}-{item_label}-{qol_label}-{random_seed}");
 
     // Save a dump of the settings
     let settings_json = serde_json::to_string(&settings)?;
@@ -148,11 +138,18 @@ fn get_randomization(
         ),
         settings_json,
     )?;
-    let client = Client::new();
+
+    let mut map_batch: Vec<Map> = vec![];
+
     for _ in 0..max_map_attempts {
         let map_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
         let door_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
-        let mut map = map_repo.get_map(attempt_num, map_seed, game_data, &client)?;
+
+        if map_batch.is_empty() {
+            map_batch = map_repo.get_map_batch(map_seed, game_data).unwrap();
+        }
+
+        let mut map = map_batch.pop().unwrap();
         match settings.other_settings.area_assignment {
             AreaAssignment::Ordered => {
                 order_map_areas(&mut map, map_seed, game_data);
@@ -162,7 +159,7 @@ fn get_randomization(
             }
             AreaAssignment::Standard => {}
         }
-        let objectives = get_objectives(&settings, &mut rng);
+        let objectives = get_objectives(&settings, Some(&map), game_data, &mut rng);
         let locked_door_data = randomize_doors(game_data, &map, &settings, &objectives, door_seed);
         let randomizer = Randomizer::new(
             &map,
@@ -170,23 +167,22 @@ fn get_randomization(
             objectives,
             &settings,
             &difficulty_tiers,
-            &game_data,
+            game_data,
             &game_data.base_links_data,
             &mut rng,
         );
         for _ in 0..max_attempts_per_map {
             attempt_num += 1;
             let item_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
-            info!("Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_seed}, item placement seed={item_seed}");
+            info!(
+                "Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_seed}, item placement seed={item_seed}"
+            );
             match randomizer.randomize(attempt_num, item_seed, 1) {
                 Ok((randomization, spoiler_log)) => {
                     return Ok((settings, randomization, spoiler_log, output_file_prefix));
                 }
                 Err(e) => {
-                    info!(
-                        "Attempt {attempt_num}/{max_attempts}: Randomization failed: {}",
-                        e
-                    );
+                    info!("Attempt {attempt_num}/{max_attempts}: Randomization failed: {e}");
                 }
             }
         }
@@ -197,29 +193,24 @@ fn get_randomization(
 fn make_random_customization(app: &TestAppData) -> CustomizeSettings {
     let mut rng = rand::rngs::StdRng::from_entropy();
 
-    let mut possible_sprites: Vec<Option<String>> = app
-        .samus_sprites
-        .clone()
-        .into_iter()
-        .map(|x| Some(x))
-        .collect();
+    let mut possible_sprites: Vec<Option<String>> =
+        app.samus_sprites.clone().into_iter().map(Some).collect();
     possible_sprites.push(None);
 
-    let mut possible_etanks: Vec<Option<(u8, u8, u8)>> = app
-        .etank_colors
-        .clone()
-        .into_iter()
-        .map(|x| Some(x))
-        .collect();
+    let mut possible_etanks: Vec<Option<(u8, u8, u8)>> =
+        app.etank_colors.clone().into_iter().map(Some).collect();
     possible_etanks.push(None);
 
     let bits = rng.next_u64();
 
-    let cust = CustomizeSettings {
+    CustomizeSettings {
         samus_sprite: possible_sprites[rng.next_u64() as usize % possible_sprites.len()].clone(),
         etank_color: possible_etanks[rng.next_u64() as usize % possible_etanks.len()],
+        item_dot_change: maprando::customize::ItemDotChange::Fade,
+        transition_letters: true,
         reserve_hud_style: bits & 0x01 != 0,
         vanilla_screw_attack_animation: bits & 0x02 != 0,
+        room_names: true,
         palette_theme: maprando::customize::PaletteTheme::AreaThemed,
         tile_theme: maprando::customize::TileTheme::Vanilla,
         door_theme: maprando::customize::DoorTheme::Vanilla,
@@ -238,90 +229,41 @@ fn make_random_customization(app: &TestAppData) -> CustomizeSettings {
             false => maprando::customize::FlashingSetting::Vanilla,
         },
         controller_config: ControllerConfig::default(),
-    };
-
-    cust
+    }
 }
 
 fn perform_test_cycle(app: &TestAppData, cycle_count: usize) -> Result<()> {
     let seed: u64 = app.attempt_num.unwrap_or(cycle_count as u64);
 
-    info!("Test cycle {cycle_count} Start: seed={}", seed);
+    info!("Test cycle {cycle_count} Start: seed={seed}");
 
     // Perform randomization (map selection & item placement):
-    let (settings, randomization, spoiler_log, output_file_prefix) = get_randomization(&app, seed)?;
+    let (settings, randomization, spoiler_log, output_file_prefix) = get_randomization(app, seed)?;
+    let customize_settings = make_random_customization(app);
 
     // Generate the patched ROM:
-    let game_rom = make_rom(&app.input_rom, &settings, &randomization, &app.game_data)?;
-    let mut output_rom = game_rom.clone();
-    let basic_customize_settings = CustomizeSettings {
-        samus_sprite: None,
-        etank_color: None,
-        reserve_hud_style: true,
-        vanilla_screw_attack_animation: true,
-        palette_theme: maprando::customize::PaletteTheme::AreaThemed,
-        tile_theme: maprando::customize::TileTheme::Vanilla,
-        door_theme: maprando::customize::DoorTheme::Vanilla,
-        music: MusicSettings::AreaThemed,
-        disable_beeping: false,
-        shaking: maprando::customize::ShakingSetting::Vanilla,
-        flashing: maprando::customize::FlashingSetting::Vanilla,
-        controller_config: ControllerConfig::default(),
-    };
-    customize_rom(
-        &mut output_rom,
+    let game_rom = make_rom(
         &app.input_rom,
-        &Some(randomization.map.clone()),
-        &basic_customize_settings,
+        &settings,
+        &customize_settings,
+        &randomization,
         &app.game_data,
         &app.samus_sprite_categories,
-        &vec![],
+        &[],
     )?;
+    let output_rom = game_rom.clone();
 
     std::fs::write(
         Path::join(
             &app.output_dir,
-            format!("{output_file_prefix}-basic-customize.txt"),
+            format!("{output_file_prefix}-customize.txt"),
         ),
-        format!("{basic_customize_settings:?}"),
+        format!("{customize_settings:?}"),
     )?;
 
     let output_rom_path = Path::join(&app.output_dir, format!("{output_file_prefix}-rom.smc"));
     info!("Writing output ROM to {}", output_rom_path.display());
     output_rom.save(&output_rom_path)?;
-
-    if app.customize {
-        for custom in 0..5 {
-            let custom_rom_path = Path::join(
-                &app.output_dir,
-                format!("{output_file_prefix}-custom-{}.smc", custom + 1),
-            );
-            output_rom = game_rom.clone();
-            let customize_settings = make_random_customization(&app);
-            customize_rom(
-                &mut output_rom,
-                &app.input_rom,
-                &Some(randomization.map.clone()),
-                &customize_settings,
-                &app.game_data,
-                &app.samus_sprite_categories,
-                &vec![],
-            )?;
-            info!(
-                "Writing customization #{0} to {1}",
-                custom + 1,
-                custom_rom_path.display()
-            );
-            output_rom.save(&custom_rom_path)?;
-            std::fs::write(
-                Path::join(
-                    &app.output_dir,
-                    format!("{output_file_prefix}-customize-{}.txt", custom + 1),
-                ),
-                format!("{customize_settings:?}"),
-            )?;
-        }
-    }
 
     let output_spoiler_log_path = Path::join(
         &app.output_dir,
@@ -334,7 +276,8 @@ fn perform_test_cycle(app: &TestAppData, cycle_count: usize) -> Result<()> {
     let spoiler_str = serde_json::to_string_pretty(&spoiler_log)?;
     std::fs::write(output_spoiler_log_path, spoiler_str)?;
 
-    let spoiler_maps = spoiler_map::get_spoiler_map(&randomization, &app.game_data, &settings)?;
+    let spoiler_maps =
+        spoiler_map::get_spoiler_map(&randomization, &app.game_data, &settings, true)?;
 
     let output_spoiler_map_explored_path = Path::join(
         &app.output_dir,
@@ -362,31 +305,13 @@ fn perform_test_cycle(app: &TestAppData, cycle_count: usize) -> Result<()> {
 }
 
 fn build_app_data(args: &Args) -> Result<TestAppData> {
-    let sm_json_data_path = Path::new("../sm-json-data");
-    let room_geometry_path = Path::new("../room_geometry.json");
-    let escape_timings_path = Path::new("data/escape_timings.json");
-    let start_locations_path = Path::new("data/start_locations.json");
-    let hub_locations_path = Path::new("data/hub_locations.json");
     let etank_colors_path = Path::new("data/etank_colors.json");
-    let reduced_flashing_path = Path::new("data/reduced_flashing.json");
-    let strat_videos_path = Path::new("data/strat_videos.json");
     let vanilla_map_path = Path::new("../maps/vanilla");
-    let standard_maps_path = Path::new("../maps/v117c-standard");
-    let wild_maps_path = Path::new("../maps/v117c-wild");
+    let small_maps_path = Path::new("../maps/v119-small-avro");
+    let standard_maps_path = Path::new("../maps/v119-standard-avro");
+    let wild_maps_path = Path::new("../maps/v119-wild-avro");
     let samus_sprites_path = Path::new("../MapRandoSprites/samus_sprites/manifest.json");
-    let title_screen_path = Path::new("../TitleScreen/Images");
-    let map_tiles_path = Path::new("data/map_tiles.json");
-    let game_data = GameData::load(
-        sm_json_data_path,
-        room_geometry_path,
-        escape_timings_path,
-        start_locations_path,
-        hub_locations_path,
-        title_screen_path,
-        reduced_flashing_path,
-        strat_videos_path,
-        map_tiles_path,
-    )?;
+    let game_data = GameData::load()?;
 
     if !args.output_seeds.is_dir() {
         bail!("{0} is not a directory", args.output_seeds.display());
@@ -399,8 +324,14 @@ fn build_app_data(args: &Args) -> Result<TestAppData> {
     let preset_data = PresetData::load(tech_path, notable_path, presets_path, &game_data)?;
     let mut base_preset = preset_data.default_preset.clone();
 
+    base_preset.start_location_settings.mode = StartLocationMode::Random;
+
     if let Some(fixed_preset) = &args.preset {
-        let path = format!("data/presets/full-settings/{}.json", fixed_preset);
+        let path = if fixed_preset.ends_with(".json") {
+            fixed_preset.clone()
+        } else {
+            format!("data/presets/full-settings/{fixed_preset}.json")
+        };
         let s =
             std::fs::read_to_string(&path).context(format!("Unable to read {}", path.as_str()))?;
         base_preset = serde_json::from_str(&s)?;
@@ -409,9 +340,9 @@ fn build_app_data(args: &Args) -> Result<TestAppData> {
     let mut skill_presets = preset_data.skill_presets.clone();
     // If we are using a locked-in preset, go ahead and remove all the others.
     if let Some(fixed_preset) = &args.skill_preset {
-        let path = format!("data/presets/skill-assumptions/{}.json", fixed_preset);
+        let path = format!("data/presets/skill-assumptions/{fixed_preset}.json");
         let s = std::fs::read_to_string(&path)
-            .context(format!("Unable to load skill preset: {}", path))?;
+            .context(format!("Unable to load skill preset: {path}"))?;
         let p: SkillAssumptionSettings = serde_json::from_str(&s)?;
         skill_presets = vec![p];
     } else {
@@ -424,9 +355,9 @@ fn build_app_data(args: &Args) -> Result<TestAppData> {
     let mut item_presets = preset_data.item_progression_presets.clone();
     // If we are using a locked-in preset, go ahead and remove all the others.
     if let Some(fixed_preset) = &args.item_preset {
-        let path = format!("data/presets/item-progression/{}.json", fixed_preset);
+        let path = format!("data/presets/item-progression/{fixed_preset}.json");
         let s = std::fs::read_to_string(&path)
-            .context(format!("Unable to load item progression preset: {}", path))?;
+            .context(format!("Unable to load item progression preset: {path}"))?;
         let p: ItemProgressionSettings = serde_json::from_str(&s)?;
         item_presets = vec![p];
     }
@@ -434,15 +365,15 @@ fn build_app_data(args: &Args) -> Result<TestAppData> {
     let mut qol_presets = preset_data.quality_of_life_presets.clone();
     // If we are using a locked-in preset, go ahead and remove all the others.
     if let Some(fixed_preset) = &args.qol_preset {
-        let path = format!("data/presets/quality-of-life/{}.json", fixed_preset);
-        let s = std::fs::read_to_string(&path)
-            .context(format!("Unable to load QoL preset: {}", path))?;
+        let path = format!("data/presets/quality-of-life/{fixed_preset}.json");
+        let s =
+            std::fs::read_to_string(&path).context(format!("Unable to load QoL preset: {path}"))?;
         let p: QualityOfLifeSettings = serde_json::from_str(&s)?;
         qol_presets = vec![p];
     }
 
     let etank_color_from_json: Vec<Vec<String>> =
-        serde_json::from_str(&std::fs::read_to_string(&etank_colors_path)?)?;
+        serde_json::from_str(&std::fs::read_to_string(etank_colors_path)?)?;
     let mut etank_colors_str: Vec<String> = vec![];
     for mut v in etank_color_from_json {
         etank_colors_str.append(&mut v);
@@ -460,7 +391,7 @@ fn build_app_data(args: &Args) -> Result<TestAppData> {
         .collect();
 
     let samus_sprite_categories: Vec<SamusSpriteCategory> =
-        serde_json::from_str(&std::fs::read_to_string(&samus_sprites_path)?)?;
+        serde_json::from_str(&std::fs::read_to_string(samus_sprites_path)?)?;
 
     let mut samus_sprites: Vec<String> = vec![];
     for cat in &samus_sprite_categories {
@@ -484,6 +415,7 @@ fn build_app_data(args: &Args) -> Result<TestAppData> {
         preset_data,
         map_repos: vec![
             MapRepository::new("Vanilla", vanilla_map_path)?,
+            MapRepository::new("Small", small_maps_path)?,
             MapRepository::new("Standard", standard_maps_path)?,
             MapRepository::new("Wild", wild_maps_path)?,
         ],
@@ -494,7 +426,6 @@ fn build_app_data(args: &Args) -> Result<TestAppData> {
         etank_colors,
         samus_sprite_categories,
         samus_sprites,
-        customize: args.customize,
     };
     Ok(app)
 }
@@ -509,7 +440,7 @@ fn main() -> Result<()> {
     let mut error_vec = vec![];
     for test_cycle in 0..args.test_cycles {
         if let Err(e) = perform_test_cycle(&app_data, test_cycle) {
-            error!("Failed during test cycle {test_cycle}: {}", e);
+            error!("Failed during test cycle {test_cycle}: {e}");
             error_vec.push((test_cycle, e));
         }
         if args.attempt_num.is_some() {
@@ -518,7 +449,7 @@ fn main() -> Result<()> {
     }
     for (test_cycle, e) in error_vec {
         // error!("Failed during test cycle {test_cycle}: {}\n{}", e, e.backtrace());
-        error!("Failed during test cycle {test_cycle}: {}", e);
+        error!("Failed during test cycle {test_cycle}: {e}");
     }
 
     Ok(())

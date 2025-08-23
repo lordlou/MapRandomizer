@@ -1,8 +1,8 @@
 use crate::web::{AppData, VersionInfo};
 use actix_web::{
-    get,
+    HttpResponse, Responder, get,
     http::header::{self, CacheControl, CacheDirective},
-    web, HttpResponse, Responder,
+    web,
 };
 use askama::Template;
 use log::error;
@@ -77,12 +77,12 @@ async fn view_seed(info: web::Path<(String,)>, app_data: web::Data<AppData>) -> 
                 .body(customize_template.render().unwrap())
         }
         (Err(err), _) => {
-            error!("{}", err.to_string());
+            error!("{err}");
             let template = SeedNotFoundTemplate {};
             HttpResponse::NotFound().body(template.render().unwrap())
         }
         (_, Err(err)) => {
-            error!("{}", err.to_string());
+            error!("{err}");
             let template = SeedNotFoundTemplate {};
             HttpResponse::NotFound().body(template.render().unwrap())
         }

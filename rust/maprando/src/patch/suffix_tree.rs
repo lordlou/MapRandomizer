@@ -84,7 +84,7 @@ impl SuffixTree {
     pub fn find_longest_prefix(&self, query: &[u8]) -> (DataIdx, DataIdx) {
         let mut node_id = 0; // Start at root node
         let mut pos: DataIdx = 0; // Length of prefix of query that has been matched so far
-        if query.len() == 0 {
+        if query.is_empty() {
             // Handle trivial edge case:
             return (0, 0);
         }
@@ -113,9 +113,9 @@ impl SuffixTree {
                 }
             } else {
                 // No further bytes match, so we're done.
-                if node.edges.len() == 0 {
+                if node.edges.is_empty() {
                     // Node has no child edges. The only way this should happen is at the root node, with self.data is empty.
-                    assert!(node_id == 0 && self.data.len() == 0);
+                    assert!(node_id == 0 && self.data.is_empty());
                     return (0, 0);
                 }
                 let edge = &node.edges[0]; // Pick an arbitrary edge
@@ -198,7 +198,7 @@ impl SuffixTree {
                     if node.suffix_link == NODE_UNDEFINED {
                         // The node doesn't have a suffix link; this should only happen at the root node.
                         assert!(cut.node_id == 0); // Check that this is in fact the root node.
-                                                   // Since cut.length == 0, the cut position is at the end (representing the empty string), so we are done.
+                        // Since cut.length == 0, the cut position is at the end (representing the empty string), so we are done.
                         self.cut.edge_id = edge_id;
                         self.cut.length = 1;
                         return;
@@ -223,8 +223,8 @@ impl SuffixTree {
                     self.cut = if node_suffix_link == NODE_UNDEFINED {
                         // The node doesn't have a suffix link; this should only happen at the root node.
                         assert!(cut.node_id == 0); // Check that this is in fact the root node.
-                                                   // Locate the new cut position directly, by stripping off the first byte of data and
-                                                   // following a path down the tree, starting from the root.
+                        // Locate the new cut position directly, by stripping off the first byte of data and
+                        // following a path down the tree, starting from the root.
                         let edge = &node.edges[cut.edge_id as usize];
                         let new_start = edge.start + 1;
                         let new_length = cut.length - 1;
@@ -270,8 +270,8 @@ impl SuffixTree {
                         let new_cut = if node_suffix_link == NODE_UNDEFINED {
                             // The node doesn't have a suffix link; this should only happen at the root node.
                             assert!(cut.node_id == 0); // Check that this is in fact the root node.
-                                                       // Locate the new cut position directly, by stripping off the first byte of data and
-                                                       // following a path down the tree, starting from the root.
+                            // Locate the new cut position directly, by stripping off the first byte of data and
+                            // following a path down the tree, starting from the root.
                             let edge = &node.edges[cut.edge_id as usize];
                             let new_start = edge.start + 1;
                             let new_length = cut.length - 1;
@@ -321,7 +321,7 @@ mod tests {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     #[test]

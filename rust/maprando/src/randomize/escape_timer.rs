@@ -1,6 +1,5 @@
 use anyhow::{Context, Result};
 use hashbrown::HashMap;
-use maprando_game::TechId;
 use maprando_game::TECH_ID_CAN_HERO_SHOT;
 use maprando_game::TECH_ID_CAN_HYPER_GATE_SHOT;
 use maprando_game::TECH_ID_CAN_KAGO;
@@ -8,6 +7,7 @@ use maprando_game::TECH_ID_CAN_MID_AIR_MORPH;
 use maprando_game::TECH_ID_CAN_MOONFALL;
 use maprando_game::TECH_ID_CAN_OFF_SCREEN_SUPER_SHOT;
 use maprando_game::TECH_ID_CAN_SUITLESS_LAVA_DIVE;
+use maprando_game::TechId;
 use pathfinding;
 use serde_derive::Deserialize;
 use serde_derive::Serialize;
@@ -117,30 +117,32 @@ pub fn get_base_room_door_graph(
     let mut animals_vertex_id = VertexId::MAX;
     let mut mother_brain_vertex_id = VertexId::MAX;
 
-    for (room_idx, escape_timing_room) in game_data.escape_timings.iter().enumerate() {
+    for escape_timing_room in &game_data.escape_timings {
+        let room_id = escape_timing_room.room_id;
         for escape_timing_group in &escape_timing_room.timings {
-            let from_key = (room_idx, escape_timing_group.from_door.door_idx);
+            let from_key = (room_id, escape_timing_group.from_door.door_idx);
             let from_idx = vertices.add(&from_key);
             successors.push(vec![]);
-            if escape_timing_room.room_name == "Landing Site"
-                && escape_timing_group.from_door.name == "Ship"
-            {
+            if escape_timing_room.room_id == 8 && escape_timing_group.from_door.name == "Ship" {
+                // "Landing Site"
                 ship_vertex_id = from_idx;
             }
-            if escape_timing_room.room_name == "Bomb Torizo Room" {
+            if escape_timing_room.room_id == 19 {
+                // "Bomb Torizo Room"
                 animals_vertex_id = from_idx;
             }
-            if escape_timing_room.room_name == "Mother Brain Room"
+            if escape_timing_room.room_id == 238
                 && escape_timing_group.from_door.direction == "left"
             {
+                // "Mother Brain Room"
                 mother_brain_vertex_id = from_idx;
             }
         }
         for escape_timing_group in &escape_timing_room.timings {
-            let from_key = (room_idx, escape_timing_group.from_door.door_idx);
+            let from_key = (room_id, escape_timing_group.from_door.door_idx);
             let from_idx = vertices.index_by_key[&from_key];
             for escape_timing in &escape_timing_group.to {
-                let to_key = (room_idx, escape_timing.to_door.door_idx);
+                let to_key = (room_id, escape_timing.to_door.door_idx);
                 let to_idx = vertices.index_by_key[&to_key];
                 if let Some(in_game_time) = escape_timing.in_game_time {
                     let cost = parse_in_game_time(in_game_time);
@@ -177,15 +179,15 @@ pub fn get_full_room_door_graph(
 ) -> RoomDoorGraph {
     let base = get_base_room_door_graph(game_data, settings, difficulty);
     let mut door_ptr_pair_to_vertex: HashMap<DoorPtrPair, VertexId> = HashMap::new();
-    for (room_idx, room) in game_data.room_geometry.iter().enumerate() {
+    for room in &game_data.room_geometry {
+        let room_id = room.room_id;
         for (door_idx, door) in room.doors.iter().enumerate() {
             let vertex_id = *base
                 .vertices
                 .index_by_key
-                .get(&(room_idx, door_idx))
+                .get(&(room_id, door_idx))
                 .context(format!(
-                    "base.vertices.index_by_key missing entry: ({}, {})",
-                    room_idx, door_idx
+                    "base.vertices.index_by_key missing entry: ({room_id}, {door_idx})"
                 ))
                 .unwrap();
             let door_ptr_pair = (door.exit_ptr, door.entrance_ptr);
@@ -210,7 +212,9 @@ fn get_vertex_name(
     game_data: &GameData,
     map: &Map,
 ) -> SpoilerEscapeRouteNode {
-    let (room_idx, door_idx) = room_door_graph.vertices.keys[vertex_id];
+    let (room_id, door_idx) = room_door_graph.vertices.keys[vertex_id];
+    let room_ptr = game_data.room_ptr_by_id[&room_id];
+    let room_idx = game_data.room_idx_by_ptr[&room_ptr];
     let room = &game_data.room_geometry[room_idx];
     if vertex_id == room_door_graph.ship_vertex_id {
         return SpoilerEscapeRouteNode {
@@ -298,17 +302,17 @@ pub fn compute_escape_data(
         animals_spoiler = Some(get_spoiler_escape_route(
             &animals_path,
             &graph,
-            &game_data,
+            game_data,
             map,
         ));
         let ship_path = get_shortest_path(graph.animals_vertex_id, graph.ship_vertex_id, &graph)?;
-        ship_spoiler = get_spoiler_escape_route(&ship_path, &graph, &game_data, map);
+        ship_spoiler = get_spoiler_escape_route(&ship_path, &graph, game_data, map);
         base_igt_frames = animals_path.last().unwrap().1 + ship_path.last().unwrap().1;
     } else {
         animals_spoiler = None;
         let ship_path =
             get_shortest_path(graph.mother_brain_vertex_id, graph.ship_vertex_id, &graph)?;
-        ship_spoiler = get_spoiler_escape_route(&ship_path, &graph, &game_data, map);
+        ship_spoiler = get_spoiler_escape_route(&ship_path, &graph, game_data, map);
         base_igt_frames = ship_path.last().unwrap().1;
     }
 
@@ -325,15 +329,15 @@ pub fn compute_escape_data(
     if final_time_seconds > 5995.0 {
         final_time_seconds = 5995.0;
     }
-    println!("escape time: {}", final_time_seconds);
+    println!("escape time: {final_time_seconds}");
 
     Ok(SpoilerEscape {
         base_igt_frames,
         base_igt_seconds,
         base_leniency_factor,
         difficulty_multiplier: difficulty.escape_timer_multiplier,
-        raw_time_seconds: raw_time_seconds,
-        final_time_seconds: final_time_seconds,
+        raw_time_seconds,
+        final_time_seconds,
         animals_route: animals_spoiler,
         ship_route: ship_spoiler,
     })

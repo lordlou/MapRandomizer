@@ -1,3 +1,6 @@
+// TODO: consider removing this later. It's not a bad lint but I don't want to deal with it now.
+#![allow(clippy::too_many_arguments)]
+
 pub mod boss_requirements;
 pub mod helpers;
 
@@ -30,7 +33,7 @@ impl GlobalState {
     pub fn print_debug(&self, game_data: &GameData) {
         for (i, item) in game_data.item_isv.keys.iter().enumerate() {
             if self.inventory.items[i] {
-                println!("{:?}", item);
+                println!("{item:?}");
             }
         }
     }
@@ -41,35 +44,46 @@ impl GlobalState {
         game_data: &GameData,
         ammo_collect_fraction: f32,
         tech: &[bool],
+        starting_local_state: &mut LocalState,
     ) {
         self.inventory.items[item as usize] = true;
         match item {
             Item::Missile => {
                 self.inventory.collectible_missile_packs += 1;
-                self.inventory.max_missiles = (ammo_collect_fraction
+                let new_max_missiles = (ammo_collect_fraction
                     * self.inventory.collectible_missile_packs as f32)
                     .round() as Capacity
                     * 5;
+                starting_local_state.missiles_used +=
+                    new_max_missiles - self.inventory.max_missiles;
+                self.inventory.max_missiles = new_max_missiles;
             }
             Item::Super => {
                 self.inventory.collectible_super_packs += 1;
-                self.inventory.max_supers = (ammo_collect_fraction
+                let new_max_supers = (ammo_collect_fraction
                     * self.inventory.collectible_super_packs as f32)
                     .round() as Capacity
                     * 5;
+                starting_local_state.supers_used += new_max_supers - self.inventory.max_supers;
+                self.inventory.max_supers = new_max_supers;
             }
             Item::PowerBomb => {
                 self.inventory.collectible_power_bomb_packs += 1;
-                self.inventory.max_power_bombs = (ammo_collect_fraction
+                let new_max_power_bombs = (ammo_collect_fraction
                     * self.inventory.collectible_power_bomb_packs as f32)
                     .round() as Capacity
                     * 5;
+                starting_local_state.power_bombs_used +=
+                    new_max_power_bombs - self.inventory.max_power_bombs;
+                self.inventory.max_power_bombs = new_max_power_bombs;
             }
             Item::ETank => {
                 self.inventory.max_energy += 100;
+                starting_local_state.energy_used += 100;
             }
             Item::ReserveTank => {
                 self.inventory.max_reserves += 100;
+                starting_local_state.reserves_used += 100;
             }
             _ => {}
         }
@@ -94,8 +108,25 @@ pub struct LocalState {
 }
 
 impl LocalState {
-    pub fn new() -> Self {
-        Self {
+    pub fn empty(global: &GlobalState) -> Self {
+        LocalState {
+            energy_used: global.inventory.max_energy - 1,
+            reserves_used: global.inventory.max_reserves,
+            missiles_used: global.inventory.max_missiles,
+            supers_used: global.inventory.max_supers,
+            power_bombs_used: global.inventory.max_power_bombs,
+            shinecharge_frames_remaining: 0,
+            cycle_frames: 0,
+            farm_baseline_energy_used: 0,
+            farm_baseline_reserves_used: 0,
+            farm_baseline_missiles_used: global.inventory.max_missiles,
+            farm_baseline_supers_used: global.inventory.max_supers,
+            farm_baseline_power_bombs_used: global.inventory.max_power_bombs,
+        }
+    }
+
+    pub fn full() -> Self {
+        LocalState {
             energy_used: 0,
             reserves_used: 0,
             missiles_used: 0,

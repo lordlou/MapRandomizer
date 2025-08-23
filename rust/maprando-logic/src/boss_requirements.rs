@@ -2,7 +2,7 @@ use std::cmp::{max, min};
 
 use crate::helpers::*;
 use crate::{Inventory, LocalState};
-use maprando_game::{Capacity, Item};
+use maprando_game::{Capacity, Item, RidleyStuck};
 
 pub fn apply_phantoon_requirement(
     inventory: &Inventory,
@@ -15,7 +15,7 @@ pub fn apply_phantoon_requirement(
     // high proficiency the fight is considered free anyway (as long as Charge or any ammo is available)
     // since all damage can be avoided.
     let boss_hp: f32 = 2500.0;
-    let charge_damage = get_charge_damage(&inventory);
+    let charge_damage = get_charge_damage(inventory);
 
     // Assume a firing rate of between 50% (on lowest difficulty) to 100% (on highest).
     // This represents missing the opportunity to hit Phantoon when he first opens his eye,
@@ -28,20 +28,20 @@ pub fn apply_phantoon_requirement(
         // Assume max 1 charge shot per 10 seconds. With weaker beams, a higher firing rate is
         // possible, but we leave it like this to roughly account for the higher risk of
         // damage from Phantoon's body when one shot won't immediately despawn him.
-        let time = charge_shots_to_use as f32 * 10.0 / firing_rate;
+        let time = charge_shots_to_use * 10.0 / firing_rate;
         possible_kill_times.push(time);
     }
     if inventory.max_missiles > 0 {
         // We don't worry about ammo quantity since they can be farmed from the flames.
         let missiles_to_use = f32::ceil(boss_hp / 100.0);
         // Assume max average rate of 3 missiles per 10 seconds:
-        let time = missiles_to_use as f32 * 10.0 / 3.0 / firing_rate;
+        let time = missiles_to_use * 10.0 / 3.0 / firing_rate;
         possible_kill_times.push(time);
     }
     if inventory.max_supers > 0 {
         // We don't worry about ammo quantity since they can be farmed from the flames.
         let supers_to_use = f32::ceil(boss_hp / 600.0);
-        let time = supers_to_use as f32 * 30.0; // Assume average rate of 1 Super per 30 seconds
+        let time = supers_to_use * 30.0; // Assume average rate of 1 Super per 30 seconds
         possible_kill_times.push(time);
     }
 
@@ -84,7 +84,7 @@ pub fn apply_draygon_requirement(
     can_be_very_patient: bool,
 ) -> Option<LocalState> {
     let mut boss_hp: f32 = 6000.0;
-    let charge_damage = get_charge_damage(&inventory);
+    let charge_damage = get_charge_damage(inventory);
 
     // Assume an accuracy of between 40% (on lowest difficulty) to 100% (on highest).
     let accuracy = 0.4 + 0.6 * proficiency;
@@ -181,12 +181,12 @@ pub fn apply_draygon_requirement(
             ..local
         };
         if validate_energy(result, inventory, can_manage_reserves).is_some() {
-            return Some(local);
+            Some(local)
         } else {
-            return None;
+            None
         }
     } else {
-        return None;
+        None
     }
 }
 
@@ -195,22 +195,35 @@ pub fn apply_ridley_requirement(
     mut local: LocalState,
     proficiency: f32,
     can_manage_reserves: bool,
+    can_be_patient: bool,
     can_be_very_patient: bool,
+    can_be_extremely_patient: bool,
+    use_power_bombs: bool,
+    g_mode: bool,
+    stuck: RidleyStuck,
 ) -> Option<LocalState> {
     let mut boss_hp: f32 = 18000.0;
     let mut time: f32 = 0.0; // Cumulative time in seconds for the fight
-    let charge_damage = get_charge_damage(&inventory);
+    let charge_damage = get_charge_damage(inventory);
 
-    // Assume an ammo accuracy rate of between 60% (on lowest difficulty) to 100% (on highest):
-    let accuracy = 0.6 + 0.4 * proficiency;
+    // Assume an ammo accuracy rate of between 80% (on lowest difficulty) to 100% (on highest):
+    let accuracy = 0.8 + 0.2 * proficiency;
 
-    // Assume a firing rate of between 30% (on lowest difficulty) to 100% (on highest):
-    let firing_rate = 0.3 + 0.7 * proficiency;
+    // Assume a firing rate of between 15% (on lowest difficulty) to 100% (on highest):
+    let firing_rate = 0.15 + 0.85 * proficiency;
 
-    let super_time = 0.5 / firing_rate; // minimum of 0.5 seconds between Super shots
-    let charge_time = 1.4 / firing_rate; // minimum of 1.4 seconds between charge shots
-    let missile_time = 0.34 / firing_rate; // minimum of 0.34 seconds between Missile shots
-    let power_bomb_time = 3.0 / firing_rate; // minimum of 3.0 seconds between Power Bomb shots
+    let mut super_time = 0.5 / firing_rate; // minimum of 0.5 seconds between Super shots
+    let mut charge_time = 1.4 / firing_rate; // minimum of 1.4 seconds between charge shots
+    let mut missile_time = 0.34 / firing_rate; // minimum of 0.34 seconds between Missile shots
+    let mut power_bomb_time = 3.0 / firing_rate; // minimum of 3.0 seconds between Power Bomb shots
+
+    if stuck == RidleyStuck::Bottom {
+        // If Ridley is stuck at the bottom of the room, then damage can be dealt more rapidly:
+        super_time = 0.34 / firing_rate;
+        charge_time = 1.1 / firing_rate;
+        missile_time = 0.17 / firing_rate;
+        power_bomb_time = 2.65 / firing_rate;
+    }
 
     let charge_dps = charge_damage * accuracy / charge_time;
     let missiles_dps = 100.0 * accuracy / missile_time;
@@ -261,7 +274,7 @@ pub fn apply_ridley_requirement(
         time += charge_shots_to_use as f32 * charge_time;
     }
 
-    if inventory.items[Item::Morph as usize] {
+    if inventory.items[Item::Morph as usize] && use_power_bombs {
         // Use Power Bombs:
         let pbs_available = inventory.max_power_bombs - local.power_bombs_used;
         let pbs_to_use = max(
@@ -291,7 +304,17 @@ pub fn apply_ridley_requirement(
         return None;
     }
 
-    if time >= 180.0 && !can_be_very_patient {
+    // For determining if patience tech is required:
+    // `good_time` = hypothetical time based on good but safe execution
+    // This is 15% slower than the optimized times which are more applicable for short fights.
+    let good_time = time * firing_rate * accuracy * 1.15;
+    // With "canBePatient" (Expert) we tolerate a little longer fight compared to other strats
+    // (120 seconds vs. 90 seconds), since the fight likely only has to be done once and is
+    // not as boring as other patience-constrained strats.
+    if good_time >= 120.0 && !can_be_patient
+        || good_time >= 180.0 && !can_be_very_patient
+        || good_time >= 360.0 && !can_be_extremely_patient
+    {
         // We don't have enough patience to finish the fight:
         return None;
     }
@@ -300,7 +323,11 @@ pub fn apply_ridley_requirement(
     let screw = inventory.items[Item::ScrewAttack as usize];
 
     // Assumed rate of Ridley damage to Samus (per second), given minimal dodging skill:
-    let base_ridley_attack_dps = 50.0;
+    let base_ridley_attack_dps = if stuck != RidleyStuck::None {
+        0.0
+    } else {
+        50.0
+    };
 
     // Multiplier to Ridley damage based on items (Morph and Screw) and proficiency (in dodging).
     // This is a rough guess which could be refined. We could also take into account other items
@@ -319,7 +346,7 @@ pub fn apply_ridley_requirement(
     }
     local.energy_used += (damage / suit_damage_factor(inventory) as f32) as Capacity;
 
-    if !inventory.items[Item::Varia as usize] {
+    if !inventory.items[Item::Varia as usize] && !g_mode {
         // Heat run case: We do not explicitly check canHeatRun tech here, because it is
         // already required to reach the boss node from the doors.
         // Include time pre- and post-fight when Samus must still take heat damage:
@@ -346,7 +373,7 @@ pub fn apply_botwoon_requirement(
 
     let mut boss_hp: f32 = 1500.0; // HP for one phase of the fight.
     let mut time: f32 = 0.0; // Cumulative time in seconds for the phase
-    let charge_damage = get_charge_damage(&inventory);
+    let charge_damage = get_charge_damage(inventory);
 
     // Assume an ammo accuracy rate of between 25% (on lowest difficulty) to 90% (on highest):
     let accuracy = 0.25 + 0.65 * proficiency;
@@ -464,7 +491,7 @@ pub fn apply_mother_brain_2_requirement(
 ) -> Option<LocalState> {
     let mut boss_hp: f32 = 18000.0;
     let mut time: f32 = 0.0; // Cumulative time in seconds for the fight
-    let charge_damage = get_charge_damage(&inventory);
+    let charge_damage = get_charge_damage(inventory);
 
     // Assume an ammo accuracy rate of between 75% (on lowest difficulty) to 100% (on highest):
     let accuracy = 0.75 + 0.25 * proficiency;

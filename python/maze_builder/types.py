@@ -21,6 +21,7 @@ class DoorSubtype(Enum):
 
 @dataclass
 class DoorIdentifier:
+    node_id: int
     direction: Direction
     x: int
     y: int
@@ -39,6 +40,7 @@ class Item:
 
 @dataclass
 class Room:
+    room_id: int
     name: str
     map: List[List[int]]
     rom_address: Optional[int] = None
@@ -135,7 +137,6 @@ class EpisodeData:
     map_door_id: torch.tensor  # 2D uint16: (num_episodes, episode_length)
     room_door_id: torch.tensor  # 2D uint16: (num_episodes, episode_length)
     door_connects: torch.tensor  # 2D bool: (num_episodes, num_doors)
-    door_balance: torch.tensor  # 2D float32: (num_episodes, num_doors)
     missing_connects: torch.tensor  # 2D bool: (num_episodes, num_missing_connects)
     save_distances: torch.tensor  # 2D bool: (num_episodes, num_non_potential_save_idxs)
     graph_diameter: torch.tensor  # 1D bool: (num_episodes)
@@ -183,7 +184,6 @@ class EpisodeData:
 class TrainingData:
     reward: torch.tensor  # 1D uint64: num_transitions
     door_connects: torch.tensor  # 2D bool: (num_transitions, num_doors)
-    door_balance: torch.tensor  # 2D float32: (num_transitions, num_doors)
     missing_connects: torch.tensor  # 2D bool: (num_transitions, num_missing_connects)
     save_distances: torch.tensor  # 2D bool: (num_transitions, num_non_potential_save_idxs)
     graph_diameter: torch.tensor  # 1D bool: (num_transitions)
@@ -197,6 +197,9 @@ class TrainingData:
     room_mask: torch.tensor  # 2D uint64: (num_transitions, num_rooms)
     room_position_x: torch.tensor  # 2D uint64: (num_transitions, num_rooms)
     room_position_y: torch.tensor  # 2D uint64: (num_transitions, num_rooms)
+    final_room_mask: torch.tensor  # 2D uint64: (num_transitions, num_rooms)
+    final_room_position_x: torch.tensor  # 2D uint64: (num_transitions, num_rooms)
+    final_room_position_y: torch.tensor  # 2D uint64: (num_transitions, num_rooms)
     map_door_id: torch.tensor  # 1D uint64: num_transitions
     room_door_id: torch.tensor  # 1D uint64: num_transitions
 

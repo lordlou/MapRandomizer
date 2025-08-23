@@ -177,7 +177,7 @@
         "tech_id": 29,
         "name": "canFreeFallClip",
         "difficulty": "Insane",
-        "video_id": 760
+        "video_id": 7305
     },
     {
         "tech_id": 30,
@@ -378,6 +378,12 @@
         "video_id": 3533
     },
     {
+        "tech_id": 204,
+        "name": "canSuperSink",
+        "difficulty": "Insane",
+        "video_id": 7316
+    },
+    {
         "tech_id": 185,
         "name": "canMorphTurnaround",
         "difficulty": "Hard",
@@ -447,7 +453,7 @@
         "tech_id": 68,
         "name": "canUnderwaterBombIntoSpringBallJump",
         "difficulty": "Insane",
-        "video_id": 1007
+        "video_id": 6789
     },
     {
         "tech_id": 69,
@@ -505,7 +511,7 @@
     },
     {
         "tech_id": 78,
-        "name": "canDelayedWalljump",
+        "name": "canTrickyWalljump",
         "difficulty": "Hard",
         "video_id": 1036
     },
@@ -528,12 +534,6 @@
         "video_id": 951
     },
     {
-        "tech_id": 82,
-        "name": "canStaggeredWalljump",
-        "difficulty": "Hard",
-        "video_id": 927
-    },
-    {
         "tech_id": 83,
         "name": "canUnderwaterWalljump",
         "difficulty": "Extreme",
@@ -550,6 +550,12 @@
         "name": "canUnderwaterWalljumpBreakFree",
         "difficulty": "Beyond",
         "video_id": 1125
+    },
+    {
+        "tech_id": 201,
+        "name": "canBootless2WideUWJ",
+        "difficulty": "Beyond",
+        "video_id": 2475
     },
     {
         "tech_id": 84,
@@ -608,8 +614,8 @@
     {
         "tech_id": 91,
         "name": "canBombAboveIBJ",
-        "difficulty": "Very Hard",
-        "video_id": 919
+        "difficulty": "Extreme",
+        "video_id": 7072
     },
     {
         "tech_id": 92,
@@ -900,6 +906,12 @@
         "video_id": 2074
     },
     {
+        "tech_id": 203,
+        "name": "canShinesparkSlopeClip",
+        "difficulty": "Extreme",
+        "video_id": 6880
+    },
+    {
         "tech_id": 140,
         "name": "canSlowShortCharge",
         "difficulty": "Expert",
@@ -1004,8 +1016,14 @@
     {
         "tech_id": 156,
         "name": "canXRayClimb",
-        "difficulty": "Expert",
+        "difficulty": "Very Hard",
         "video_id": 795
+    },
+    {
+        "tech_id": 202,
+        "name": "canLongXRayClimb",
+        "difficulty": "Expert",
+        "video_id": 2212
     },
     {
         "tech_id": 157,
@@ -1033,15 +1051,21 @@
     },
     {
         "tech_id": 161,
-        "name": "canEnterRMode",
+        "name": "canRMode",
         "difficulty": "Extreme",
-        "video_id": 207
+        "video_id": 265
     },
     {
         "tech_id": 162,
-        "name": "canEnterGMode",
-        "difficulty": "Extreme",
+        "name": "canGMode",
+        "difficulty": "Expert",
         "video_id": 982
+    },
+    {
+        "tech_id": 205,
+        "name": "canComplexGMode",
+        "difficulty": "Extreme",
+        "video_id": 5882
     },
     {
         "tech_id": 200,
@@ -1057,7 +1081,7 @@
     },
     {
         "tech_id": 163,
-        "name": "canEnterGModeImmobile",
+        "name": "canGModeImmobile",
         "difficulty": "Extreme",
         "video_id": 994
     },
@@ -1066,6 +1090,12 @@
         "name": "canArtificialMorph",
         "difficulty": "Extreme",
         "video_id": 985
+    },
+    {
+        "tech_id": 206,
+        "name": "canPowerBombItemOverloadPLMs",
+        "difficulty": "Extreme",
+        "video_id": 6234
     },
     {
         "tech_id": 194,

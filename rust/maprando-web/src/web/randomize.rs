@@ -1,18 +1,19 @@
 mod helpers;
 
-use crate::web::{upgrade::try_upgrade_settings, AppData, VERSION};
-use actix_easy_multipart::{text::Text, MultipartForm};
-use actix_web::{post, web, HttpRequest, HttpResponse, Responder};
+use crate::web::{AppData, VERSION};
+use actix_easy_multipart::{MultipartForm, text::Text};
+use actix_web::{HttpRequest, HttpResponse, Responder, post, web};
 use helpers::*;
 use log::info;
 use maprando::{
     randomize::{
-        filter_links, get_difficulty_tiers, get_objectives, order_map_areas, randomize_doors,
-        randomize_map_areas, DifficultyConfig, Randomization, Randomizer, SpoilerLog,
+        DifficultyConfig, Randomization, Randomizer, SpoilerLog, filter_links,
+        get_difficulty_tiers, get_objectives, order_map_areas, randomize_doors,
+        randomize_map_areas,
     },
-    settings::{AreaAssignment, RandomizerSettings, StartLocationMode},
+    settings::{AreaAssignment, RandomizerSettings, StartLocationMode, try_upgrade_settings},
 };
-use maprando_game::LinksDataGroup;
+use maprando_game::{LinksDataGroup, Map};
 use rand::{RngCore, SeedableRng};
 use serde_derive::{Deserialize, Serialize};
 use serde_variant::to_variant_name;
@@ -40,10 +41,7 @@ struct SeedData {
     escape_enemies_cleared: bool,
     escape_refill: bool,
     escape_movement_items: bool,
-    mark_map_stations: bool,
-    transition_letters: bool,
     item_markers: String,
-    item_dot_change: String,
     all_items_spawn: bool,
     acid_chozo: bool,
     remove_climb_lava: bool,
@@ -63,7 +61,6 @@ struct SeedData {
     early_save: bool,
     area_assignment: String,
     wall_jump: String,
-    maps_revealed: String,
     vanilla_map: bool,
     ultra_low_qol: bool,
 }
@@ -85,12 +82,17 @@ async fn randomize(
     http_req: HttpRequest,
     app_data: web::Data<AppData>,
 ) -> impl Responder {
-    let mut settings = match try_upgrade_settings(req.settings.0.to_string(), &app_data, true) {
-        Ok(s) => s.1,
-        Err(e) => {
-            return HttpResponse::BadRequest().body(e.to_string());
-        }
-    };
+    let mut settings =
+        match try_upgrade_settings(req.settings.0.to_string(), &app_data.preset_data, true) {
+            Ok(s) => s.1,
+            Err(e) => {
+                return HttpResponse::BadRequest().body(e.to_string());
+            }
+        };
+
+    if settings.other_settings.random_seed == Some(0) {
+        return HttpResponse::BadRequest().body("Invalid random seed: 0");
+    }
 
     let mut validated_preset = false;
     for s in &app_data.preset_data.full_presets {
@@ -129,10 +131,10 @@ async fn randomize(
     let implicit_tech = &app_data.preset_data.tech_by_difficulty["Implicit"];
     let implicit_notables = &app_data.preset_data.notables_by_difficulty["Implicit"];
     let difficulty = DifficultyConfig::new(
-        &skill_settings,
+        skill_settings,
         &app_data.game_data,
-        &implicit_tech,
-        &implicit_notables,
+        implicit_tech,
+        implicit_notables,
     );
     let difficulty_tiers = get_difficulty_tiers(
         &settings,
@@ -174,6 +176,7 @@ async fn randomize(
     let time_start_attempts = Instant::now();
     let mut attempt_num = 0;
     let mut output_opt: Option<AttemptOutput> = None;
+    let mut map_batch: Vec<Map> = vec![];
     let client = Client::new();
     'attempts: for _ in 0..max_map_attempts {
         let map_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
@@ -181,11 +184,16 @@ async fn randomize(
 
         if !app_data.map_repositories.contains_key(&map_layout) {
             // TODO: it doesn't make sense to panic on things like this.
-            panic!("Unrecognized map layout option: {}", map_layout);
+            panic!("Unrecognized map layout option: {map_layout}");
         }
-        let mut map = app_data.map_repositories[&map_layout]
-            .get_map(attempt_num, map_seed, &app_data.game_data, &client)
-            .unwrap();
+
+        if map_batch.is_empty() {
+            map_batch = app_data.map_repositories[&map_layout]
+                .get_map_batch(map_seed, &app_data.game_data)
+                .unwrap();
+        }
+
+        let mut map = map_batch.pop().unwrap();
         match settings.other_settings.area_assignment {
             AreaAssignment::Ordered => {
                 order_map_areas(&mut map, map_seed, &app_data.game_data);
@@ -195,7 +203,7 @@ async fn randomize(
             }
             AreaAssignment::Standard => {}
         }
-        let objectives = get_objectives(&settings, &mut rng);
+        let objectives = get_objectives(&settings, Some(&map), &app_data.game_data, &mut rng);
         let locked_door_data = randomize_doors(
             &app_data.game_data,
             &map,
@@ -217,16 +225,15 @@ async fn randomize(
             let item_placement_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
             attempt_num += 1;
 
-            info!("Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_randomization_seed}, item placement seed={item_placement_seed}");
+            info!(
+                "Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_randomization_seed}, item placement seed={item_placement_seed}"
+            );
             let randomization_result =
                 randomizer.randomize(attempt_num, item_placement_seed, display_seed);
             let (randomization, spoiler_log) = match randomization_result {
                 Ok(x) => x,
                 Err(e) => {
-                    info!(
-                        "Attempt {attempt_num}/{max_attempts}: Randomization failed: {}",
-                        e
-                    );
+                    info!("Attempt {attempt_num}/{max_attempts}: Randomization failed: {e}");
                     continue;
                 }
             };
@@ -264,10 +271,10 @@ async fn randomize(
         timestamp,
         peer_addr: http_req
             .peer_addr()
-            .map(|x| format!("{:?}", x))
-            .unwrap_or(String::new()),
+            .map(|x| format!("{x:?}"))
+            .unwrap_or_default(),
         http_headers: format_http_headers(&http_req),
-        random_seed: random_seed,
+        random_seed,
         map_seed: output.map_seed,
         door_randomization_seed: output.door_randomization_seed,
         item_placement_seed: output.item_placement_seed,
@@ -284,12 +291,7 @@ async fn randomize(
         escape_enemies_cleared: qol_settings.escape_enemies_cleared,
         escape_refill: qol_settings.escape_refill,
         escape_movement_items: qol_settings.escape_movement_items,
-        mark_map_stations: qol_settings.mark_map_stations,
-        transition_letters: other_settings.transition_letters,
         item_markers: to_variant_name(&qol_settings.item_markers)
-            .unwrap()
-            .to_string(),
-        item_dot_change: to_variant_name(&other_settings.item_dot_change)
             .unwrap()
             .to_string(),
         all_items_spawn: qol_settings.all_items_spawn,
@@ -326,9 +328,6 @@ async fn randomize(
         wall_jump: to_variant_name(&other_settings.wall_jump)
             .unwrap()
             .to_string(),
-        maps_revealed: to_variant_name(&other_settings.maps_revealed)
-            .unwrap()
-            .to_string(),
         vanilla_map: settings.map_layout == "Vanilla",
         ultra_low_qol: other_settings.ultra_low_qol,
     };
@@ -348,6 +347,6 @@ async fn randomize(
     .unwrap();
 
     HttpResponse::Ok().json(RandomizeResponse {
-        seed_url: format!("/seed/{}/", seed_name),
+        seed_url: format!("/seed/{seed_name}/"),
     })
 }

@@ -24,7 +24,7 @@
                         </div>
                     </div>
                 {% endfor %}
-                {% if preset_data.notables_by_difficulty[difficulty_name].len() > 0|as_ref %}
+                {% if preset_data.notables_by_difficulty[difficulty_name].len() > &0 %}
                 <hr class="my-2">
                 {% endif %}
                 {% let difficulty_notables = preset_data.notables_by_difficulty[difficulty_name] %}
@@ -56,6 +56,10 @@
 <div class="row">
     <div class="col-7 col-sm-6 col-md-5 col-lg-4">Gate glitch leniency:</div>
     <div class="col-5 col-sm-6 col-md-7 col-lg-8">{{+ difficulty.gate_glitch_leniency }}</div>
+</div>
+<div class="row">
+    <div class="col-7 col-sm-6 col-md-5 col-lg-4">Farm time limit:</div>
+    <div class="col-5 col-sm-6 col-md-7 col-lg-8">{{+ difficulty.farm_time_limit }}</div>
 </div>
 
 <div class="row">

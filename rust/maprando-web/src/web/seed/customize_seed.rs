@@ -1,22 +1,21 @@
-use crate::web::{upgrade::try_upgrade_settings, AppData};
-use actix_easy_multipart::{bytes::Bytes, text::Text, MultipartForm};
+use crate::web::AppData;
+use actix_easy_multipart::{MultipartForm, bytes::Bytes, text::Text};
 use actix_web::{
+    HttpResponse, Responder,
     http::header::{ContentDisposition, DispositionParam, DispositionType},
-    post, web, HttpResponse, Responder,
+    post, web,
 };
 use askama::Template;
 use log::info;
 use maprando::{
     customize::{
-        customize_rom, parse_controller_button, ControllerButton, ControllerConfig,
-        CustomizeSettings, DoorTheme, FlashingSetting, MusicSettings, PaletteTheme, ShakingSetting,
-        TileTheme,
+        ControllerButton, ControllerConfig, CustomizeSettings, DoorTheme, FlashingSetting,
+        MusicSettings, PaletteTheme, ShakingSetting, TileTheme, parse_controller_button,
     },
-    patch::{make_rom, Rom},
+    patch::{Rom, make_rom},
     randomize::Randomization,
-    settings::RandomizerSettings,
+    settings::{RandomizerSettings, try_upgrade_settings},
 };
-use maprando_game::Map;
 
 #[derive(Template)]
 #[template(path = "errors/invalid_rom.html")]
@@ -27,6 +26,8 @@ struct CustomizeRequest {
     rom: Vec<u8>,
     samus_sprite: Text<String>,
     etank_color: Text<String>,
+    item_dot_change: Text<String>,
+    transition_letters: Text<bool>,
     reserve_hud_style: Text<bool>,
     room_palettes: Text<String>,
     tile_theme: Text<String>,
@@ -36,6 +37,7 @@ struct CustomizeRequest {
     shaking: Text<String>,
     flashing: Text<String>,
     vanilla_screw_attack_animation: Text<bool>,
+    room_names: Text<bool>,
     control_shot: Text<String>,
     control_jump: Text<String>,
     control_dash: Text<String>,
@@ -70,6 +72,14 @@ struct CustomizeRequest {
     moonwalk: Text<bool>,
 }
 
+fn upgrade_randomization(randomization: &mut Randomization) {
+    if randomization.map.room_mask.is_empty() {
+        // For older seeds, room_mask is not specified, and it means all rooms
+        // are present:
+        randomization.map.room_mask = vec![true; randomization.map.rooms.len()];
+    }
+}
+
 #[post("/{name}/customize")]
 async fn customize_seed(
     req: MultipartForm<CustomizeRequest>,
@@ -90,26 +100,19 @@ async fn customize_seed(
     .unwrap();
     let seed_data = json::parse(&seed_data_str).unwrap();
 
-    let map_data_bytes = app_data
-        .seed_repository
-        .get_file(seed_name, "map.json")
-        .await
-        .unwrap_or(vec![]);
-    let map: Option<Map> = if map_data_bytes.len() == 0 {
-        None
-    } else {
-        Some(serde_json::from_slice(&map_data_bytes).unwrap())
-    };
-
     let settings_bytes = app_data
         .seed_repository
         .get_file(seed_name, "public/settings.json")
         .await
         .unwrap_or(vec![]);
-    let settings: Option<RandomizerSettings> = if settings_bytes.len() == 0 {
+    let settings: Option<RandomizerSettings> = if settings_bytes.is_empty() {
         None
     } else {
-        match try_upgrade_settings(String::from_utf8(settings_bytes).unwrap(), &app_data, false) {
+        match try_upgrade_settings(
+            String::from_utf8(settings_bytes).unwrap(),
+            &app_data.preset_data,
+            false,
+        ) {
             Ok(s) => Some(s.1),
             Err(e) => {
                 return HttpResponse::InternalServerError().body(e.to_string());
@@ -122,7 +125,7 @@ async fn customize_seed(
         .get_file(seed_name, "randomization.json")
         .await
         .unwrap_or(vec![]);
-    let randomization: Option<Randomization> = if randomization_bytes.len() == 0 {
+    let randomization: Option<Randomization> = if randomization_bytes.is_empty() {
         None
     } else {
         Some(serde_json::from_slice(&randomization_bytes).unwrap())
@@ -150,8 +153,15 @@ async fn customize_seed(
             u8::from_str_radix(&req.etank_color.0[2..4], 16).unwrap() / 8,
             u8::from_str_radix(&req.etank_color.0[4..6], 16).unwrap() / 8,
         )),
+        item_dot_change: match req.item_dot_change.0.as_str() {
+            "Fade" => maprando::customize::ItemDotChange::Fade,
+            "Disappear" => maprando::customize::ItemDotChange::Disappear,
+            _ => panic!("Unexpected item_dot_change"),
+        },
+        transition_letters: req.transition_letters.0,
         reserve_hud_style: req.reserve_hud_style.0,
         vanilla_screw_attack_animation: req.vanilla_screw_attack_animation.0,
+        room_names: req.room_names.0,
         palette_theme: if req.room_palettes.0 == "area-themed" {
             PaletteTheme::AreaThemed
         } else {
@@ -205,44 +215,32 @@ async fn customize_seed(
         },
     };
 
-    if settings.is_some() && randomization.is_some() {
+    if settings.is_some()
+        && let Some(mut randomization) = randomization
+    {
         info!("Patching ROM");
+        upgrade_randomization(&mut randomization);
         match make_rom(
             &rom,
             settings.as_ref().unwrap(),
-            randomization.as_ref().unwrap(),
+            &customize_settings,
+            &randomization,
             &app_data.game_data,
+            &app_data.samus_sprite_categories,
+            &app_data.mosaic_themes,
         ) {
             Ok(r) => {
                 rom = r;
             }
             Err(err) => {
                 return HttpResponse::InternalServerError()
-                    .body(format!("Error patching ROM: {:?}", err))
+                    .body(format!("Error patching ROM: {err:?}"));
             }
         }
     } else {
         return HttpResponse::InternalServerError()
-            .body(format!("Seed incompatible with current customizer"));
+            .body("Seed incompatible with current customizer");
     }
-
-    info!("CustomizeSettings: {:?}", customize_settings);
-    match customize_rom(
-        &mut rom,
-        &orig_rom,
-        &map,
-        &customize_settings,
-        &app_data.game_data,
-        &app_data.samus_sprite_categories,
-        &app_data.mosaic_themes,
-    ) {
-        Ok(()) => {}
-        Err(err) => {
-            return HttpResponse::InternalServerError()
-                .body(format!("Error customizing ROM: {:?}", err))
-        }
-    }
-
     HttpResponse::Ok()
         .content_type("application/octet-stream")
         .insert_header(ContentDisposition {
@@ -272,10 +270,10 @@ fn get_spin_lock_buttons(req: &CustomizeRequest) -> Vec<ControllerButton> {
     ];
 
     for (setting, button) in setting_button_mapping {
-        if let Some(x) = setting {
-            if x.0 == "on" {
-                spin_lock_buttons.push(button);
-            }
+        if let Some(x) = setting
+            && x.0 == "on"
+        {
+            spin_lock_buttons.push(button);
         }
     }
     spin_lock_buttons
@@ -299,10 +297,10 @@ fn get_quick_reload_buttons(req: &CustomizeRequest) -> Vec<ControllerButton> {
     ];
 
     for (setting, button) in setting_button_mapping {
-        if let Some(x) = setting {
-            if x.0 == "on" {
-                quick_reload_buttons.push(button);
-            }
+        if let Some(x) = setting
+            && x.0 == "on"
+        {
+            quick_reload_buttons.push(button);
         }
     }
     quick_reload_buttons

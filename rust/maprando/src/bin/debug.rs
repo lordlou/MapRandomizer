@@ -1,12 +1,18 @@
+// TODO: consider removing this later. It's not a bad lint but I don't want to deal with it now.
+#![allow(clippy::too_many_arguments)]
+
 use anyhow::Result;
 use hashbrown::HashMap;
 use maprando::{
     preset::PresetData,
-    randomize::{get_objectives, DifficultyConfig},
+    randomize::{DifficultyConfig, get_objectives},
     settings::RandomizerSettings,
-    traverse::{apply_requirement, LockedDoorData},
+    traverse::{LockedDoorData, apply_requirement},
 };
-use maprando_game::{Capacity, GameData, Item, Requirement, TECH_ID_CAN_BE_VERY_PATIENT};
+use maprando_game::{
+    Capacity, GameData, Item, NodeId, Requirement, RidleyStuck, RoomId,
+    TECH_ID_CAN_BE_EXTREMELY_PATIENT, TECH_ID_CAN_BE_PATIENT, TECH_ID_CAN_BE_VERY_PATIENT,
+};
 use maprando_logic::{GlobalState, Inventory, LocalState};
 use rand::SeedableRng;
 use std::path::Path;
@@ -51,14 +57,14 @@ fn run_scenario(
             "R" => {
                 items[Item::ScrewAttack as usize] = true;
             }
-            _ => panic!("unrecognized beam {}", item),
+            _ => panic!("unrecognized beam {item}"),
         }
     }
 
     let weapon_mask = game_data.get_weapon_mask(&items, &difficulty.tech);
     let global_state = GlobalState {
         inventory: Inventory {
-            items: items,
+            items,
             max_energy: 1899,
             max_missiles: missile_cnt,
             max_reserves: 0,
@@ -72,22 +78,46 @@ fn run_scenario(
         doors_unlocked: vec![],
         weapon_mask,
     };
-    let local_state = LocalState::new();
+    let local_state = LocalState::full();
     let locked_door_data = LockedDoorData {
         locked_doors: vec![],
         locked_door_node_map: HashMap::new(),
         locked_door_vertex_ids: vec![],
     };
+    let door_map: HashMap<(RoomId, NodeId), (RoomId, NodeId)> = HashMap::new();
 
     let rng_seed = [0u8; 32];
     let mut rng = rand::rngs::StdRng::from_seed(rng_seed);
 
-    let objectives = get_objectives(&settings, &mut rng);
+    let objectives = get_objectives(settings, None, game_data, &mut rng);
     difficulty.draygon_proficiency = proficiency;
+    difficulty.ridley_proficiency = proficiency;
+    difficulty.tech[game_data.tech_isv.index_by_key[&TECH_ID_CAN_BE_VERY_PATIENT]] = patience;
+    difficulty.tech[game_data.tech_isv.index_by_key[&TECH_ID_CAN_BE_EXTREMELY_PATIENT]] = patience;
+    // let new_local_state_opt = apply_requirement(
+    //     &Requirement::DraygonFight {
+    //         can_be_very_patient_tech_idx: game_data.tech_isv.index_by_key
+    //             [&TECH_ID_CAN_BE_VERY_PATIENT],
+    //     },
+    //     &global_state,
+    //     local_state,
+    //     false,
+    //     settings,
+    //     &difficulty,
+    //     game_data,
+    //     &locked_door_data,
+    //     &objectives,
+    // );
     let new_local_state_opt = apply_requirement(
-        &Requirement::DraygonFight {
+        &Requirement::RidleyFight {
+            can_be_patient_tech_idx: game_data.tech_isv.index_by_key[&TECH_ID_CAN_BE_PATIENT],
             can_be_very_patient_tech_idx: game_data.tech_isv.index_by_key
                 [&TECH_ID_CAN_BE_VERY_PATIENT],
+            can_be_extremely_patient_tech_idx: game_data.tech_isv.index_by_key
+                [&TECH_ID_CAN_BE_EXTREMELY_PATIENT],
+            power_bombs: true,
+            g_mode: false,
+            stuck: RidleyStuck::None,
         },
         &global_state,
         local_state,
@@ -95,6 +125,7 @@ fn run_scenario(
         settings,
         &difficulty,
         game_data,
+        &door_map,
         &locked_door_data,
         &objectives,
     );
@@ -103,36 +134,20 @@ fn run_scenario(
         .map(|x| format!("{}", x.energy_used))
         .unwrap_or("n/a".to_string());
     println!(
-        "proficiency={}, items={:?}, missiles={}, patience={}: {}",
-        proficiency, item_loadout, missile_cnt, patience, outcome
+        "proficiency={proficiency}, items={item_loadout:?}, missiles={missile_cnt}, patience={patience}: {outcome}"
     );
 }
 
 fn main() -> Result<()> {
-    let sm_json_data_path = Path::new("../sm-json-data");
-    let room_geometry_path = Path::new("../room_geometry.json");
-    let escape_timings_path = Path::new("data/escape_timings.json");
-    let start_locations_path = Path::new("data/start_locations.json");
-    let hub_locations_path = Path::new("data/hub_locations.json");
-    let reduced_flashing_path = Path::new("data/reduced_flashing.json");
-    let strat_videos_path = Path::new("data/strat_videos.json");
-    let title_screen_path = Path::new("../TitleScreen/Images");
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
+        .format_timestamp_millis()
+        .init();
+
     let tech_path = Path::new("data/tech_data.json");
     let notable_path = Path::new("data/notable_data.json");
     let presets_path = Path::new("data/presets");
-    let map_tiles_path = Path::new("data/map_tiles.json");
 
-    let game_data = GameData::load(
-        sm_json_data_path,
-        room_geometry_path,
-        escape_timings_path,
-        start_locations_path,
-        hub_locations_path,
-        title_screen_path,
-        reduced_flashing_path,
-        strat_videos_path,
-        map_tiles_path,
-    )?;
+    let game_data = GameData::load()?;
 
     let preset_data = PresetData::load(tech_path, notable_path, presets_path, &game_data)?;
     let mut settings = preset_data.default_preset.clone();
@@ -140,9 +155,9 @@ fn main() -> Result<()> {
     let difficulty = preset_data.difficulty_tiers.last().unwrap();
 
     let proficiencies = vec![0.0, 0.3, 0.5, 0.7, 0.8, 0.825, 0.85, 0.9, 0.95, 1.0];
-    let missile_counts = vec![20];
+    let missile_counts = vec![60];
     let super_counts = vec![0];
-    let item_loadouts = vec![vec!["M"]];
+    let item_loadouts = vec![vec!["M", "V", "C"]];
 
     for &proficiency in &proficiencies {
         for &missile_cnt in &missile_counts {

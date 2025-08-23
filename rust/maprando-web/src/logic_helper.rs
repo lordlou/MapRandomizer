@@ -1,32 +1,43 @@
+use anyhow::Result;
 use askama::Template;
 use glob::glob;
 use hashbrown::{HashMap, HashSet};
+use itertools::Itertools;
 use json::JsonValue;
 use log::warn;
 use maprando::{
     preset::PresetData,
-    traverse::{apply_requirement, LockedDoorData},
+    randomize::{EssentialSpoilerData, Randomization},
+    settings::{Objective, RandomizerSettings},
+    spoiler_map::{self, image::RgbaImage},
+    traverse::{LockedDoorData, apply_requirement},
 };
 use maprando_game::{
-    DoorOrientation, ExitCondition, GameData, Link, MainEntranceCondition, NodeId, NotableId,
-    NotableIdx, Requirement, RoomId, SparkPosition, StratId, StratVideo, TechId, VertexAction,
-    VertexKey, TECH_ID_CAN_ARTIFICIAL_MORPH, TECH_ID_CAN_BOMB_HORIZONTALLY,
-    TECH_ID_CAN_DISABLE_EQUIPMENT, TECH_ID_CAN_ENEMY_STUCK_MOONFALL, TECH_ID_CAN_ENTER_G_MODE,
-    TECH_ID_CAN_ENTER_G_MODE_IMMOBILE, TECH_ID_CAN_ENTER_R_MODE, TECH_ID_CAN_EXTENDED_MOONDANCE,
-    TECH_ID_CAN_GRAPPLE_JUMP, TECH_ID_CAN_GRAPPLE_TELEPORT, TECH_ID_CAN_HEATED_G_MODE,
+    DoorOrientation, ExitCondition, GameData, Item, Link, MainEntranceCondition, Map, NodeId,
+    NotableId, NotableIdx, Requirement, RoomId, SparkPosition, StartLocation, StratId, StratVideo,
+    TECH_ID_CAN_ARTIFICIAL_MORPH, TECH_ID_CAN_BOMB_HORIZONTALLY, TECH_ID_CAN_DISABLE_EQUIPMENT,
+    TECH_ID_CAN_ENEMY_STUCK_MOONFALL, TECH_ID_CAN_ENTER_G_MODE, TECH_ID_CAN_ENTER_G_MODE_IMMOBILE,
+    TECH_ID_CAN_ENTER_R_MODE, TECH_ID_CAN_EXTENDED_MOONDANCE, TECH_ID_CAN_GRAPPLE_JUMP,
+    TECH_ID_CAN_GRAPPLE_TELEPORT, TECH_ID_CAN_HEAT_RUN, TECH_ID_CAN_HEATED_G_MODE,
     TECH_ID_CAN_HORIZONTAL_SHINESPARK, TECH_ID_CAN_MIDAIR_SHINESPARK, TECH_ID_CAN_MOCKBALL,
     TECH_ID_CAN_MOONDANCE, TECH_ID_CAN_MOONFALL, TECH_ID_CAN_PRECISE_GRAPPLE,
     TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK, TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK_FROM_WATER,
     TECH_ID_CAN_SAMUS_EATER_TELEPORT, TECH_ID_CAN_SHINECHARGE_MOVEMENT, TECH_ID_CAN_SHINESPARK,
     TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP, TECH_ID_CAN_SKIP_DOOR_LOCK, TECH_ID_CAN_SPEEDBALL,
     TECH_ID_CAN_SPRING_BALL_BOUNCE, TECH_ID_CAN_STATIONARY_SPIN_JUMP,
-    TECH_ID_CAN_STUTTER_WATER_SHINECHARGE, TECH_ID_CAN_TEMPORARY_BLUE, TECH_ID_CAN_WALLJUMP,
+    TECH_ID_CAN_STUTTER_WATER_SHINECHARGE, TECH_ID_CAN_SUPER_SINK, TECH_ID_CAN_TEMPORARY_BLUE,
+    TECH_ID_CAN_WALLJUMP, TechId, VertexAction, VertexKey,
 };
 use maprando_logic::{GlobalState, Inventory, LocalState};
-use std::path::PathBuf;
-use urlencoding;
+use std::{io::Cursor, path::PathBuf};
 
 use super::VersionInfo;
+
+#[derive(Clone)]
+struct EnemyDrop {
+    enemy: String,
+    count: usize,
+}
 
 #[derive(Clone)]
 struct RoomStrat {
@@ -48,7 +59,10 @@ struct RoomStrat {
     exit_condition: Option<String>,
     clears_obstacles: Vec<String>,
     resets_obstacles: Vec<String>,
+    collects_items: Vec<String>,
+    sets_flags: Vec<String>,
     unlocks_doors: Option<String>,
+    farm_cycle_drops: Vec<EnemyDrop>,
     difficulty_idx: usize,
     difficulty_name: String,
 }
@@ -60,6 +74,8 @@ struct RoomTemplate<'a> {
     preset_data: &'a PresetData,
     room_id: usize,
     room_name: String,
+    twin_room_id: Option<usize>,
+    twin_room_name: Option<String>,
     room_name_url_encoded: String,
     area: String,
     room_diagram_path: String,
@@ -130,6 +146,7 @@ struct LogicIndexTemplate<'a> {
     _notables: &'a [NotableTemplate<'a>],
     area_order: &'a [String],
     tech_difficulties: Vec<String>,
+    room_polygons: &'a [RoomPolygon],
 }
 
 #[derive(Default)]
@@ -141,6 +158,7 @@ pub struct LogicData {
     pub notable_html: HashMap<(RoomId, NotableId), String>, // Map from room/notable ID to rendered HTML.
     pub notable_strat_counts: HashMap<(RoomId, NotableId), usize>, // Map from tech ID to strat count using that tech.
     pub strat_html: HashMap<(RoomId, NodeId, NodeId, StratId), String>, // Map from (room ID, from node ID, to node ID, strat ID) to rendered HTML.
+    pub vanilla_map_png: Vec<u8>, // PNG of vanilla map, to show on logic index page
 }
 
 fn list_room_diagram_files() -> HashMap<usize, String> {
@@ -155,7 +173,7 @@ fn list_room_diagram_files() -> HashMap<usize, String> {
                 }
 
                 let path_string = new_path.to_str().unwrap().to_string();
-                let segments: Vec<&str> = path_string.split(|c| c == '_' || c == '.').collect();
+                let segments: Vec<&str> = path_string.split(['_', '.']).collect();
                 let subregion = segments[0];
                 if subregion == "ceres" {
                     continue;
@@ -163,7 +181,7 @@ fn list_room_diagram_files() -> HashMap<usize, String> {
                 let room_id: usize = str::parse(segments[2]).unwrap();
                 out.insert(room_id, path_string);
             }
-            Err(e) => panic!("Failure reading room diagrams: {:?}", e),
+            Err(e) => panic!("Failure reading room diagrams: {e:?}"),
         }
     }
     out
@@ -192,21 +210,28 @@ fn extract_tech_rec(req: &JsonValue, tech: &mut HashSet<usize>, game_data: &Game
         }
     } else if req.is_object() && req.len() == 1 {
         let (key, value) = req.entries().next().unwrap();
-        if key == "and" || key == "or" {
-            for x in value.members() {
-                extract_tech_rec(x, tech, game_data);
+        match key {
+            "and" | "or" => {
+                for x in value.members() {
+                    extract_tech_rec(x, tech, game_data);
+                }
             }
-        } else if key == "tech" {
-            extract_tech_rec(value, tech, game_data);
-        } else if key == "shinespark" {
-            tech.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_SHINESPARK]);
-        } else if key == "comeInWithRMode" {
-            tech.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_R_MODE]);
-        } else if key == "comeInWithGMode" {
-            tech.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_ENTER_G_MODE]);
-            if value["artificialMorph"].as_bool().unwrap() {
-                tech.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_ARTIFICIAL_MORPH]);
+            "tech" => {
+                extract_tech_rec(value, tech, game_data);
             }
+            "shinespark" => {
+                tech.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_SHINESPARK]);
+            }
+            "heatFrames" | "heatFramesWithEnergyDrops" => {
+                tech.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_HEAT_RUN]);
+            }
+            "speedBall" => {
+                tech.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_SPEEDBALL]);
+            }
+            "disableEquipment" => {
+                tech.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_DISABLE_EQUIPMENT]);
+            }
+            _ => {}
         }
     }
 }
@@ -314,6 +339,7 @@ fn make_tech_templates<'a>(
                     "comeInWithSidePlatform",
                     vec![TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP],
                 ),
+                ("comeInWithSuperSink", vec![TECH_ID_CAN_SUPER_SINK]),
             ];
 
             for (entrance_name, tech_ids) in entrance_condition_techs {
@@ -331,27 +357,23 @@ fn make_tech_templates<'a>(
                 "comeInWithMockball",
             ];
             for entrance_name in speedbooster_entrance_conditions {
-                if strat_json["entranceCondition"].has_key(entrance_name) {
-                    if strat_json["entranceCondition"][entrance_name]["speedBooster"].as_bool()
+                if strat_json["entranceCondition"].has_key(entrance_name)
+                    && strat_json["entranceCondition"][entrance_name]["speedBooster"].as_bool()
                         == Some(false)
-                    {
-                        tech_set.insert(
-                            game_data.tech_isv.index_by_key[&TECH_ID_CAN_DISABLE_EQUIPMENT],
-                        );
-                    }
+                {
+                    tech_set
+                        .insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_DISABLE_EQUIPMENT]);
                 }
             }
 
-            if strat_json["entranceCondition"].has_key("comeInWithDoorStuckSetup") {
-                if from_node_json["doorOrientation"].as_str() == Some("right") {
-                    tech_set.insert(
-                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK],
-                    );
-                    tech_set.insert(
-                        game_data.tech_isv.index_by_key
-                            [&TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK_FROM_WATER],
-                    );
-                }
+            if strat_json["entranceCondition"].has_key("comeInWithDoorStuckSetup")
+                && from_node_json["doorOrientation"].as_str() == Some("right")
+            {
+                tech_set
+                    .insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK]);
+                tech_set.insert(
+                    game_data.tech_isv.index_by_key[&TECH_ID_CAN_RIGHT_SIDE_DOOR_STUCK_FROM_WATER],
+                );
             }
             if strat_json["entranceCondition"].has_key("comeInWithSpark") {
                 let door_orientation = from_node_json["doorOrientation"].as_str().unwrap();
@@ -413,6 +435,7 @@ fn make_tech_templates<'a>(
                     "leaveWithSidePlatform",
                     vec![TECH_ID_CAN_SIDE_PLATFORM_CROSS_ROOM_JUMP],
                 ),
+                ("leaveWithSuperSink", vec![TECH_ID_CAN_SUPER_SINK]),
             ];
 
             for (exit_name, tech_ids) in exit_condition_techs {
@@ -438,10 +461,10 @@ fn make_tech_templates<'a>(
                     }
                 }
             }
-            if strat_json["exitCondition"].has_key("leaveWithGModeSetup") {
-                if game_data.get_room_heated(room_json, to_node_id).unwrap() {
-                    tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_HEATED_G_MODE]);
-                }
+            if strat_json["exitCondition"].has_key("leaveWithGModeSetup")
+                && game_data.get_room_heated(room_json, to_node_id).unwrap()
+            {
+                tech_set.insert(game_data.tech_isv.index_by_key[&TECH_ID_CAN_HEATED_G_MODE]);
             }
 
             for tech_idx in tech_set {
@@ -467,7 +490,7 @@ fn make_tech_templates<'a>(
 
     let mut tech_templates: Vec<TechTemplate<'a>> = vec![];
     for (tech_idx, tech_ids) in tech_strat_ids.iter().enumerate() {
-        let tech_id = game_data.tech_isv.keys[tech_idx].clone();
+        let tech_id = game_data.tech_isv.keys[tech_idx];
         let tech_json = &game_data.tech_json_map[&tech_id];
         let tech_dependency_names: Vec<String> = game_data.tech_dependencies[&tech_id]
             .iter()
@@ -568,9 +591,9 @@ fn make_notable_templates<'a>(
 
     let mut notable_templates: Vec<NotableTemplate<'a>> = vec![];
     for (notable_idx, ids_set) in notable_strat_ids.iter().enumerate() {
-        let room_id = game_data.notable_info[notable_idx].room_id.clone();
+        let room_id = game_data.notable_info[notable_idx].room_id;
         let notable_info = &game_data.notable_info[notable_idx];
-        let notable_id = notable_info.notable_id.clone();
+        let notable_id = notable_info.notable_id;
         let notable_name = notable_info.name.clone();
         let notable_note = notable_info.note.clone();
         let notable_data = &preset_data.notable_data_map[&(room_id, notable_id)];
@@ -671,7 +694,7 @@ fn get_cross_room_reqs(link: &Link, game_data: &GameData) -> Requirement {
                     position,
                     door_orientation,
                 } => {
-                    if [DoorOrientation::Left, DoorOrientation::Right].contains(&door_orientation) {
+                    if [DoorOrientation::Left, DoorOrientation::Right].contains(door_orientation) {
                         reqs.push(Requirement::Tech(
                             game_data.tech_isv.index_by_key[&TECH_ID_CAN_HORIZONTAL_SHINESPARK],
                         ));
@@ -792,6 +815,11 @@ fn get_cross_room_reqs(link: &Link, game_data: &GameData) -> Requirement {
                         game_data.tech_isv.index_by_key[&TECH_ID_CAN_SAMUS_EATER_TELEPORT],
                     ));
                 }
+                MainEntranceCondition::ComeInWithSuperSink { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SUPER_SINK],
+                    ));
+                }
             }
         }
     }
@@ -814,7 +842,7 @@ fn get_cross_room_reqs(link: &Link, game_data: &GameData) -> Requirement {
                     position,
                     door_orientation,
                 } => {
-                    if [DoorOrientation::Left, DoorOrientation::Right].contains(&door_orientation) {
+                    if [DoorOrientation::Left, DoorOrientation::Right].contains(door_orientation) {
                         reqs.push(Requirement::Tech(
                             game_data.tech_isv.index_by_key[&TECH_ID_CAN_HORIZONTAL_SHINESPARK],
                         ));
@@ -875,26 +903,25 @@ fn get_cross_room_reqs(link: &Link, game_data: &GameData) -> Requirement {
                         game_data.tech_isv.index_by_key[&TECH_ID_CAN_SAMUS_EATER_TELEPORT],
                     ));
                 }
+                ExitCondition::LeaveWithSuperSink { .. } => {
+                    reqs.push(Requirement::Tech(
+                        game_data.tech_isv.index_by_key[&TECH_ID_CAN_SUPER_SINK],
+                    ));
+                }
             }
         }
     }
     Requirement::make_and(reqs)
 }
 
-fn strip_cross_room_reqs(req: Requirement, game_data: &GameData) -> Requirement {
+fn strip_cross_room_reqs(req: Requirement) -> Requirement {
     match req {
-        Requirement::And(subreqs) => Requirement::And(
-            subreqs
-                .into_iter()
-                .map(|x| strip_cross_room_reqs(x, game_data))
-                .collect(),
-        ),
-        Requirement::Or(subreqs) => Requirement::Or(
-            subreqs
-                .into_iter()
-                .map(|x| strip_cross_room_reqs(x, game_data))
-                .collect(),
-        ),
+        Requirement::And(subreqs) => {
+            Requirement::make_and(subreqs.into_iter().map(strip_cross_room_reqs).collect())
+        }
+        Requirement::Or(subreqs) => {
+            Requirement::make_or(subreqs.into_iter().map(strip_cross_room_reqs).collect())
+        }
         Requirement::DoorUnlocked { .. } => Requirement::Free,
         Requirement::NotFlag(_) => Requirement::Free,
         _ => req,
@@ -916,6 +943,7 @@ fn get_strat_difficulty(
         locked_door_node_map: HashMap::new(),
         locked_door_vertex_ids: vec![],
     };
+    let door_map: HashMap<(RoomId, NodeId), (RoomId, NodeId)> = HashMap::new();
     for difficulty in preset_data.difficulty_tiers.iter().rev() {
         if difficulty.name == "Implicit" {
             // Skip the "Implicit" difficulty
@@ -923,8 +951,10 @@ fn get_strat_difficulty(
         }
         let difficulty_idx = preset_data.difficulty_levels.index_by_key[&difficulty.name];
 
-        let mut local = LocalState::new();
-        local.shinecharge_frames_remaining = 180 - difficulty.shinecharge_leniency_frames;
+        let local = LocalState {
+            shinecharge_frames_remaining: 180 - difficulty.shinecharge_leniency_frames,
+            ..LocalState::full()
+        };
 
         let key = (room_id, from_node_id, to_node_id, strat_name.clone());
         if !links_by_ids.contains_key(&key) {
@@ -932,16 +962,17 @@ fn get_strat_difficulty(
         }
         for link in &links_by_ids[&key] {
             let extra_req = get_cross_room_reqs(link, game_data);
-            let main_req = strip_cross_room_reqs(link.requirement.clone(), game_data);
+            let main_req = strip_cross_room_reqs(link.requirement.clone());
             let combined_req = Requirement::make_and(vec![extra_req, main_req]);
             let new_local = apply_requirement(
                 &combined_req,
-                &global,
+                global,
                 local,
                 false,
                 &preset_data.default_preset,
                 difficulty,
                 game_data,
+                &door_map,
                 &locked_door_data,
                 &[],
             );
@@ -1017,6 +1048,22 @@ fn make_room_template<'a>(
         } else {
             vec![]
         };
+        let collects_items: Vec<String> = if strat_json.has_key("collectsItems") {
+            strat_json["collectsItems"]
+                .members()
+                .map(|x| x.as_usize().unwrap().to_string())
+                .collect()
+        } else {
+            vec![]
+        };
+        let sets_flags: Vec<String> = if strat_json.has_key("setsFlags") {
+            strat_json["setsFlags"]
+                .members()
+                .map(|x| x.as_str().unwrap().to_string())
+                .collect()
+        } else {
+            vec![]
+        };
         let entrance_condition: Option<String> = if strat_json.has_key("entranceCondition") {
             Some(strat_json["entranceCondition"].pretty(2))
         } else {
@@ -1043,6 +1090,19 @@ fn make_room_template<'a>(
             None
         };
 
+        let farm_cycle_drops: Vec<EnemyDrop> = if strat_json.has_key("farmCycleDrops") {
+            let mut drops: Vec<EnemyDrop> = vec![];
+            for drop in strat_json["farmCycleDrops"].members() {
+                drops.push(EnemyDrop {
+                    enemy: drop["enemy"].as_str().unwrap().to_string(),
+                    count: drop["count"].as_usize().unwrap(),
+                });
+            }
+            drops
+        } else {
+            vec![]
+        };
+
         let strat_name = strat_json["name"].as_str().unwrap().to_string();
         let strat = RoomStrat {
             room_id,
@@ -1064,18 +1124,36 @@ fn make_room_template<'a>(
             exit_condition,
             clears_obstacles,
             resets_obstacles,
+            collects_items,
+            sets_flags,
+            farm_cycle_drops,
             difficulty_idx,
             difficulty_name,
         };
         room_strats.push(strat);
     }
 
+    let twin_room_id = match room_id {
+        220 => Some(322),
+        322 => Some(220),
+        32 => Some(313),
+        313 => Some(32),
+        _ => None,
+    };
+    let twin_room_name = twin_room_id.map(|x| {
+        game_data.room_json_map[&x]["name"]
+            .as_str()
+            .unwrap()
+            .to_string()
+    });
     RoomTemplate {
         version_info: version_info.clone(),
         preset_data,
         room_id,
         room_name_url_encoded: urlencoding::encode(&room_name).into_owned(),
         room_name,
+        twin_room_id,
+        twin_room_name,
         area: full_area,
         room_diagram_path: room_diagram_listing[&room_id].clone(),
         nodes,
@@ -1106,14 +1184,201 @@ fn make_strat_template<'a>(
     }
 }
 
+fn get_vanilla_randomization(vanilla_map: &Map) -> Randomization {
+    // For now we're not using the actual vanilla item placement,
+    // since we're only using this to draw the map.
+    Randomization {
+        objectives: vec![
+            Objective::Kraid,
+            Objective::Phantoon,
+            Objective::Draygon,
+            Objective::Ridley,
+        ],
+        save_animals: maprando::settings::SaveAnimals::Optional,
+        map: vanilla_map.clone(),
+        toilet_intersections: vec![],
+        locked_doors: vec![],
+        item_placement: vec![Item::Missile; 100],
+        start_location: StartLocation::default(),
+        escape_time_seconds: 0.0,
+        essential_spoiler_data: EssentialSpoilerData {
+            item_spoiler_info: vec![],
+        },
+        seed: 0,
+        display_seed: 0,
+        seed_name: "".to_string(),
+    }
+}
+
+struct RoomPolygon {
+    room_id: usize,
+    room_name: String,
+    svg_path: String,
+}
+
+#[derive(Default)]
+struct VanillaMapData {
+    png: Vec<u8>,
+    room_polygons: Vec<RoomPolygon>,
+}
+
+type Point = (i32, i32);
+
+#[derive(Default)]
+struct PolygonBuffer {
+    edges: HashMap<(Point, Point), i32>,
+}
+
+impl PolygonBuffer {
+    pub fn add_edge(&mut self, mut p1: Point, mut p2: Point, mut wt: i32) {
+        if p1 > p2 {
+            std::mem::swap(&mut p1, &mut p2);
+            wt = -wt;
+        }
+        *self.edges.entry((p1, p2)).or_default() += wt;
+        if self.edges[&(p1, p2)] == 0 {
+            self.edges.remove(&(p1, p2));
+        }
+    }
+
+    pub fn add_poly(&mut self, points: Vec<Point>) {
+        for (&p1, &p2) in points.iter().circular_tuple_windows() {
+            self.add_edge(p1, p2, 1);
+        }
+    }
+
+    pub fn get_edge(&self, mut p1: Point, mut p2: Point) -> i32 {
+        let mut sgn = 1;
+        if p1 > p2 {
+            std::mem::swap(&mut p1, &mut p2);
+            sgn = -1;
+        }
+        match self.edges.get(&(p1, p2)) {
+            Some(wt) => sgn * wt,
+            None => 0,
+        }
+    }
+
+    fn extract_path(&mut self) -> Option<Vec<Point>> {
+        let e = self.edges.keys().next()?;
+        let p0 = e.0;
+        let mut p = p0;
+        let mut out = vec![p0];
+        'outer: loop {
+            for p1 in self.neighbors(p) {
+                let wt = self.get_edge(p, p1);
+                if wt > 0 {
+                    self.add_edge(p, p1, -1);
+                    out.push(p1);
+                    p = p1;
+                    if p == p0 {
+                        return Some(out);
+                    }
+                    continue 'outer;
+                }
+            }
+            panic!("failed to continue path: {out:?}");
+        }
+    }
+
+    fn extract_all_paths(&mut self) -> Vec<Vec<Point>> {
+        let mut out = vec![];
+        while let Some(path) = self.extract_path() {
+            out.push(path);
+        }
+        out
+    }
+
+    fn neighbors(&self, p: Point) -> Vec<Point> {
+        let (x, y) = p;
+        vec![(x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)]
+    }
+}
+
+fn get_vanilla_map_data(
+    vanilla_map: &Map,
+    game_data: &GameData,
+    settings: &RandomizerSettings,
+) -> Result<VanillaMapData> {
+    let randomization = get_vanilla_randomization(vanilla_map);
+    let mut settings = settings.clone();
+    settings.map_layout = "Vanilla".to_string();
+    let (img, _) = spoiler_map::get_spoiler_images(&randomization, game_data, &settings, true)?;
+
+    let mut cropped_img = RgbaImage::new(68 * 8 + 1, 59 * 8 + 1);
+    let offset_x = 3 * 8;
+    let offset_y = 4 * 8 - 1;
+    for y in 0..cropped_img.height() {
+        for x in 0..cropped_img.width() {
+            let p = img.get_pixel(x + offset_x, y + offset_y);
+            cropped_img.put_pixel(x, y, *p);
+        }
+    }
+
+    let mut png: Vec<u8> = Vec::new();
+    cropped_img.write_to(
+        &mut Cursor::new(&mut png),
+        spoiler_map::image::ImageOutputFormat::Png,
+    )?;
+
+    let mut room_polygons: Vec<RoomPolygon> = vec![];
+    for (room_idx, room) in game_data.room_geometry.iter().enumerate() {
+        let room_id = game_data.room_id_by_ptr[&room.rom_address];
+
+        let mut poly_buf = PolygonBuffer::default();
+        for y in 0..room.map.len() {
+            for x in 0..room.map[0].len() {
+                if room.map[y][x] == 0 {
+                    continue;
+                }
+                let x = x as i32;
+                let y = y as i32;
+                poly_buf.add_poly(vec![(x, y), (x, y + 1), (x + 1, y + 1), (x + 1, y)]);
+            }
+        }
+
+        let room_json = &game_data.room_json_map[&room_id];
+        let room_name = room_json["name"].as_str().unwrap().to_string();
+        let room_x = vanilla_map.rooms[room_idx].0 as i32;
+        let room_y = vanilla_map.rooms[room_idx].1 as i32;
+        let mut svg_path: String = String::new();
+        for path in poly_buf.extract_all_paths() {
+            svg_path.push_str("M ");
+            svg_path.push_str(
+                &path
+                    .iter()
+                    .map(|(x, y)| {
+                        let x1 = (room_x + x + 1) * 8 - offset_x as i32;
+                        let y1 = (room_y + y + 1) * 8 - offset_y as i32;
+                        format!("{x1},{y1}")
+                    })
+                    .join(" L "),
+            );
+            svg_path.push_str("Z ");
+        }
+
+        room_polygons.push(RoomPolygon {
+            room_id,
+            room_name,
+            svg_path,
+        });
+    }
+
+    Ok(VanillaMapData { png, room_polygons })
+}
+
 impl LogicData {
     pub fn new(
         game_data: &GameData,
         preset_data: &PresetData,
         version_info: &VersionInfo,
         video_storage_url: &str,
-    ) -> LogicData {
+        vanilla_map: &Map,
+    ) -> Result<LogicData> {
         let mut out = LogicData::default();
+        let vanilla_map_data =
+            get_vanilla_map_data(vanilla_map, game_data, &preset_data.default_preset)?;
+        out.vanilla_map_png = vanilla_map_data.png;
         let room_diagram_listing = list_room_diagram_files();
         let mut room_templates: Vec<RoomTemplate> = vec![];
 
@@ -1122,7 +1387,7 @@ impl LogicData {
         let weapon_mask = game_data.get_weapon_mask(&items, &tech);
         let global = GlobalState {
             inventory: Inventory {
-                items: items,
+                items,
                 max_energy: 1499,
                 max_reserves: 400,
                 max_missiles: 230,
@@ -1134,7 +1399,7 @@ impl LogicData {
             },
             flags: vec![true; game_data.flag_isv.keys.len()],
             doors_unlocked: vec![],
-            weapon_mask: weapon_mask,
+            weapon_mask,
         };
 
         let mut links_by_ids: HashMap<(RoomId, NodeId, NodeId, String), Vec<Link>> = HashMap::new();
@@ -1165,7 +1430,7 @@ impl LogicData {
             let template = make_room_template(
                 room_json,
                 &room_diagram_listing,
-                &game_data,
+                game_data,
                 preset_data,
                 &global,
                 &links_by_ids,
@@ -1179,7 +1444,7 @@ impl LogicData {
             for strat in &template.strats {
                 let strat_template = make_strat_template(
                     &template,
-                    &strat,
+                    strat,
                     video_storage_url,
                     version_info,
                     game_data,
@@ -1259,8 +1524,9 @@ impl LogicData {
             _notables: &notable_templates,
             area_order: &game_data.area_order,
             tech_difficulties: preset_data.difficulty_levels.keys.clone(),
+            room_polygons: &vanilla_map_data.room_polygons,
         };
         out.index_html = index_template.render().unwrap();
-        out
+        Ok(out)
     }
 }
