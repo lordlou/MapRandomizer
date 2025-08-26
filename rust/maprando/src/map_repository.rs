@@ -2,7 +2,6 @@ use anyhow::Result;
 use log::info;
 use reqwest::blocking::Client;
 use url::Url;
-use std::{path::{Path, PathBuf}};
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 use serde::Deserialize;
 use std::{
@@ -49,8 +48,8 @@ struct MapManifest {
 }
 
 impl MapRepository {
-    pub fn new(name: &str, base_path: &Path) -> Result<Self> {
-        let manifest_bytes = std::fs::read(base_path.join("manifest.json"))?;
+    pub fn new(name: &str, base_path: &Path, game_data: &GameData) -> Result<Self> {
+        let manifest_bytes = game_data.read_to_bytes(base_path.join("manifest.json").as_path())?;
         let manifest: MapManifest = serde_json::from_slice(&manifest_bytes)?;
 
         let num_maps = match manifest.maps_per_file {
@@ -74,7 +73,7 @@ impl MapRepository {
         let path = self.base_path.join(&self.filenames[idx]);
         info!("Map batch file: {}", path.display());
 
-        let file = File::open(path)?;
+        let file = game_data.open(path.as_path());
         let buf_reader = BufReader::new(file);
         let avro_reader = apache_avro::Reader::new(buf_reader)?;
         let mut map_vec: Vec<Map> = vec![];

@@ -32,7 +32,7 @@ use crate::{
     map_repository::MapRepository,
     preset::PresetData, randomize::{EssentialItemSpoilerInfo, EssentialSpoilerData},
 };
-use maprando_game::{GameData, Item, LinksDataGroup};
+use maprando_game::{GameData, Item, LinksDataGroup, Map};
 
 pub const VERSION: usize = include!("VERSION");
 
@@ -80,6 +80,7 @@ fn build_app_data(apworld_path: Option<String>) -> AppData {
     let reduced_flashing_path = Path::new("worlds/sm_map_rando/data/reduced_flashing.json");
     //let strat_videos_path = Path::new("worlds/sm_map_rando/data/strat_videos.json");
     let vanilla_map_path = Path::new("worlds/sm_map_rando/data");
+    let small_maps_path= Path::new("worlds/sm_map_rando/data");
     let standard_maps_path = Path::new("worlds/sm_map_rando/data");
     let wild_maps_path = Path::new("worlds/sm_map_rando/data");
     //let samus_sprites_path = Path::new("../MapRandoSprites/samus_sprites/manifest.json");
@@ -88,6 +89,7 @@ fn build_app_data(apworld_path: Option<String>) -> AppData {
     let notable_path = Path::new("worlds/sm_map_rando/data/notable_data.json");
     let presets_path = Path::new("worlds/sm_map_rando/data/presets");
     let map_tiles_path = Path::new("worlds/sm_map_rando/data/map_tiles.json");
+    let room_name_font_path = Path::new("worlds/sm_map_rando/data/room_name_font.png");
     let mosaic_themes = vec![
         ("OuterCrateria", "Outer Crateria"),
         ("InnerCrateria", "Inner Crateria"),
@@ -119,6 +121,7 @@ fn build_app_data(apworld_path: Option<String>) -> AppData {
         title_screen_path,
         reduced_flashing_path,
         map_tiles_path,
+        room_name_font_path,
         apworld_path
     )
     .unwrap();
@@ -142,19 +145,26 @@ fn build_app_data(apworld_path: Option<String>) -> AppData {
     //let samus_sprite_categories: Vec<SamusSpriteCategory> =
     //    serde_json::from_str(&std::fs::read_to_string(&samus_sprites_path).unwrap()).unwrap();
 
-    let map_repositories = vec![
-            (
-                "Vanilla".to_string(),
-                MapRepository::new("Vanilla", vanilla_map_path, &game_data).unwrap(),
-            ),
-            (
-                "Standard".to_string(),
-                MapRepository::new("Standard", standard_maps_path, &game_data).unwrap(),
-            ),
-            (
-                "Wild".to_string(),
-                MapRepository::new("Wild", wild_maps_path, &game_data).unwrap(),
-            )].into_iter().collect();
+    let map_repositories: HashMap<String, MapRepository> = vec![
+        (
+            "Vanilla".to_string(),
+            MapRepository::new("Vanilla", vanilla_map_path, &game_data).unwrap(),
+        ),
+        (
+            "Small".to_string(),
+            MapRepository::new("Small", small_maps_path, &game_data).unwrap(),
+        ),
+        (
+            "Standard".to_string(),
+            MapRepository::new("Standard", standard_maps_path, &game_data).unwrap(),
+        ),
+        (
+            "Wild".to_string(),
+            MapRepository::new("Wild", wild_maps_path, &game_data).unwrap(),
+        ),
+    ]
+    .into_iter()
+    .collect();
 
     let app_data = AppData {
         game_data,
@@ -259,10 +269,10 @@ fn randomize_ap(
     let implicit_tech = &app_data.preset_data.tech_by_difficulty["Implicit"];
     let implicit_notables = &app_data.preset_data.notables_by_difficulty["Implicit"];
     let difficulty = DifficultyConfig::new(
-        &skill_settings,
+        skill_settings,
         &app_data.game_data,
-        &implicit_tech,
-        &implicit_notables,
+        implicit_tech,
+        implicit_notables,
     );
     let difficulty_tiers = get_difficulty_tiers(
         &settings,
@@ -296,6 +306,7 @@ fn randomize_ap(
     let time_start_attempts = Instant::now();
     let mut attempt_num = 0;
     let mut output_opt: Option<AttemptOutput> = None;
+    let mut map_batch: Vec<Map> = vec![];
     let client = Client::new();
     'attempts: for _ in 0..max_map_attempts {
         let map_seed = if map_seed_ap.is_some() {map_seed_ap.unwrap()} else {(rng.next_u64() & 0xFFFFFFFF) as usize};
@@ -303,11 +314,15 @@ fn randomize_ap(
 
         if !app_data.map_repositories.contains_key(&map_layout) {
             // TODO: it doesn't make sense to panic on things like this.
-            panic!("Unrecognized map layout option: {}", map_layout);
+            panic!("Unrecognized map layout option: {map_layout}");
         }
-        let mut map = app_data.map_repositories[&map_layout]
-            .get_map(attempt_num, map_seed, &app_data.game_data, &client)
-            .unwrap();
+        if map_batch.is_empty() {
+            map_batch = app_data.map_repositories[&map_layout]
+                .get_map_batch(map_seed, &app_data.game_data)
+                .unwrap();
+        }
+
+        let mut map = map_batch.pop().unwrap();
         match settings.other_settings.area_assignment {
             AreaAssignment::Ordered => {
                 order_map_areas(&mut map, map_seed, &app_data.game_data);
@@ -317,7 +332,7 @@ fn randomize_ap(
             }
             AreaAssignment::Standard => {}
         }
-        let objectives = get_objectives(&settings, &mut rng);
+        let objectives = get_objectives(&settings, Some(&map), &app_data.game_data, &mut rng);
         let locked_door_data = randomize_doors(
             &app_data.game_data,
             &map,
@@ -347,8 +362,7 @@ fn randomize_ap(
                 Ok(x) => x,
                 Err(e) => {
                     info!(
-                        "Attempt {attempt_num}/{max_attempts}: Randomization failed: {}",
-                        e
+                        "Attempt {attempt_num}/{max_attempts}: Randomization failed: {e}"
                     );
                     continue;
                 }

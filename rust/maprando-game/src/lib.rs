@@ -1451,7 +1451,7 @@ struct MapTileDataFile {
 
 type GfxTile1Bpp = [u8; 8];
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct VariableWidthFont {
     pub gfx: Vec<GfxTile1Bpp>,
     pub widths: Vec<u8>,
@@ -1627,6 +1627,23 @@ impl GameData {
 }
 
 impl GameData {
+    pub fn open(&self, path: &Path) -> Box<dyn Read> {
+        match &self.apworld_path {
+            Some(apworldpath) => {
+                let zipfile = std::fs::File::open(Path::new(apworldpath.as_str())).unwrap();
+                let mut archive = zip::ZipArchive::new(zipfile).unwrap();
+                let path_str = path.strip_prefix("worlds/").unwrap().to_str().unwrap().replace("\\", "/");
+                let mut zipped_file = archive.by_name(&path_str).unwrap();
+                let mut buffer = Vec::new();
+                zipped_file.read_to_end(&mut buffer).unwrap();
+                Box::new(Cursor::new(buffer))
+            },
+            None => {
+                Box::new(File::open(path).with_context(|| format!("unable to open {}", path.display())).unwrap())
+            }
+        }
+    }
+
     pub fn read_to_string(&self, path: &Path) -> Result<String> {
         match &self.apworld_path {
             Some(apworldpath) => {
@@ -5335,7 +5352,7 @@ impl GameData {
     }
 
     pub fn load_room_name_font(&mut self, path: &Path) -> Result<()> {
-        let img = read_image(path)?;
+        let img = read_image(path, self)?;
         let dim = img.dim();
         let char_map = [
             "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
@@ -5447,6 +5464,7 @@ impl GameData {
         title_screen_path: &Path,
         reduced_flashing_path: &Path,
         map_tile_path: &Path,
+        room_name_font_path: &Path,
         apworld_path: Option<String>
     ) -> Result<GameData> {
         let mut game_data = GameData::default();

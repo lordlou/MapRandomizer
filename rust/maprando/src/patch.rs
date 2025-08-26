@@ -3149,7 +3149,7 @@ pub fn make_rom(
     customize_settings: &CustomizeSettings,
     randomization: &Randomization,
     game_data: &GameData,
-    samus_sprite_categories: &[SamusSpriteCategory],
+    // samus_sprite_categories: &[SamusSpriteCategory],
     mosaic_themes: &[MosaicTheme],
 ) -> Result<Rom> {
     let mut orig_rom = base_rom.clone();
@@ -3237,7 +3237,7 @@ pub fn make_rom(
         &randomization.map,
         customize_settings,
         game_data,
-        samus_sprite_categories,
+    //  samus_sprite_categories,
         mosaic_themes,
     )?;
 

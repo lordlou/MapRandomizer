@@ -5409,7 +5409,7 @@ pub struct SpoilerDoorDetails {
     return_route: Vec<SpoilerRouteEntry>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerLocalState {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub energy_used: Option<Capacity>,
@@ -5539,7 +5539,7 @@ pub fn get_spoiler_traverse_result(tr: &TraverseResult) -> SpoilerTraverseResult
     out
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerTraverseResult {
     pub traversal_number: usize,
     pub prev_trail_ids: Vec<StepTrailId>,
@@ -5616,7 +5616,7 @@ pub struct SpoilerSummary {
     pub items: Vec<SpoilerItemSummary>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerLink {
     pub from_vertex_id: VertexId,
     pub to_vertex_id: VertexId,
@@ -5624,20 +5624,20 @@ pub struct SpoilerLink {
     pub strat_name: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerRoom {
     pub room_id: usize,
     pub name: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerNode {
     pub room_id: usize,
     pub node_id: usize,
     pub name: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerGameData {
     rooms: Vec<SpoilerRoom>,
     nodes: Vec<SpoilerNode>,

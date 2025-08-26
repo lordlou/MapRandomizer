@@ -1,4 +1,4 @@
-use crate::{randomize::EssentialItemSpoilerInfo, AppData};
+use crate::{customize::ItemDotChange, randomize::EssentialItemSpoilerInfo, AppData};
 use log::info;
 use crate::{
     customize::{
@@ -19,6 +19,8 @@ pub struct CustomizeRequest {
     rom: Vec<u8>,
     samus_sprite: String,
     etank_color: String,
+    item_dot_change: String,
+    transition_letters: bool,
     reserve_hud_style: bool,
     room_palettes: String,
     tile_theme: String,
@@ -28,6 +30,7 @@ pub struct CustomizeRequest {
     shaking: String,
     flashing: String,
     vanilla_screw_attack_animation: bool,
+    room_names: bool,
     control_shot: String,
     control_jump: String,
     control_dash: String,
@@ -68,6 +71,8 @@ impl CustomizeRequest{
     pub fn new(rom: Vec<u8>,
         samus_sprite: String,
         etank_color: String,
+        item_dot_change: String,
+        transition_letters: bool,
         reserve_hud_style: bool,
         room_palettes: String,
         tile_theme: String,
@@ -77,6 +82,7 @@ impl CustomizeRequest{
         shaking: String,
         flashing: String,
         vanilla_screw_attack_animation: bool,
+        room_names: bool,
         control_shot: String,
         control_jump: String,
         control_dash: String,
@@ -113,6 +119,8 @@ impl CustomizeRequest{
             rom,
             samus_sprite,
             etank_color,
+            item_dot_change,
+            transition_letters,
             reserve_hud_style,
             room_palettes,
             tile_theme,
@@ -122,6 +130,7 @@ impl CustomizeRequest{
             shaking,
             flashing,
             vanilla_screw_attack_animation,
+            room_names,
             control_shot,
             control_jump,
             control_dash,
@@ -155,6 +164,14 @@ impl CustomizeRequest{
             quick_reload_start,
             moonwalk
         }
+    }
+}
+
+fn upgrade_randomization(randomization: &mut Randomization) {
+    if randomization.map.room_mask.is_empty() {
+        // For older seeds, room_mask is not specified, and it means all rooms
+        // are present:
+        randomization.map.room_mask = vec![true; randomization.map.rooms.len()];
     }
 }
 
@@ -244,8 +261,15 @@ pub fn customize_seed_ap(
             u8::from_str_radix(&req.etank_color[2..4], 16).unwrap() / 8,
             u8::from_str_radix(&req.etank_color[4..6], 16).unwrap() / 8,
         )),
+        item_dot_change: match req.item_dot_change.as_str() {
+            "Fade" => ItemDotChange::Fade,
+            "Disappear" => ItemDotChange::Disappear,
+            _ => panic!("Unexpected item_dot_change"),
+        },
+        transition_letters: req.transition_letters,
         reserve_hud_style: req.reserve_hud_style,
         vanilla_screw_attack_animation: req.vanilla_screw_attack_animation,
+        room_names: req.room_names,
         palette_theme: if req.room_palettes == "area_themed" {
             PaletteTheme::AreaThemed
         } else {
@@ -299,17 +323,18 @@ pub fn customize_seed_ap(
         },
     };
 
-    if settings.is_some() && randomization.is_some() {
+    if settings.is_some()
+        && let Some(mut randomization) = randomization
+    {
         info!("Patching ROM");
-        randomization.as_mut().unwrap().item_placement = new_item_placement;
-        if new_item_spoiler_infos.is_some() {
-            randomization.as_mut().unwrap().essential_spoiler_data.item_spoiler_info = new_item_spoiler_infos.unwrap();
-        }
+        upgrade_randomization(&mut randomization);
         match make_rom(
             &rom,
             settings.as_ref().unwrap(),
-            randomization.as_ref().unwrap(),
+            &customize_settings,
+            &randomization,
             &app_data.game_data,
+            &app_data.mosaic_themes
         ) {
             Ok(r) => {
                 rom = r;
@@ -322,23 +347,6 @@ pub fn customize_seed_ap(
     } else {
         info!("Seed incompatible with current customizer");
         return Vec::new()
-    }
-
-    info!("CustomizeSettings: {:?}", customize_settings);
-    match customize_rom(
-        &mut rom,
-        &orig_rom,
-        &Some(map),
-        &customize_settings,
-        &app_data.game_data,
-        //&app_data.samus_sprite_categories,
-        &app_data.mosaic_themes,
-    ) {
-        Ok(()) => {}
-        Err(err) => {
-            info!("Error customizing ROM: {:?}", err);
-            return Vec::new()
-        }
     }
     rom.data
 }

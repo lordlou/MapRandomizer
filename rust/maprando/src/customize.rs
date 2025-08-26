@@ -9,7 +9,7 @@ use std::cmp::min;
 use std::path::Path;
 
 use crate::patch::glowpatch_writer::write_glowpatch;
-use crate::patch::{Rom, apply_ips_patch, snes2pc, write_credits_big_char};
+use crate::patch::{Rom, apply_ips_patch, snes2pc};
 use maprando_game::{GameData, Map};
 use mosaic::MosaicTheme;
 use retiling::apply_retiling;
