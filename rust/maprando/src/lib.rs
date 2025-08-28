@@ -20,9 +20,8 @@ use log::{info, error};
 use pyo3::prelude::*;
 use rand::{RngCore, SeedableRng};
 use randomize::{filter_links, get_difficulty_tiers, get_objectives, order_map_areas, randomize_doors, randomize_map_areas, DifficultyConfig, Randomization, Randomizer, SpoilerItemSummary, SpoilerLog, SpoilerSummary};
-use settings::{AreaAssignment, RandomizerSettings, StartLocationMode};
+use settings::{try_upgrade_settings, AreaAssignment, RandomizerSettings, StartLocationMode};
 use std::{path::Path, time::{Instant}};
-use upgrade::try_upgrade_settings;
 use customize_seed::{customize_seed_ap, CustomizeRequest};
 use reqwest::blocking::Client;
 
@@ -79,10 +78,10 @@ fn build_app_data(apworld_path: Option<String>) -> AppData {
     let etank_colors_path = Path::new("worlds/sm_map_rando/data/etank_colors.json");
     let reduced_flashing_path = Path::new("worlds/sm_map_rando/data/reduced_flashing.json");
     //let strat_videos_path = Path::new("worlds/sm_map_rando/data/strat_videos.json");
-    let vanilla_map_path = Path::new("worlds/sm_map_rando/data");
-    let small_maps_path= Path::new("worlds/sm_map_rando/data");
-    let standard_maps_path = Path::new("worlds/sm_map_rando/data");
-    let wild_maps_path = Path::new("worlds/sm_map_rando/data");
+    let vanilla_map_path = Path::new("worlds/sm_map_rando/data/maps/vanilla");
+    let small_maps_path= Path::new("../v119-small-avro");
+    let standard_maps_path = Path::new("../v119-standard-avro");
+    let wild_maps_path = Path::new("../v119-wild-avro");
     //let samus_sprites_path = Path::new("../MapRandoSprites/samus_sprites/manifest.json");
     let title_screen_path = Path::new("worlds/sm_map_rando/data/TitleScreen/Images");
     let tech_path = Path::new("worlds/sm_map_rando/data/tech_data.json");
@@ -210,7 +209,7 @@ fn validate_settings_ap(
     rando_settings: String,
     app_data: AppData,
 ) -> Option<RandomizerSettings> {
-    match try_upgrade_settings(rando_settings, &app_data, true) {
+    match try_upgrade_settings(rando_settings, &app_data.preset_data, true) {
         Ok(s) => Some(s.1),
         Err(e) => {
             error!("Failed to upgrade settings: {}", e);

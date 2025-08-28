@@ -1,5 +1,5 @@
-!bank_84_free_space_start = $84F5C0
-!bank_84_free_space_end = $84F630
+!bank_84_free_space_start = $84F130
+!bank_84_free_space_end = $84F1A0
 
 org !bank_84_free_space_start
 

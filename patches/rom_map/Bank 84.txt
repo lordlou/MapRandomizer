@@ -1,7 +1,9 @@
 $EFD3 - $EFD7: load_plms_early.asm
 $EFD7 - $F000: AP base patch (ammo_loop_table in items.asm)
 $F000 - $F0FF: walljump_item.asm
-$F100 - $F1FF: missile_refill_all.asm
+$F100 - $F130: missile_refill_all.asm
+$F130 - $F1A0: wall_doors.asm
+$F1A0 - $F200: [FREE]
 $F200 - $F300: mb_barrier_clear.asm (to remove invisible spikes after Mother Brain defeaed)
 $F300 - $F380: escape_items.asm
 $F380 - $F420: escape.asm
