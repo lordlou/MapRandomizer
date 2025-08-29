@@ -135,7 +135,7 @@ pub fn apply_retiling(
     }
 
     if *theme == TileTheme::AreaThemed {
-        apply_ips_patch(rom, Path::new("../patches/ips/mosaic_fx_fix.ips"), game_data)?;
+        apply_ips_patch(rom, Path::new("worlds/sm_map_rando/data/patches/ips/mosaic_fx_fix.ips"), game_data)?;
     }
 
     if *theme != TileTheme::Vanilla {

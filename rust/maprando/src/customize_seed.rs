@@ -181,7 +181,6 @@ pub fn customize_seed_ap(
     app_data: AppData,
     settings: Option<RandomizerSettings>,
     mut randomization: Option<Randomization>,
-    map: Map,
     ultra_low_qol: bool,
     new_item_placement: Vec<Item>,
     new_item_spoiler_infos: Option<Vec<EssentialItemSpoilerInfo>>
@@ -327,6 +326,10 @@ pub fn customize_seed_ap(
         && let Some(mut randomization) = randomization
     {
         info!("Patching ROM");
+        randomization.item_placement = new_item_placement;
+        if new_item_spoiler_infos.is_some() {
+            randomization.essential_spoiler_data.item_spoiler_info = new_item_spoiler_infos.unwrap();
+        }
         upgrade_randomization(&mut randomization);
         match make_rom(
             &rom,
