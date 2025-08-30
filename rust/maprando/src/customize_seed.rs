@@ -180,7 +180,7 @@ pub fn customize_seed_ap(
     req: CustomizeRequest,
     app_data: AppData,
     settings: Option<RandomizerSettings>,
-    mut randomization: Option<Randomization>,
+    randomization: Option<Randomization>,
     ultra_low_qol: bool,
     new_item_placement: Vec<Item>,
     new_item_spoiler_infos: Option<Vec<EssentialItemSpoilerInfo>>
