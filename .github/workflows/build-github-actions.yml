@@ -99,7 +99,7 @@ jobs:
           before-script-linux: |
             # If we're running on rhel centos, install needed packages.
             if command -v yum &> /dev/null; then
-                yum update -y && yum install -y perl-core openssl openssl-devel pkgconfig libatomic
+                yum update -y && yum install -y perl-core perl-IPC-Cmd openssl openssl-devel pkgconfig libatomic
 
                 # If we're running on i686 we need to symlink libatomic
                 # in order to build openssl with -latomic flag.
@@ -108,7 +108,7 @@ jobs:
                 fi
             else
                 # If we're running on debian-based system.
-                apt update -y && apt-get install -y libssl-dev openssl pkg-config
+                apt update -y && apt-get install -y libipc-cmd-perl libssl-dev openssl pkg-config
             fi
       - name: Build aarch64 wheels
         uses: PyO3/maturin-action@v1
@@ -121,7 +121,7 @@ jobs:
           before-script-linux: |
             # If we're running on rhel centos, install needed packages.
             if command -v yum &> /dev/null; then
-                yum update -y && yum install -y perl-core openssl openssl-devel pkgconfig libatomic
+                yum update -y && yum install -y perl-core perl-IPC-Cmd openssl openssl-devel pkgconfig libatomic
 
                 # If we're running on i686 we need to symlink libatomic
                 # in order to build openssl with -latomic flag.
@@ -130,7 +130,7 @@ jobs:
                 fi
             else
                 # If we're running on debian-based system.
-                apt update -y && apt-get install -y libssl-dev openssl pkg-config
+                apt update -y && apt-get install -y libipc-cmd-perl libssl-dev openssl pkg-config
             fi
       - name: Set env
         run: echo "RELEASE_VERSION=${GITHUB_REF#refs/*/v}" >> $GITHUB_ENV
