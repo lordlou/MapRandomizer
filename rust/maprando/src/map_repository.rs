@@ -1,12 +1,13 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use log::info;
 use reqwest::blocking::Client;
 use url::Url;
 use rand::{SeedableRng, rngs::StdRng, seq::SliceRandom};
 use serde::Deserialize;
+use apache_avro::Reader;
 use std::{
     fs::File,
-    io::BufReader,
+    io::{BufReader, Cursor},
     path::{Path, PathBuf},
 };
 
@@ -49,7 +50,20 @@ struct MapManifest {
 
 impl MapRepository {
     pub fn new(name: &str, base_path: &Path, game_data: &GameData) -> Result<Self> {
-        let manifest_bytes = game_data.read_to_bytes(base_path.join("manifest.json").as_path())?;
+        let manifest_bytes = if name == "Vanilla" {
+            game_data.read_to_bytes(base_path.join("manifest.json").as_path())?
+        }
+        else {
+            let url = Url::parse(base_path.join("manifest.json").to_str().unwrap())?;
+            let response = Client::new()
+                .get(url)
+                .send()
+                .with_context(|| format!("Unable to fetch manifest file from {}", base_path.display()))?;
+
+            response
+                .bytes()
+                .with_context(|| format!("Failed to read bytes from manifest {}", base_path.display())).unwrap().to_vec()
+        };
         let manifest: MapManifest = serde_json::from_slice(&manifest_bytes)?;
 
         let num_maps = match manifest.maps_per_file {
@@ -68,14 +82,30 @@ impl MapRepository {
         })
     }
 
-    pub fn get_map_batch(&self, seed: usize, game_data: &GameData) -> Result<Vec<Map>> {
+    pub fn get_map_batch(&self, seed: usize, game_data: &GameData, client: &Client) -> Result<Vec<Map>> {
         let idx = seed % self.filenames.len();
         let path = self.base_path.join(&self.filenames[idx]);
         info!("Map batch file: {}", path.display());
 
-        let file = game_data.open(path.as_path());
-        let buf_reader = BufReader::new(file);
-        let avro_reader = apache_avro::Reader::new(buf_reader)?;
+        let avro_reader: Reader<Box<dyn std::io::Read>> = if self.filenames.len() == 1 {
+            let file = game_data.open(&path);
+            let buf_reader = BufReader::new(file);
+            Reader::new(Box::new(buf_reader) as Box<dyn std::io::Read>)?
+        } else {
+            let url = Url::parse(path.to_str().unwrap())?;
+            let response = client
+                .get(url)
+                .send()
+                .with_context(|| format!("Unable to fetch map file from {}", path.display()))?;
+
+            let bytes = response
+                .bytes()
+                .with_context(|| format!("Failed to read bytes from {}", path.display()))?;
+
+            let cursor = Cursor::new(bytes);
+            Reader::new(Box::new(cursor) as Box<dyn std::io::Read>)?
+        };
+        
         let mut map_vec: Vec<Map> = vec![];
         let room_geometry = &game_data.room_geometry;
 

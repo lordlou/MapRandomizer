@@ -79,9 +79,9 @@ fn build_app_data(apworld_path: Option<String>) -> AppData {
     let reduced_flashing_path = Path::new("worlds/sm_map_rando/data/reduced_flashing.json");
     //let strat_videos_path = Path::new("worlds/sm_map_rando/data/strat_videos.json");
     let vanilla_map_path = Path::new("worlds/sm_map_rando/data/maps/vanilla");
-    let small_maps_path= Path::new("../v119-small-avro");
-    let standard_maps_path = Path::new("../v119-standard-avro");
-    let wild_maps_path = Path::new("../v119-wild-avro");
+    let small_maps_path= Path::new("https://map-rando-artifacts.s3.us-west-004.backblazeb2.com/maps/v119-small-avro");
+    let standard_maps_path = Path::new("https://map-rando-artifacts.s3.us-west-004.backblazeb2.com/maps/v119-standard-avro");
+    let wild_maps_path = Path::new("https://map-rando-artifacts.s3.us-west-004.backblazeb2.com/maps/v119-wild-avro");
     //let samus_sprites_path = Path::new("../MapRandoSprites/samus_sprites/manifest.json");
     let title_screen_path = Path::new("worlds/sm_map_rando/data/TitleScreen/Images");
     let tech_path = Path::new("worlds/sm_map_rando/data/tech_data.json");
@@ -317,7 +317,7 @@ fn randomize_ap(
         }
         if map_batch.is_empty() {
             map_batch = app_data.map_repositories[&map_layout]
-                .get_map_batch(map_seed, &app_data.game_data)
+                .get_map_batch(map_seed, &app_data.game_data, &client)
                 .unwrap();
         }
 
