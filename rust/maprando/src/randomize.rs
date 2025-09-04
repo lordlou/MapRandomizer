@@ -4347,7 +4347,7 @@ impl<'r> Randomizer<'r> {
 
         // Include unplaced items at the end:
         for &name in Item::VARIANTS {
-            if name == "Nothing" || name == "ArchipelagoItem" || name == "ArchipelagoProgItem" {
+            if name == "Nothing" || name == "ArchipelagoItem" || name == "ArchipelagoProgItem" || name == "ArchipelagoUsefulItem" || name == "ArchipelagoUsefulProgItem"{
                 continue;
             }
             if settings.other_settings.wall_jump != WallJump::Collectible && name == "WallJump" {

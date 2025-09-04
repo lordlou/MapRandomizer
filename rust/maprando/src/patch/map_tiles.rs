@@ -1243,14 +1243,14 @@ pub fn get_item_interior(item: Item, settings: &RandomizerSettings) -> MapTileIn
     match settings.quality_of_life_settings.item_markers {
         ItemMarkers::Simple => MapTileInterior::Item,
         ItemMarkers::Majors => {
-            if item.is_unique() || item == Item::ETank || item == Item::ReserveTank {
+            if item.is_unique() || item == Item::ETank || item == Item::ReserveTank || item == Item::ArchipelagoProgItem {
                 MapTileInterior::MajorItem
             } else {
                 MapTileInterior::Item
             }
         }
         ItemMarkers::Uniques => {
-            if item.is_unique() {
+            if item.is_unique() || item == Item::ArchipelagoProgItem {
                 MapTileInterior::MajorItem
             } else {
                 MapTileInterior::Item
@@ -1259,7 +1259,7 @@ pub fn get_item_interior(item: Item, settings: &RandomizerSettings) -> MapTileIn
         ItemMarkers::ThreeTiered => {
             if item.is_unique() {
                 MapTileInterior::MajorItem
-            } else if item != Item::Missile && item != Item::Nothing && item != Item::ArchipelagoItem {
+            } else if item != Item::Missile && item != Item::Nothing && item != Item::ArchipelagoItem && item != Item::ArchipelagoUsefulItem{
                 MapTileInterior::MediumItem
             } else {
                 MapTileInterior::Item
@@ -1268,9 +1268,9 @@ pub fn get_item_interior(item: Item, settings: &RandomizerSettings) -> MapTileIn
         ItemMarkers::FourTiered => {
             if item.is_unique() {
                 MapTileInterior::MajorItem
-            } else if item == Item::ETank || item == Item::ReserveTank {
+            } else if item == Item::ETank || item == Item::ReserveTank || item == Item::ArchipelagoProgItem {
                 MapTileInterior::MediumItem
-            } else if item == Item::Super || item == Item::PowerBomb {
+            } else if item == Item::Super || item == Item::PowerBomb || item == Item::ArchipelagoUsefulItem {
                 MapTileInterior::AmmoItem
             } else {
                 assert!(item == Item::Missile || item == Item::Nothing || item == Item::ArchipelagoItem);

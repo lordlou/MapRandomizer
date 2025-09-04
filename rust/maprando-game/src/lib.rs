@@ -175,6 +175,8 @@ pub enum Item {
     Nothing,      // 22
     ArchipelagoItem, // 23
     ArchipelagoProgItem, // 24
+    ArchipelagoUsefulItem, // 25
+    ArchipelagoUsefulProgItem, // 26
 }
 
 #[pymethods]
@@ -187,7 +189,7 @@ impl Item {
             Item::ETank,
             Item::ReserveTank,
             Item::Nothing,
-            Item::ArchipelagoItem,
+            Item::ArchipelagoUsefulProgItem,
         ]
         .contains(&self)
     }
@@ -1905,7 +1907,10 @@ impl GameData {
 
         for item_name in Item::VARIANTS {
             let item = Item::from_str(item_name).unwrap();
-            if item != Item::ArchipelagoItem && item != Item::ArchipelagoProgItem {
+            if item != Item::ArchipelagoItem && 
+                item != Item::ArchipelagoProgItem &&
+                item != Item::ArchipelagoUsefulItem && 
+                item != Item::ArchipelagoUsefulProgItem {
                 self.item_isv.add(&item_name.to_string());
             }
         }
