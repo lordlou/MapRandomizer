@@ -5341,6 +5341,7 @@ pub struct SpoilerRouteEntry {
 #[pyclass]
 #[derive(Serialize, Deserialize, Clone)]
 pub struct SpoilerLocation {
+    #[pyo3(get)]
     pub area: String,
     pub room_id: usize,
     #[pyo3(get)]
