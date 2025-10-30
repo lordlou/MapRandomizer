@@ -290,8 +290,9 @@ fn randomize_ap(
     );
     let map_layout = settings.map_layout.clone();
     let max_attempts = 2000;
-    let max_attempts_per_map = if settings.start_location_settings.mode == StartLocationMode::Random
-    {
+    let max_attempts_per_map = if map_seed_ap.is_some() {
+        max_attempts
+    } else if settings.start_location_settings.mode == StartLocationMode::Random {
         10
     } else {
         1
