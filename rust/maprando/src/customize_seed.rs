@@ -180,10 +180,7 @@ pub fn customize_seed_ap(
     req: CustomizeRequest,
     app_data: AppData,
     settings: Option<RandomizerSettings>,
-    randomization: Option<Randomization>,
-    ultra_low_qol: bool,
-    new_item_placement: Vec<Item>,
-    new_item_spoiler_infos: Option<Vec<EssentialItemSpoilerInfo>>
+    randomization: Option<String>,
 ) -> Vec<u8> {
     info!("customize_seed_ap");
     //let seed_name = &info.0;
@@ -247,6 +244,11 @@ pub fn customize_seed_ap(
     }
 */
     let customize_settings = CustomizeSettings {
+        let ultra_low_qol = if settings.is_some() {
+            settings.as_ref().unwrap().other_settings.ultra_low_qol
+        } else {
+            false
+        };
         samus_sprite: if ultra_low_qol
             && req.samus_sprite == "samus_vanilla"
             && req.vanilla_screw_attack_animation
@@ -323,7 +325,8 @@ pub fn customize_seed_ap(
     };
 
     if settings.is_some()
-        && let Some(mut randomization) = randomization
+        && let Some(json) = randomization
+        && let Ok(mut randomization) = serde_json::from_str(&json)
     {
         info!("Patching ROM");
         randomization.item_placement = new_item_placement;
