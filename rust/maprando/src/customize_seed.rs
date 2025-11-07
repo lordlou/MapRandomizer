@@ -243,12 +243,12 @@ pub fn customize_seed_ap(
         return HttpResponse::BadRequest().body(InvalidRomTemplate {}.render().unwrap());
     }
 */
+    let ultra_low_qol = if settings.is_some() {
+        settings.as_ref().unwrap().other_settings.ultra_low_qol
+    } else {
+        false
+    };
     let customize_settings = CustomizeSettings {
-        let ultra_low_qol = if settings.is_some() {
-            settings.as_ref().unwrap().other_settings.ultra_low_qol
-        } else {
-            false
-        };
         samus_sprite: if ultra_low_qol
             && req.samus_sprite == "samus_vanilla"
             && req.vanilla_screw_attack_animation
@@ -326,13 +326,9 @@ pub fn customize_seed_ap(
 
     if settings.is_some()
         && let Some(json) = randomization
-        && let Ok(mut randomization) = serde_json::from_str(&json)
+        && let Ok(mut randomization) = serde_json::from_str<Randomization>(&json)
     {
         info!("Patching ROM");
-        randomization.item_placement = new_item_placement;
-        if new_item_spoiler_infos.is_some() {
-            randomization.essential_spoiler_data.item_spoiler_info = new_item_spoiler_infos.unwrap();
-        }
         upgrade_randomization(&mut randomization);
         match make_rom(
             &rom,
