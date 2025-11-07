@@ -198,7 +198,7 @@ pub struct AttemptOutput {
         map_seed: usize,
         door_randomization_seed: usize,
         item_placement_seed: usize,
-        #[pyo3(get)]
+        #[pyo3(get, set)]
         randomization: Randomization,
         #[pyo3(get)]
         spoiler_log: SpoilerLog,
