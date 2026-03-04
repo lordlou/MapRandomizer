@@ -189,7 +189,9 @@ impl Item {
             Item::ETank,
             Item::ReserveTank,
             Item::Nothing,
-            Item::ArchipelagoUsefulProgItem,
+            Item::ArchipelagoItem,
+            Item::ArchipelagoUsefulItem,
+            Item::ArchipelagoProgItem,
         ]
         .contains(&self)
     }

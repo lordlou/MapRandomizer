@@ -1257,9 +1257,9 @@ pub fn get_item_interior(item: Item, settings: &RandomizerSettings) -> MapTileIn
             }
         }
         ItemMarkers::ThreeTiered => {
-            if item.is_unique() {
+            if item.is_unique() || item == Item::ArchipelagoProgItem {
                 MapTileInterior::MajorItem
-            } else if item != Item::Missile && item != Item::Nothing && item != Item::ArchipelagoItem && item != Item::ArchipelagoUsefulItem{
+            } else if item != Item::Missile && item != Item::Nothing && item != Item::ArchipelagoItem {
                 MapTileInterior::MediumItem
             } else {
                 MapTileInterior::Item
