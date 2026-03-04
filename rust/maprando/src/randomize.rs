@@ -321,7 +321,7 @@ pub struct Randomization {
     pub map: Map,
     pub toilet_intersections: Vec<RoomGeometryRoomIdx>,
     pub locked_doors: Vec<LockedDoor>,
-    #[pyo3(get)]
+    #[pyo3(get, set)]
     pub item_placement: Vec<Item>,
     pub start_location: StartLocation,
     pub escape_time_seconds: f32,

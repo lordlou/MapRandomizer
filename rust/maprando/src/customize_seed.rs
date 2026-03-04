@@ -180,10 +180,7 @@ pub fn customize_seed_ap(
     req: CustomizeRequest,
     app_data: AppData,
     settings: Option<RandomizerSettings>,
-    randomization: Option<Randomization>,
-    ultra_low_qol: bool,
-    new_item_placement: Vec<Item>,
-    new_item_spoiler_infos: Option<Vec<EssentialItemSpoilerInfo>>
+    randomization: Option<String>,
 ) -> Vec<u8> {
     info!("customize_seed_ap");
     //let seed_name = &info.0;
@@ -246,6 +243,11 @@ pub fn customize_seed_ap(
         return HttpResponse::BadRequest().body(InvalidRomTemplate {}.render().unwrap());
     }
 */
+    let ultra_low_qol = if settings.is_some() {
+        settings.as_ref().unwrap().other_settings.ultra_low_qol
+    } else {
+        false
+    };
     let customize_settings = CustomizeSettings {
         samus_sprite: if ultra_low_qol
             && req.samus_sprite == "samus_vanilla"
@@ -323,13 +325,10 @@ pub fn customize_seed_ap(
     };
 
     if settings.is_some()
-        && let Some(mut randomization) = randomization
+        && let Some(json) = randomization
+        && let Ok(mut randomization) = serde_json::from_str::<Randomization>(&json)
     {
         info!("Patching ROM");
-        randomization.item_placement = new_item_placement;
-        if new_item_spoiler_infos.is_some() {
-            randomization.essential_spoiler_data.item_spoiler_info = new_item_spoiler_infos.unwrap();
-        }
         upgrade_randomization(&mut randomization);
         match make_rom(
             &rom,

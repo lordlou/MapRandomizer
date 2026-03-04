@@ -198,7 +198,7 @@ pub struct AttemptOutput {
         map_seed: usize,
         door_randomization_seed: usize,
         item_placement_seed: usize,
-        #[pyo3(get)]
+        #[pyo3(get, set)]
         randomization: Randomization,
         #[pyo3(get)]
         spoiler_log: SpoilerLog,
@@ -492,6 +492,17 @@ fn randomize_ap(
 */
 }
 
+#[pyfunction]
+fn randomization_to_json(randomization: &Randomization) -> Option<String> {
+    return match serde_json::to_string(&randomization) {
+        Ok(s) => Some(s),
+        _ => {
+            error!("Couldn't convert Randomization to JSON string");
+            None
+        }
+    }
+}
+
 #[pymodule]
 #[pyo3(name = "pysmmaprando")]
 fn pysmmaprando(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -506,5 +517,6 @@ fn pysmmaprando(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(validate_settings_ap, m)?)?;
     m.add_function(wrap_pyfunction!(randomize_ap, m)?)?;
     m.add_function(wrap_pyfunction!(customize_seed_ap, m)?)?;
+    m.add_function(wrap_pyfunction!(randomization_to_json, m)?)?;
     Ok(())
 }
