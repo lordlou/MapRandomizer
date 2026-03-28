@@ -279,6 +279,7 @@ pub struct RandomizationState {
     pub hub_location: HubLocation,
     pub hub_obtain_route: Vec<SpoilerRouteEntry>,
     pub hub_return_route: Vec<SpoilerRouteEntry>,
+    pub first_item_idx: Vec<usize>,
     pub item_precedence: Vec<Item>, // An ordering of the 21 distinct item names. The game will prioritize placing key items earlier in the list.
     pub save_location_state: Vec<SaveLocationState>,
     pub item_location_state: Vec<ItemLocationState>, // Corresponds to GameData.item_locations (one record for each of 100 item locations)
@@ -330,6 +331,8 @@ pub struct Randomization {
     pub seed: usize,
     pub display_seed: usize,
     pub seed_name: String,
+    #[pyo3(get)]
+    pub first_item_idx: Vec<usize>,
 }
 
 struct SelectItemsOutput {
@@ -351,6 +354,7 @@ pub struct StartLocationData {
     pub hub_location: HubLocation,
     pub hub_obtain_route: Vec<SpoilerRouteEntry>,
     pub hub_return_route: Vec<SpoilerRouteEntry>,
+    pub first_item_idx: Vec<usize>,
 }
 
 pub fn randomize_map_areas(map: &mut Map, seed: usize) {
@@ -4001,6 +4005,7 @@ impl<'r> Randomizer<'r> {
             hub_location: state.hub_location.clone(),
             hub_obtain_route: state.hub_obtain_route.clone(),
             hub_return_route: state.hub_return_route.clone(),
+            first_item_idx: state.first_item_idx.clone(),
             item_precedence: state.item_precedence.clone(),
             item_location_state: state.item_location_state.clone(),
             flag_location_state: state.flag_location_state.clone(),
@@ -4646,6 +4651,7 @@ impl<'r> Randomizer<'r> {
             display_seed,
             seed_name: self.get_seed_name(seed),
             start_location: state.start_location.clone(),
+            first_item_idx: state.first_item_idx.clone(),
         };
         Ok((randomization, spoiler_log))
     }
@@ -4751,6 +4757,7 @@ impl<'r> Randomizer<'r> {
         attempt_num_rando: usize,
         num_attempts: usize,
         rng: &mut R,
+        group_first_item_idx: &Vec<usize>,
     ) -> Result<StartLocationData> {
         if self.settings.start_location_settings.mode == StartLocationMode::Ship {
             let ship_start = StartLocation {
@@ -4774,11 +4781,13 @@ impl<'r> Randomizer<'r> {
                 hub_location: ship_hub,
                 hub_obtain_route: vec![],
                 hub_return_route: vec![],
+                first_item_idx: vec![],
             });
         }
 
         for i in 0..num_attempts {
             info!("[attempt {attempt_num_rando}] start location attempt {i}");
+            let mut first_item_idx = vec![];
             let start_loc_idx = match self.settings.start_location_settings.mode {
                 StartLocationMode::Random => rng.gen_range(0..self.game_data.start_locations.len()),
                 StartLocationMode::Custom => {
@@ -4854,10 +4863,21 @@ impl<'r> Randomizer<'r> {
             );
 
             let mut has_reachable_item = false;
-            for &v in self.game_data.item_vertex_ids.iter().flatten() {
-                for i in 0..NUM_COST_METRICS {
-                    if forward.cost[v][i].is_finite() {
-                        has_reachable_item = true;
+ 'attempts: for (item_id, vertex_ids) in self.game_data.item_vertex_ids.iter().enumerate() {
+                for &v in vertex_ids {
+                    for c in 0..NUM_COST_METRICS {
+                        if forward.cost[v][c].is_finite() {
+                            if group_first_item_idx.contains(&item_id) {
+                                break 'attempts;
+                            }
+                            else {
+                                first_item_idx.push(item_id);
+                                has_reachable_item = true;
+                                let room_name = self.game_data.room_json_map[&self.game_data.item_locations[item_id].0]["name"].to_string();
+                                let location_name = self.game_data.node_json_map[&self.game_data.item_locations[item_id]]["name"].to_string();
+                                info!("[attempt {attempt_num_rando}] start location attempt {i} first_item_idx {item_id} {room_name} {location_name}");
+                            }
+                        }
                     }
                 }
             }
@@ -4961,6 +4981,7 @@ impl<'r> Randomizer<'r> {
                 hub_location,
                 hub_obtain_route,
                 hub_return_route,
+                first_item_idx,
             });
         }
         bail!("[attempt {attempt_num_rando}] Failed to find start location.")
@@ -5089,6 +5110,7 @@ impl<'r> Randomizer<'r> {
             seed_name: self.get_seed_name(seed),
             display_seed,
             start_location: StartLocation::default(),
+            first_item_idx: vec![],
         };
         Ok((randomization, spoiler_log))
     }
@@ -5109,6 +5131,7 @@ impl<'r> Randomizer<'r> {
         attempt_num_rando: usize,
         seed: usize,
         display_seed: usize,
+        group_first_item_idx: &Vec<usize>,
     ) -> Result<(Randomization, SpoilerLog)> {
         let mut rng_seed = [0u8; 32];
         rng_seed[..8].copy_from_slice(&seed.to_le_bytes());
@@ -5139,7 +5162,7 @@ impl<'r> Randomizer<'r> {
         let num_attempts_start_location = if self.game_data.start_locations.len() > 1
             && self.settings.start_location_settings.mode != StartLocationMode::Custom
         {
-            10
+            100
         } else {
             1
         };
@@ -5147,6 +5170,7 @@ impl<'r> Randomizer<'r> {
             attempt_num_rando,
             num_attempts_start_location,
             &mut rng,
+            group_first_item_idx,
         )?;
         let mut item_precedence: Vec<Item> = self.get_item_precedence(
             &self.item_priority_groups,
@@ -5166,6 +5190,7 @@ impl<'r> Randomizer<'r> {
             hub_location: start_location_data.hub_location,
             hub_obtain_route: start_location_data.hub_obtain_route,
             hub_return_route: start_location_data.hub_return_route,
+            first_item_idx: start_location_data.first_item_idx,
             item_location_state: vec![
                 initial_item_location_state;
                 self.game_data.item_locations.len()

@@ -225,6 +225,7 @@ fn randomize_ap(
     map_seed_ap: Option<usize>,
     door_seed_ap: Option<usize>,
     app_data: AppData,
+    group_first_item_idx: Vec<usize>
 ) -> Option<AttemptOutput> {
     let mut validated_preset = false;
     for s in &app_data.preset_data.full_presets {
@@ -289,9 +290,13 @@ fn randomize_ap(
         0,
     );
     let map_layout = settings.map_layout.clone();
-    let max_attempts = 2000;
+    let max_attempts = 1000;
     let max_attempts_per_map = if map_seed_ap.is_some() {
-        max_attempts
+        if door_seed_ap.is_some() {
+            max_attempts
+        } else {
+            10
+        }
     } else if settings.start_location_settings.mode == StartLocationMode::Random {
         10
     } else {
@@ -357,7 +362,7 @@ fn randomize_ap(
 
             info!("Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_randomization_seed}, item placement seed={item_placement_seed}");
             let randomization_result =
-                randomizer.randomize(attempt_num, item_placement_seed, display_seed);
+                randomizer.randomize(attempt_num, item_placement_seed, display_seed, &group_first_item_idx);
             let (randomization, spoiler_log) = match randomization_result {
                 Ok(x) => x,
                 Err(e) => {
