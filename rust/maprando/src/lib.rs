@@ -64,10 +64,19 @@ pub struct AppData {
 }
 
 #[pyfunction]
-fn build_app_data(apworld_path: Option<String>) -> AppData {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error"))
-        .format_timestamp_millis()
-        .init();
+fn build_app_data(apworld_path: Option<String>, debug: Option<bool>) -> AppData {
+    let debug = debug.unwrap_or(false);
+    if debug {
+        env_logger::Builder::new()
+            .filter_level(log::LevelFilter::Info)
+            .target(env_logger::Target::Stdout)
+            .format_timestamp_millis()
+            .init();
+    } else {
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("error"))
+            .format_timestamp_millis()
+            .init();
+    }
 
     let start_time = Instant::now();
     let sm_json_data_path = Path::new("worlds/sm_map_rando/data/sm-json-data");
@@ -245,12 +254,10 @@ fn randomize_ap(
     let race_mode = settings.other_settings.race_mode;
     let random_seed = if race_mode {
         get_random_seed()
+    } else if settings.other_settings.random_seed.is_none() {
+        seed
     } else {
-        if settings.other_settings.random_seed.is_none() {
-            seed
-        } else {
-            settings.other_settings.random_seed.unwrap()
-        }
+        settings.other_settings.random_seed.unwrap()
     };
     let display_seed = if race_mode {
         get_random_seed()
@@ -291,20 +298,20 @@ fn randomize_ap(
     );
     let map_layout = settings.map_layout.clone();
     let max_attempts = 1000;
+    let mut max_doors_attempts_per_map = 1;
     let max_attempts_per_map = if map_seed_ap.is_some() {
-        if door_seed_ap.is_some() {
-            max_attempts
-        } else {
-            10
+        if door_seed_ap.is_none() {
+            max_doors_attempts_per_map = 100;
         }
+        max_attempts / max_doors_attempts_per_map
     } else if settings.start_location_settings.mode == StartLocationMode::Random {
         10
     } else {
         1
     };
-    let max_map_attempts = max_attempts / max_attempts_per_map;
+    let max_map_attempts = max_attempts / max_attempts_per_map / max_doors_attempts_per_map;
     info!(
-        "Random seed={random_seed}, max_attempts_per_map={max_attempts_per_map}, max_map_attempts={max_map_attempts}, difficulty={:?}",
+        "Random seed={random_seed}, max_attempts_per_map={max_attempts_per_map}, max_map_attempts={max_map_attempts}, max_doors_attempts_per_map={max_doors_attempts_per_map}, difficulty={:?}",
         difficulty_tiers[0]
     );
 
@@ -314,8 +321,7 @@ fn randomize_ap(
     let mut map_batch: Vec<Map> = vec![];
     let client = Client::new();
     'attempts: for _ in 0..max_map_attempts {
-        let map_seed = if map_seed_ap.is_some() {map_seed_ap.unwrap()} else {(rng.next_u64() & 0xFFFFFFFF) as usize};
-        let door_randomization_seed = if door_seed_ap.is_some() {door_seed_ap.unwrap()} else {(rng.next_u64() & 0xFFFFFFFF) as usize};
+        let map_seed = map_seed_ap.unwrap_or_else(|| (rng.next_u64() & 0xFFFFFFFF) as usize);
 
         if !app_data.map_repositories.contains_key(&map_layout) {
             // TODO: it doesn't make sense to panic on things like this.
@@ -338,52 +344,56 @@ fn randomize_ap(
             AreaAssignment::Standard => {}
         }
         let objectives = get_objectives(&settings, Some(&map), &app_data.game_data, &mut rng);
-        let locked_door_data = randomize_doors(
-            &app_data.game_data,
-            &map,
-            &settings,
-            &objectives,
-            door_randomization_seed,
-        );
-        let randomizer = Randomizer::new(
-            &map,
-            &locked_door_data,
-            objectives.clone(),
-            &settings,
-            &difficulty_tiers,
-            &app_data.game_data,
-            &filtered_base_links_data,
-            &mut rng,
-        );
 
-        for _ in 0..max_attempts_per_map {
-            let item_placement_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
-            attempt_num += 1;
-
-            info!("Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_randomization_seed}, item placement seed={item_placement_seed}");
-            let randomization_result =
-                randomizer.randomize(attempt_num, item_placement_seed, display_seed, &group_first_item_idx);
-            let (randomization, spoiler_log) = match randomization_result {
-                Ok(x) => x,
-                Err(e) => {
-                    info!(
-                        "Attempt {attempt_num}/{max_attempts}: Randomization failed: {e}"
-                    );
-                    continue;
-                }
-            };
-            info!(
-                "Successful attempt {attempt_num}/{attempt_num}/{max_attempts}: display_seed={}, random_seed={random_seed}, map_seed={map_seed}, door_randomization_seed={door_randomization_seed}, item_placement_seed={item_placement_seed}",
-                randomization.display_seed,
-            );
-            output_opt = Some(AttemptOutput {
-                map_seed,
+        for _ in 0..max_doors_attempts_per_map {
+            let door_randomization_seed = door_seed_ap.unwrap_or_else(|| (rng.next_u64() & 0xFFFFFFFF) as usize);
+            let locked_door_data = randomize_doors(
+                &app_data.game_data,
+                &map,
+                &settings,
+                &objectives,
                 door_randomization_seed,
-                item_placement_seed,
-                randomization,
-                spoiler_log,
-            });
-            break 'attempts;
+            );
+            let randomizer = Randomizer::new(
+                &map,
+                &locked_door_data,
+                objectives.clone(),
+                &settings,
+                &difficulty_tiers,
+                &app_data.game_data,
+                &filtered_base_links_data,
+                &mut rng,
+            );
+
+            for _ in 0..max_attempts_per_map {
+                let item_placement_seed = (rng.next_u64() & 0xFFFFFFFF) as usize;
+                attempt_num += 1;
+
+                info!("Attempt {attempt_num}/{max_attempts}: Map seed={map_seed}, door randomization seed={door_randomization_seed}, item placement seed={item_placement_seed}");
+                let randomization_result =
+                    randomizer.randomize(attempt_num, item_placement_seed, display_seed, &group_first_item_idx);
+                let (randomization, spoiler_log) = match randomization_result {
+                    Ok(x) => x,
+                    Err(e) => {
+                        info!(
+                            "Attempt {attempt_num}/{max_attempts}: Randomization failed: {e}"
+                        );
+                        continue;
+                    }
+                };
+                info!(
+                    "Successful attempt {attempt_num}/{attempt_num}/{max_attempts}: display_seed={}, random_seed={random_seed}, map_seed={map_seed}, door_randomization_seed={door_randomization_seed}, item_placement_seed={item_placement_seed}",
+                    randomization.display_seed,
+                );
+                output_opt = Some(AttemptOutput {
+                    map_seed,
+                    door_randomization_seed,
+                    item_placement_seed,
+                    randomization,
+                    spoiler_log,
+                });
+                break 'attempts;
+            }
         }
     }
 
