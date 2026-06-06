@@ -4757,7 +4757,7 @@ impl<'r> Randomizer<'r> {
         attempt_num_rando: usize,
         num_attempts: usize,
         rng: &mut R,
-        group_first_item_idx: &Vec<usize>,
+        group_first_item_idx: &[usize],
     ) -> Result<StartLocationData> {
         if self.settings.start_location_settings.mode == StartLocationMode::Ship {
             let ship_start = StartLocation {
@@ -4868,6 +4868,7 @@ impl<'r> Randomizer<'r> {
                     for c in 0..NUM_COST_METRICS {
                         if forward.cost[v][c].is_finite() {
                             if group_first_item_idx.contains(&item_id) {
+                                has_reachable_item = false;
                                 break 'attempts;
                             }
                             else {
@@ -5131,7 +5132,7 @@ impl<'r> Randomizer<'r> {
         attempt_num_rando: usize,
         seed: usize,
         display_seed: usize,
-        group_first_item_idx: &Vec<usize>,
+        group_first_item_idx: &[usize],
     ) -> Result<(Randomization, SpoilerLog)> {
         let mut rng_seed = [0u8; 32];
         rng_seed[..8].copy_from_slice(&seed.to_le_bytes());
