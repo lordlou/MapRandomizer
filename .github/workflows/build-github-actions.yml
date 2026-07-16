@@ -15,10 +15,10 @@ jobs:
         python: ["3.8", "3.9", "3.10", "3.11", "3.12",  "3.13"]
         target: ["x86_64", "universal2", "aarch64"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       - uses: dtolnay/rust-toolchain@stable
@@ -50,10 +50,10 @@ jobs:
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         target: [x64]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
           architecture: ${{ matrix.target }}
@@ -86,7 +86,7 @@ jobs:
         python: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
         target: ["x86_64", "aarch64"]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           submodules: 'true'
       - name: Build x86_64 wheels
