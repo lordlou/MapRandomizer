@@ -2301,29 +2301,29 @@ impl Patcher<'_> {
             (DoorType::Beam(_), "left") => 0xFCC6,
             (DoorType::Beam(_), "down") => 0xFCCC,
             (DoorType::Beam(_), "up") => 0xFCD2,
-            (DoorType::Wall, "right") => 0xF5C0,
+            (DoorType::Wall, "right") => 0xF130,
             (DoorType::Wall, "left") => {
                 x -= 1;
-                0xF5C0
+                0xF130
             }
             (DoorType::Wall, "down") => match door.offset {
-                Some(0) => 0xF5C4,
-                Some(1) => 0xF5C8,
-                Some(2) => 0xF5CC,
+                Some(0) => 0xF134,
+                Some(1) => 0xF138,
+                Some(2) => 0xF13C,
                 _ => panic!("unexpected door offset: {:?}", door.offset),
             },
             (DoorType::Wall, "up") => match door.offset {
                 Some(0) => {
                     y -= 1;
-                    0xF5C4
+                    0xF134
                 }
                 Some(1) => {
                     y -= 2;
-                    0xF5C8
+                    0xF138
                 }
                 Some(2) => {
                     y -= 3;
-                    0xF5CC
+                    0xF13C
                 }
                 _ => panic!("unexpected door offset: {:?}", door.offset),
             },
